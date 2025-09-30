@@ -1,0 +1,29 @@
+<?php
+// Endpoint de emergencias para descargar plantilla CSV
+// Este archivo es totalmente independiente y simple
+
+// Evitar errores de headers si ya se enviaron
+if (!ob_get_level()) {
+    ob_start();
+}
+
+// Establecer headers de CSV
+header('Content-Type: text/csv; charset=utf-8');
+header('Content-Disposition: attachment; filename="template_olimpistas.csv"');
+header('Cache-Control: no-cache, must-revalidate');
+header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
+
+// Limpiar cualquier output previo
+ob_clean();
+
+// BOM para UTF-8
+echo "\xEF\xBB\xBF";
+
+// CSV data completo
+$csvContent = "nombre,apellido,documento_identidad,fecha_nacimiento,telefono,email,grado_escolaridad,unidad_educativa,departamento,area_competencia,nivel_competencia,tutor_legal_nombre,tutor_legal_documento,tutor_legal_telefono,tutor_legal_email,tutor_academico_nombre,tutor_academico_telefono,tutor_academico_email,es_grupo,nombre_grupo\n";
+$csvContent .= "Juan,Pérez García,12345678,2005-03-15,70123456,juan.perez@email.com,6to de Secundaria,Colegio San José,La Paz,Matemáticas,Secundaria,María García López,87654321,70123457,maria.garcia@email.com,Prof. Carlos Mendoza,70123458,carlos.mendoza@email.com,No,\n";
+$csvContent .= "Ana,Fernández López,87654321,2005-07-20,70123459,ana.fernandez@email.com,5to de Secundaria,Colegio María Auxiliadora,Cochabamba,Física,Secundaria,Carlos Fernández,11223344,70123460,carlos.fernandez@email.com,Prof. Elena Morales,70123461,elena.morales@email.com,No,\n";
+
+echo $csvContent;
+exit();
+?>
