@@ -1,0 +1,33 @@
+# Archivos de dependencias
+vendor/
+node_modules/
+
+# Archivos de configuración local
+config.env
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Archivos temporales
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de backup
+*.bak
+*.backup
+
+# Archivos grandes innecesarios
+*.zip
+*.rar
+*.tar.gz
