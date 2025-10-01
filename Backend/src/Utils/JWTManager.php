@@ -18,7 +18,7 @@ class JWTManager
 
     public static function generateToken($payload, $expiration = null)
     {
-        // Asegurar que esté inicializado
+        
         if (self::$secret === null || self::$algorithm === null) {
             self::init();
         }
@@ -41,7 +41,7 @@ class JWTManager
     public static function validateToken($token)
     {
         try {
-            // Asegurar que esté inicializado
+            
             if (self::$secret === null || self::$algorithm === null) {
                 self::init();
             }

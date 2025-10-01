@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -27,9 +28,324 @@ import {
   CheckCircle,
 } from "lucide-react"
 import Link from "next/link"
+import { AdminService, ApiService, OlimpistaService } from "@/lib/api"
+
+// Importar la URL base para logs
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/AuthContext"
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview")
+  const [recentInscriptions, setRecentInscriptions] = useState<any[]>([])
+  const [loadingInscriptions, setLoadingInscriptions] = useState(false)
+  const [inscriptionStats, setInscriptionStats] = useState({
+    total: 0,
+    confirmadas: 0,
+    pendientes: 0
+  })
+  const [loadingStats, setLoadingStats] = useState(false)
+  const [users, setUsers] = useState<any[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [areas, setAreas] = useState<any[]>([])
+  const [loadingAreas, setLoadingAreas] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [usersPerPage] = useState(10)
+  const router = useRouter()
+  const { toast } = useToast()
+  const { logout } = useAuth()
+  const [isSubmittingUser, setIsSubmittingUser] = useState(false)
+
+  // Función para obtener olimpistas recientes
+  const fetchRecentInscriptions = async () => {
+    setLoadingInscriptions(true)
+    try {
+      const response = await OlimpistaService.getAll()
+      if (response.success && response.data) {
+        // Obtener los 5 olimpistas más recientes
+        const recentOlimpistas = response.data
+          .sort((a: any, b: any) => new Date(b.fecha_registro).getTime() - new Date(a.fecha_registro).getTime())
+          .slice(0, 5)
+        setRecentInscriptions(recentOlimpistas)
+      } else {
+        console.error('Error al obtener olimpistas:', response.message)
+        setRecentInscriptions([])
+      }
+    } catch (error) {
+      console.error('Error al obtener olimpistas:', error)
+      setRecentInscriptions([])
+    } finally {
+      setLoadingInscriptions(false)
+    }
+  }
+
+  // Función para obtener estadísticas de inscripciones
+  const fetchInscriptionStats = async () => {
+    setLoadingStats(true)
+    try {
+      const response = await OlimpistaService.getAll()
+      if (response.success && response.data) {
+        const olimpistas = response.data
+        const stats = {
+          total: olimpistas.length,
+          confirmadas: olimpistas.filter((o: any) => o.estado === 'activo').length,
+          pendientes: olimpistas.filter((o: any) => o.estado === 'pendiente').length
+        }
+        setInscriptionStats(stats)
+      } else {
+        console.error('Error al obtener estadísticas:', response.message)
+      }
+    } catch (error) {
+      console.error('Error al obtener estadísticas:', error)
+    } finally {
+      setLoadingStats(false)
+    }
+  }
+
+  // Función para obtener usuarios registrados
+  const fetchUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      console.log('=== INICIANDO FETCH USERS ===')
+      const token = ApiService.getToken()
+      console.log('Token actual:', token)
+      console.log('Token length:', token ? token.length : 'null')
+      
+      if (!token) {
+        console.error('No hay token de autenticación')
+        setUsers([])
+        return
+      }
+      
+      // Probar primero con el endpoint de admin
+      console.log('Intentando con /api/admin/users...')
+      console.log('URL completa:', API_BASE_URL + '/api/admin/users')
+      let response = await ApiService.get('/api/admin/users')
+      console.log('Respuesta admin/users:', response)
+      
+      // Si falla, probar con el endpoint general
+      if (!response.success) {
+        console.log('Probando con /api/users...')
+        console.log('URL completa:', API_BASE_URL + '/api/users')
+        response = await ApiService.get('/api/users')
+        console.log('Respuesta users:', response)
+      }
+      
+      if (response.success && response.data) {
+        setUsers(response.data)
+        setCurrentPage(1) // Resetear a la primera página cuando se cargan nuevos usuarios
+        console.log('Usuarios cargados:', response.data)
+        console.log('Número de usuarios:', response.data.length)
+      } else {
+        console.error('Error al obtener usuarios:', response.message)
+        console.error('Response completa:', response)
+        setUsers([])
+      }
+      console.log('=== FIN FETCH USERS ===')
+    } catch (error: any) {
+      console.error('Error al obtener usuarios:', error)
+      console.error('Tipo de error:', typeof error)
+      console.error('Mensaje de error:', error.message)
+      console.error('Stack trace:', error.stack)
+      setUsers([])
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  // Función para verificar el estado del backend
+  const checkBackendHealth = async () => {
+    try {
+      console.log('Verificando estado del backend...')
+      const response = await ApiService.get('/api/health')
+      console.log('Estado del backend:', response)
+    } catch (error: any) {
+      console.error('Backend no disponible:', error)
+      console.error('Detalles del error:', error.message)
+      console.error('URL intentada:', API_BASE_URL + '/api/health')
+      console.error('Error completo:', error)
+    }
+  }
+
+  // Función para obtener áreas de competencia
+  const fetchAreas = async () => {
+    setLoadingAreas(true)
+    try {
+      console.log('Obteniendo áreas de competencia...')
+      const response = await ApiService.get('/api/areas-competencia')
+      console.log('Respuesta áreas:', response)
+      if (response.success && response.data) {
+        setAreas(response.data)
+        console.log('Áreas cargadas:', response.data)
+      } else {
+        console.error('Error al obtener áreas:', response.message)
+        setAreas([])
+      }
+    } catch (error: any) {
+      console.error('Error al obtener áreas:', error)
+      setAreas([])
+    } finally {
+      setLoadingAreas(false)
+    }
+  }
+
+  // Funciones de paginación
+  const getCurrentPageUsers = () => {
+    const startIndex = (currentPage - 1) * usersPerPage
+    const endIndex = startIndex + usersPerPage
+    return users.slice(startIndex, endIndex)
+  }
+
+  const getTotalPages = () => {
+    return Math.ceil(users.length / usersPerPage)
+  }
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1)
+    }
+  }
+
+  const handleNextPage = () => {
+    if (currentPage < getTotalPages()) {
+      setCurrentPage(currentPage + 1)
+    }
+  }
+
+  // Cargar datos al montar el componente
+  useEffect(() => {
+    console.log('Iniciando carga de datos...')
+    checkBackendHealth()
+    fetchRecentInscriptions()
+    fetchInscriptionStats()
+    fetchUsers()
+    fetchAreas()
+  }, [])
+
+  
+  const [userFirstName, setUserFirstName] = useState("")
+  const [userLastName, setUserLastName] = useState("")
+  const [userEmail, setUserEmail] = useState("")
+  const [userPhone, setUserPhone] = useState("")
+  const [userRole, setUserRole] = useState("") // admin | coordinador | evaluador
+  const [userArea, setUserArea] = useState("")
+  const [userInstitution, setUserInstitution] = useState("")
+  const [userExperience, setUserExperience] = useState("")
+  const [createdUser, setCreatedUser] = useState<{email: string, password: string} | null>(null)
+
+  const validateNewUserForm = () => {
+    if (!userFirstName.trim() || !userLastName.trim()) {
+      toast({ title: "Nombre requerido", description: "Ingrese nombres y apellidos." })
+      return false
+    }
+    if (!userEmail.trim()) {
+      toast({ title: "Email requerido", description: "Ingrese un correo válido.", variant: "destructive" })
+      return false
+    }
+    
+    if (!/\S+@\S+\.\S+/.test(userEmail)) {
+      toast({ title: "Email inválido", description: "Revise el formato del correo.", variant: "destructive" })
+      return false
+    }
+    if (!userRole) {
+      toast({ title: "Rol requerido", description: "Seleccione un rol.", variant: "destructive" })
+      return false
+    }
+    return true
+  }
+
+  const handleRegisterUser = async () => {
+    const token = ApiService.getToken()
+    if (!token) {
+      toast({ title: "Sesión requerida", description: "Inicie sesión como administrador.", variant: "destructive" })
+      return
+    }
+    if (!validateNewUserForm()) return
+    setIsSubmittingUser(true)
+    try {
+      
+      const roleMap: Record<string, string> = {
+        admin: "admin",
+        coordinator: "coordinador",
+        evaluador: "evaluador",
+        evaluator: "evaluador",
+      }
+      const mappedRole = roleMap[userRole] || userRole
+
+      const name = `${userFirstName.trim()} ${userLastName.trim()}`.trim()
+      const payload: { name: string; email: string; role: string; area_id?: number; area?: string } = {
+        name,
+        email: userEmail.trim(),
+        role: mappedRole,
+      }
+
+      
+      if (mappedRole === 'evaluador' || mappedRole === 'coordinador') {
+        if (userArea) {
+          
+          const selectedArea = areas.find(area => area.nombre === userArea)
+          if (selectedArea) {
+            payload.area_id = selectedArea.id
+            payload.area = selectedArea.nombre
+          }
+        }
+      }
+      
+
+      const res = await AdminService.createUser(payload)
+      if (res.success) {
+        const createdEmail = res.data?.user?.email || userEmail
+        const credentialsSent = !!res.data?.credentials_sent
+        const tempPass = res.data?.temporary_password as string | undefined
+
+
+        if (tempPass) {
+          setCreatedUser({ email: createdEmail, password: tempPass })
+        }
+
+        if (credentialsSent) {
+          toast({
+            title: "Usuario registrado",
+            description: `Se creó ${createdEmail}. Se enviaron credenciales por email.`,
+          })
+        } else {
+          toast({
+            title: "Usuario creado (correo no enviado)",
+            description: tempPass ? `Contraseña temporal: ${tempPass}` : `No se pudo enviar el correo.`,
+            variant: "destructive",
+          })
+        }
+        
+        setUserFirstName("")
+        setUserLastName("")
+        setUserEmail("")
+        setUserPhone("")
+        setUserRole("")
+        setUserArea("")
+        setUserInstitution("")
+        setUserExperience("")
+        setCreatedUser(null)
+        
+       
+        fetchUsers()
+      } else {
+        toast({ title: "No se pudo registrar", description: res.message || "Intentelo nuevamente.", variant: "destructive" })
+      }
+    } catch (error: any) {
+      const message: string = error?.message || "Error inesperado."
+      if (message.startsWith("401:")) {
+        toast({ title: "No autorizado", description: "Su sesión expiró o no es admin.", variant: "destructive" })
+      } else if (message.startsWith("403:")) {
+        toast({ title: "Prohibido", description: "Requiere permisos de administrador.", variant: "destructive" })
+      } else if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
+        toast({ title: "Servidor inaccesible", description: "Verifique NEXT_PUBLIC_API_URL y CORS.", variant: "destructive" })
+      } else {
+        toast({ title: "Error al registrar", description: message, variant: "destructive" })
+      }
+    } finally {
+      setIsSubmittingUser(false)
+    }
+  }
 
   const stats = [
     {
@@ -154,16 +470,29 @@ export default function AdminDashboard() {
                 <Bell className="h-4 w-4 mr-2" />
                 Notificaciones
               </Button>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => router.push('/admin/configuracion')}
+              >
                 <Settings className="h-4 w-4 mr-2" />
                 Configuración
               </Button>
-              <Link href="/login">
-                <Button variant="outline" size="sm">
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Salir
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await logout()
+                  } catch (e) {
+                  } finally {
+                    router.push('/login')
+                  }
+                }}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Salir
+              </Button>
             </div>
           </div>
         </div>
@@ -190,151 +519,56 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p
-                      className={`text-xs ${stat.trend === "up" ? "text-green-600" : "text-red-600"} flex items-center`}
-                    >
-                      <TrendingUp className="h-3 w-3 mr-1" />
-                      {stat.change}
-                    </p>
-                  </div>
-                  <div className={`p-3 rounded-lg bg-muted ${stat.color}`}>
-                    <stat.icon className="h-6 w-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="overview">Resumen</TabsTrigger>
-            <TabsTrigger value="areas">Áreas</TabsTrigger>
-            <TabsTrigger value="participants">Participantes</TabsTrigger>
-            <TabsTrigger value="users">Usuarios</TabsTrigger>
-            <TabsTrigger value="reports">Reportes</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-5 rounded-none border-0 h-12" style={{backgroundColor: '#1a4e78'}}>
+            <TabsTrigger 
+              value="overview" 
+              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+            >
+              Resumen
+            </TabsTrigger>
+            <TabsTrigger 
+              value="areas" 
+              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+            >
+              Áreas
+            </TabsTrigger>
+            <TabsTrigger 
+              value="participants" 
+              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+            >
+              Participantes
+            </TabsTrigger>
+            <TabsTrigger 
+              value="users" 
+              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+            >
+              Usuarios
+            </TabsTrigger>
+            <TabsTrigger 
+              value="reports" 
+              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none"
+            >
+              Reportes
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Recent Activities */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="h-5 w-5" />
-                    Actividad Reciente
-                  </CardTitle>
-                  <CardDescription>Últimas acciones en el sistema</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {recentActivities.map((activity) => (
-                      <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50">
-                        {getStatusIcon(activity.status)}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">{activity.message}</p>
-                          <p className="text-xs text-muted-foreground">{activity.time}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <Button variant="outline" className="w-full mt-4 bg-transparent">
-                    Ver todas las actividades
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Quick Actions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    Acciones Rápidas
-                  </CardTitle>
-                  <CardDescription>Tareas frecuentes de administración</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button variant="outline" className="h-20 flex-col bg-transparent">
-                      <Upload className="h-6 w-6 mb-2" />
-                      <span className="text-xs">Importar CSV</span>
-                    </Button>
-                    <Button variant="outline" className="h-20 flex-col bg-transparent">
-                      <Download className="h-6 w-6 mb-2" />
-                      <span className="text-xs">Exportar Datos</span>
-                    </Button>
-                    <Button variant="outline" className="h-20 flex-col bg-transparent">
-                      <Plus className="h-6 w-6 mb-2" />
-                      <span className="text-xs">Nueva Área</span>
-                    </Button>
-                    <Button variant="outline" className="h-20 flex-col bg-transparent">
-                      <BarChart3 className="h-6 w-6 mb-2" />
-                      <span className="text-xs">Ver Reportes</span>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
+              <p className="text-sm text-muted-foreground mt-2">Dashboard de resumen con métricas y KPIs del sistema</p>
             </div>
           </TabsContent>
 
           {/* Areas Tab */}
           <TabsContent value="areas" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Áreas de Competencia</CardTitle>
-                    <CardDescription>Gestiona las áreas y su capacidad</CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Filter className="h-4 w-4 mr-2" />
-                      Filtrar
-                    </Button>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Nueva Área
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {competitionAreas.map((area, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-foreground">{area.name}</h3>
-                          <Badge className={getStatusColor(area.status)}>{area.status}</Badge>
-                        </div>
-                        <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                          <span>{area.participants} participantes</span>
-                          <span>{area.evaluators} evaluadores</span>
-                          <span>Capacidad: {area.capacity}</span>
-                        </div>
-                        <div className="mt-2">
-                          <Progress value={(area.participants / area.capacity) * 100} className="h-2" />
-                        </div>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
+              <p className="text-sm text-muted-foreground mt-2">CRUD de áreas de competencia con configuración de niveles y capacidades</p>
+            </div>
           </TabsContent>
 
           {/* Participants Tab */}
@@ -343,19 +577,26 @@ export default function AdminDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Gestión de Participantes</CardTitle>
-                    <CardDescription>Administra inscripciones y participantes</CardDescription>
+                    <CardTitle></CardTitle>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => router.push('/admin/olimpistas')}
+                    >
                       <Search className="h-4 w-4 mr-2" />
-                      Buscar
+                      Ver Olimpistas
                     </Button>
                     <Button variant="outline" size="sm">
                       <Download className="h-4 w-4 mr-2" />
                       Exportar CSV
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => router.push('/admin/importar')}
+                    >
                       <Upload className="h-4 w-4 mr-2" />
                       Importar CSV
                     </Button>
@@ -370,7 +611,9 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-3">
                         <Clock className="h-8 w-8 text-blue-600" />
                         <div>
-                          <div className="text-2xl font-bold text-blue-700">89</div>
+                          <div className="text-2xl font-bold text-blue-700">
+                            {loadingStats ? '...' : inscriptionStats.pendientes}
+                          </div>
                           <div className="text-sm text-blue-600">Pendientes Verificación</div>
                         </div>
                       </div>
@@ -379,7 +622,9 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-3">
                         <CheckCircle className="h-8 w-8 text-green-600" />
                         <div>
-                          <div className="text-2xl font-bold text-green-700">1,158</div>
+                          <div className="text-2xl font-bold text-green-700">
+                            {loadingStats ? '...' : inscriptionStats.confirmadas}
+                          </div>
                           <div className="text-sm text-green-600">Confirmadas</div>
                         </div>
                       </div>
@@ -388,86 +633,51 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-3">
                         <Users className="h-8 w-8 text-orange-600" />
                         <div>
-                          <div className="text-2xl font-bold text-orange-700">1,247</div>
+                          <div className="text-2xl font-bold text-orange-700">
+                            {loadingStats ? '...' : inscriptionStats.total}
+                          </div>
                           <div className="text-sm text-orange-600">Total Inscripciones</div>
                         </div>
                       </div>
                     </Card>
                   </div>
 
-                  {/* Export Options */}
-                  <Card className="p-6">
-                    <h3 className="text-lg font-semibold text-foreground mb-4">Exportar Inscripciones</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-3">
-                        <h4 className="font-medium text-foreground">Por Estado</h4>
-                        <div className="space-y-2">
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Exportar Pendientes (89)
-                          </Button>
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Exportar Confirmadas (1,158)
-                          </Button>
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Exportar Todas (1,247)
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <h4 className="font-medium text-foreground">Por Área de Competencia</h4>
-                        <div className="space-y-2">
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Matemáticas (245)
-                          </Button>
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Física (198)
-                          </Button>
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Química (167)
-                          </Button>
-                          <Button variant="outline" className="w-full justify-start bg-transparent">
-                            <Download className="h-4 w-4 mr-2" />
-                            Ver todas las áreas
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
 
                   {/* Recent Inscriptions */}
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Inscripciones Recientes</h3>
                     <div className="space-y-3">
-                      {[
-                        { name: "Juan Pérez Mamani", area: "Matemáticas", status: "pending", date: "2025-03-15" },
-                        { name: "María González Quispe", area: "Física", status: "confirmed", date: "2025-03-14" },
-                        { name: "Carlos López Vargas", area: "Química", status: "pending", date: "2025-03-13" },
-                        { name: "Ana Martínez Condori", area: "Biología", status: "confirmed", date: "2025-03-12" },
-                      ].map((inscription, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex-1">
-                            <p className="font-medium text-foreground">{inscription.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {inscription.area} • {inscription.date}
-                            </p>
-                          </div>
-                          <Badge
-                            className={
-                              inscription.status === "confirmed"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-orange-100 text-orange-800"
-                            }
-                          >
-                            {inscription.status === "confirmed" ? "Confirmada" : "Pendiente"}
-                          </Badge>
+                      {loadingInscriptions ? (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">Cargando olimpistas recientes...</p>
                         </div>
-                      ))}
+                      ) : recentInscriptions.length > 0 ? (
+                        recentInscriptions.map((olimpista, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex-1">
+                              <p className="font-medium text-foreground">{olimpista.nombre} {olimpista.apellido}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {olimpista.area_competencia} • {new Date(olimpista.fecha_registro).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Badge
+                              className={
+                                olimpista.estado === "activo"
+                                  ? "bg-green-100 text-green-800"
+                                  : olimpista.estado === "pendiente"
+                                  ? "bg-orange-100 text-orange-800"
+                                  : "bg-gray-100 text-gray-800"
+                              }
+                            >
+                              {olimpista.estado}
+                            </Badge>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">No hay inscripciones recientes</p>
+                        </div>
+                      )}
                     </div>
                   </Card>
                 </div>
@@ -481,10 +691,7 @@ export default function AdminDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Gestión de Usuarios del Sistema</CardTitle>
-                    <CardDescription>
-                      Registra y administra usuarios internos (coordinadores, evaluadores)
-                    </CardDescription>
+                    <CardTitle></CardTitle>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm">
@@ -511,6 +718,8 @@ export default function AdminDashboard() {
                             type="text"
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="Nombres completos"
+                            value={userFirstName}
+                            onChange={(e) => setUserFirstName(e.target.value)}
                           />
                         </div>
                         <div>
@@ -519,6 +728,8 @@ export default function AdminDashboard() {
                             type="text"
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="Apellidos completos"
+                            value={userLastName}
+                            onChange={(e) => setUserLastName(e.target.value)}
                           />
                         </div>
                         <div>
@@ -527,6 +738,8 @@ export default function AdminDashboard() {
                             type="email"
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="correo@ejemplo.com"
+                            value={userEmail}
+                            onChange={(e) => setUserEmail(e.target.value)}
                           />
                         </div>
                         <div>
@@ -535,30 +748,42 @@ export default function AdminDashboard() {
                             type="tel"
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="+591 XXXXXXXX"
+                            value={userPhone}
+                            onChange={(e) => setUserPhone(e.target.value)}
                           />
                         </div>
                       </div>
                       <div className="space-y-4">
                         <div>
                           <label className="text-sm font-medium text-foreground">Rol del Usuario</label>
-                          <select className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background">
+                          <select
+                            className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
+                            value={userRole}
+                            onChange={(e) => setUserRole(e.target.value)}
+                          >
                             <option value="">Seleccionar rol</option>
                             <option value="coordinator">Coordinador de Área</option>
                             <option value="evaluator">Evaluador</option>
-                            <option value="admin">Administrador</option>
                           </select>
                         </div>
                         <div>
                           <label className="text-sm font-medium text-foreground">Área de Especialidad</label>
-                          <select className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background">
+                          <select
+                            className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
+                            value={userArea}
+                            onChange={(e) => setUserArea(e.target.value)}
+                            disabled={loadingAreas}
+                          >
                             <option value="">Seleccionar área</option>
-                            <option value="mathematics">Matemáticas</option>
-                            <option value="physics">Física</option>
-                            <option value="chemistry">Química</option>
-                            <option value="biology">Biología</option>
-                            <option value="informatics">Informática</option>
-                            <option value="robotics">Robótica</option>
+                            {areas.map((area) => (
+                              <option key={area.id} value={area.nombre}>
+                                {area.nombre}
+                              </option>
+                            ))}
                           </select>
+                          {loadingAreas && (
+                            <p className="text-xs text-muted-foreground mt-1">Cargando áreas...</p>
+                          )}
                         </div>
                         <div>
                           <label className="text-sm font-medium text-foreground">Institución</label>
@@ -566,11 +791,17 @@ export default function AdminDashboard() {
                             type="text"
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="Universidad/Institución"
+                            value={userInstitution}
+                            onChange={(e) => setUserInstitution(e.target.value)}
                           />
                         </div>
                         <div>
                           <label className="text-sm font-medium text-foreground">Nivel de Experiencia</label>
-                          <select className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background">
+                          <select
+                            className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
+                            value={userExperience}
+                            onChange={(e) => setUserExperience(e.target.value)}
+                          >
                             <option value="">Seleccionar nivel</option>
                             <option value="junior">Junior (1-3 años)</option>
                             <option value="senior">Senior (4-8 años)</option>
@@ -580,14 +811,49 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <div className="flex gap-3 mt-6">
-                      <Button className="flex-1">
+                      <Button className="flex-1" onClick={handleRegisterUser} disabled={isSubmittingUser}>
                         <Plus className="h-4 w-4 mr-2" />
-                        Registrar Usuario
+                        {isSubmittingUser ? "Registrando..." : "Registrar Usuario"}
                       </Button>
-                      <Button variant="outline" className="bg-transparent">
+                      <Button
+                        variant="outline"
+                        className="bg-transparent"
+                        onClick={() => {
+                          setUserFirstName("")
+                          setUserLastName("")
+                          setUserEmail("")
+                          setUserPhone("")
+                          setUserRole("")
+                          setUserArea("")
+                          setUserInstitution("")
+                          setUserExperience("")
+                          setCreatedUser(null)
+                        }}
+                      >
                         Limpiar Formulario
                       </Button>
                     </div>
+                    {createdUser && (
+                      <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <h4 className="font-semibold text-green-800 mb-2">✅ Usuario Creado Exitosamente</h4>
+                        <div className="space-y-2 text-sm">
+                          <div><strong>Email:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{createdUser.email}</code></div>
+                          <div><strong>Contraseña temporal:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{createdUser.password}</code></div>
+                          <div><strong>Rol:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{userRole === 'coordinator' ? 'Coordinador' : 'Evaluador'}</code></div>
+                        </div>
+                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                          <p className="text-xs text-yellow-700">
+                            <strong>⚠️ Importante:</strong> Para iniciar sesión, el usuario debe:
+                            <br />1. Ir a la página de login
+                            <br />2. Seleccionar el rol: <strong>{userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}</strong>
+                            <br />3. Usar el email y contraseña mostrados arriba
+                          </p>
+                        </div>
+                        <p className="text-xs text-green-600 mt-2">
+                          Copia estas credenciales y entrégalas al usuario manualmente.
+                        </p>
+                      </div>
+                    )}
                     <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                       <p className="text-sm text-blue-700">
                         <strong>Nota:</strong> Las credenciales de acceso se generarán automáticamente y se enviarán por
@@ -599,80 +865,82 @@ export default function AdminDashboard() {
                   {/* Current Users List */}
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Usuarios Registrados</h3>
-                    <div className="space-y-3">
-                      {[
-                        {
-                          name: "Dr. Roberto Pérez",
-                          email: "r.perez@umss.edu.bo",
-                          role: "Coordinador",
-                          area: "Matemáticas",
-                          status: "active",
-                          experience: "Expert",
-                        },
-                        {
-                          name: "Lic. María González",
-                          email: "m.gonzalez@umss.edu.bo",
-                          role: "Evaluador",
-                          area: "Física",
-                          status: "active",
-                          experience: "Senior",
-                        },
-                        {
-                          name: "Ing. Carlos Mamani",
-                          email: "c.mamani@umss.edu.bo",
-                          role: "Evaluador",
-                          area: "Informática",
-                          status: "pending",
-                          experience: "Junior",
-                        },
-                        {
-                          name: "Dra. Ana Quispe",
-                          email: "a.quispe@umss.edu.bo",
-                          role: "Coordinador",
-                          area: "Química",
-                          status: "active",
-                          experience: "Expert",
-                        },
-                      ].map((user, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-1">
-                              <h4 className="font-semibold text-foreground">{user.name}</h4>
-                              <Badge
-                                className={
-                                  user.status === "active"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-orange-100 text-orange-800"
-                                }
-                              >
-                                {user.status === "active" ? "Activo" : "Pendiente"}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                {user.experience}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span>{user.email}</span>
-                              <span>•</span>
-                              <span>{user.role}</span>
-                              <span>•</span>
-                              <span>{user.area}</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="bg-transparent">
-                              Editar
-                            </Button>
-                            <Button variant="outline" size="sm" className="bg-transparent">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                    
+                    {loadingUsers ? (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">Cargando usuarios...</p>
+                      </div>
+                    ) : users.length > 0 ? (
+                      <div className="overflow-hidden border border-gray-200 rounded-lg">
+                        {/* Header de la tabla */}
+                        <div className="bg-blue-600 text-white font-semibold">
+                          <div className="grid grid-cols-4 gap-4 px-4 py-3">
+                            <div>NOMBRE</div>
+                            <div>EMAIL</div>
+                            <div>ROL</div>
+                            <div>ESTADO</div>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        
+                        {/* Filas de datos */}
+                        <div className="bg-white">
+                          {getCurrentPageUsers().map((user, index) => (
+                            <div
+                              key={index}
+                              className={`grid grid-cols-4 gap-4 px-4 py-3 border-b border-gray-100 ${
+                                index === getCurrentPageUsers().length - 1 ? 'border-b-0' : ''
+                              }`}
+                            >
+                              <div className="font-medium text-gray-900">
+                                {user.name || user.nombre}
+                              </div>
+                              <div className="text-gray-700">
+                                {user.email}
+                              </div>
+                              <div className="text-gray-700">
+                                {user.role || user.rol}
+                              </div>
+                              <div className="text-gray-700">
+                                {user.status === "active" || user.estado === "activo" ? "Activo" : "Pendiente"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Controles de paginación */}
+                        {users.length > usersPerPage && (
+                          <div className="flex items-center justify-center space-x-4 py-4 bg-gray-50 border-t border-gray-200">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handlePreviousPage}
+                              disabled={currentPage === 1}
+                              className="bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500"
+                            >
+                              ANTERIOR
+                            </Button>
+                            
+                            <span className="text-sm text-gray-600">
+                              Página {currentPage} de {getTotalPages()}
+                            </span>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleNextPage}
+                              disabled={currentPage === getTotalPages()}
+                              className="bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500"
+                            >
+                              SIGUIENTE
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">No hay usuarios registrados</p>
+                      </div>
+                    )}
                   </Card>
 
                   {/* Evaluator Assignment */}
@@ -682,51 +950,73 @@ export default function AdminDashboard() {
                       <div>
                         <h4 className="font-medium text-foreground mb-3">Por Área de Competencia</h4>
                         <div className="space-y-3">
-                          {[
-                            { area: "Matemáticas", evaluators: 8, needed: 2 },
-                            { area: "Física", evaluators: 6, needed: 1 },
-                            { area: "Química", evaluators: 5, needed: 3 },
-                            { area: "Biología", evaluators: 4, needed: 2 },
-                            { area: "Informática", evaluators: 3, needed: 4 },
-                            { area: "Robótica", evaluators: 2, needed: 3 },
-                          ].map((area, index) => (
-                            <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                              <div>
-                                <p className="font-medium text-foreground">{area.area}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {area.evaluators} asignados • {area.needed} necesarios
-                                </p>
-                              </div>
-                              <Button variant="outline" size="sm" className="bg-transparent">
-                                Asignar
-                              </Button>
+                          {loadingAreas ? (
+                            <div className="text-center py-4">
+                              <p className="text-muted-foreground">Cargando áreas...</p>
                             </div>
-                          ))}
+                          ) : areas.length > 0 ? (
+                            areas.map((area, index) => {
+                              // Contar evaluadores por área
+                              const evaluatorsInArea = users.filter(user => 
+                                (user.role === 'evaluador' || user.rol === 'evaluador') && 
+                                (user.area === area.nombre || user.area_competencia === area.nombre)
+                              ).length
+                              
+                              return (
+                                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                                  <div>
+                                    <p className="font-medium text-foreground">{area.nombre}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {evaluatorsInArea} evaluadores asignados
+                                    </p>
+                                  </div>
+                                  <Button variant="outline" size="sm" className="bg-transparent">
+                                    Asignar
+                                  </Button>
+                                </div>
+                              )
+                            })
+                          ) : (
+                            <div className="text-center py-4">
+                              <p className="text-muted-foreground">No hay áreas disponibles</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div>
                         <h4 className="font-medium text-foreground mb-3">Evaluadores Disponibles</h4>
                         <div className="space-y-3">
-                          {[
-                            { name: "Dr. Luis Vargas", area: "Matemáticas", available: true },
-                            { name: "Lic. Carmen Flores", area: "Física", available: true },
-                            { name: "Ing. Pedro Condori", area: "Informática", available: false },
-                            { name: "Dra. Sofia Mendoza", area: "Química", available: true },
-                          ].map((evaluator, index) => (
-                            <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                              <div>
-                                <p className="font-medium text-foreground">{evaluator.name}</p>
-                                <p className="text-sm text-muted-foreground">{evaluator.area}</p>
-                              </div>
-                              <Badge
-                                className={
-                                  evaluator.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                                }
-                              >
-                                {evaluator.available ? "Disponible" : "Ocupado"}
-                              </Badge>
+                          {loadingUsers ? (
+                            <div className="text-center py-4">
+                              <p className="text-muted-foreground">Cargando evaluadores...</p>
                             </div>
-                          ))}
+                          ) : users.filter(user => 
+                            user.role === 'evaluador' || user.rol === 'evaluador'
+                          ).length > 0 ? (
+                            users
+                              .filter(user => user.role === 'evaluador' || user.rol === 'evaluador')
+                              .map((evaluator, index) => (
+                                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                                  <div>
+                                    <p className="font-medium text-foreground">{evaluator.name || evaluator.nombre}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {evaluator.area || evaluator.area_competencia || 'Sin área asignada'}
+                                    </p>
+                                  </div>
+                                  <Badge
+                                    className={
+                                      evaluator.is_active !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                                    }
+                                  >
+                                    {evaluator.is_active !== false ? "Disponible" : "Inactivo"}
+                                  </Badge>
+                                </div>
+                              ))
+                          ) : (
+                            <div className="text-center py-4">
+                              <p className="text-muted-foreground">No hay evaluadores registrados</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -738,62 +1028,10 @@ export default function AdminDashboard() {
 
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Reportes y Estadísticas</CardTitle>
-                    <CardDescription>Genera reportes detallados del sistema</CardDescription>
-                  </div>
-                  <Button>
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Reporte
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <BarChart3 className="h-8 w-8 text-blue-600" />
-                      <div>
-                        <h3 className="font-semibold">Reporte de Inscripciones</h3>
-                        <p className="text-xs text-muted-foreground">Por área y fecha</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" className="w-full bg-transparent">
-                      Generar
-                    </Button>
-                  </Card>
-
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <Users className="h-8 w-8 text-green-600" />
-                      <div>
-                        <h3 className="font-semibold">Reporte de Evaluadores</h3>
-                        <p className="text-xs text-muted-foreground">Actividad y asignaciones</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" className="w-full bg-transparent">
-                      Generar
-                    </Button>
-                  </Card>
-
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <Trophy className="h-8 w-8 text-purple-600" />
-                      <div>
-                        <h3 className="font-semibold">Reporte de Resultados</h3>
-                        <p className="text-xs text-muted-foreground">Puntuaciones y rankings</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" className="w-full bg-transparent">
-                      Generar
-                    </Button>
-                  </Card>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
+              <p className="text-sm text-muted-foreground mt-2">Sistema de generación de reportes con exportación PDF/Excel y análisis estadísticos</p>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

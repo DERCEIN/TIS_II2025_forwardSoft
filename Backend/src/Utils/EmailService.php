@@ -34,7 +34,7 @@ class EmailService
     private function configureMailer()
     {
         try {
-            // Configuración del servidor SMTP
+            
             $this->mailer->isSMTP();
             $this->mailer->Host = $this->smtpHost;
             $this->mailer->SMTPAuth = true;
@@ -44,7 +44,7 @@ class EmailService
             $this->mailer->Port = $this->smtpPort;
             $this->mailer->CharSet = 'UTF-8';
 
-            // Configuración del remitente
+            
             $this->mailer->setFrom($this->fromEmail, $this->fromName);
         } catch (Exception $e) {
             error_log("Error configurando EmailService: " . $e->getMessage());
@@ -65,7 +65,7 @@ class EmailService
 
             $this->mailer->send();
 
-            // Registrar envío en la base de datos
+            
             $this->registrarEnvioCredenciales($usuario['id'], $usuario['email'], $passwordTemporal, $enviadoPor);
 
             return true;

@@ -14,7 +14,7 @@ class App
                 $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
                 $dotenv->load();
             } catch (Exception $e) {
-                // Si falla, cargar variables por defecto
+                
                 $_ENV['APP_NAME'] = 'ForwardSoft';
                 $_ENV['APP_ENV'] = 'development';
                 $_ENV['APP_DEBUG'] = 'true';
@@ -28,10 +28,10 @@ class App
             }
         }
 
-        // Configurar zona horaria
+        
         date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'America/Mexico_City');
 
-        // Configurar manejo de errores
+        
         if ($_ENV['APP_DEBUG'] ?? false) {
             error_reporting(E_ALL);
             ini_set('display_errors', 1);
@@ -40,10 +40,10 @@ class App
             ini_set('display_errors', 0);
         }
 
-        // Configurar headers CORS
+        
         self::setCorsHeaders();
 
-        // Configurar autoloader
+        
         require_once __DIR__ . '/../../vendor/autoload.php';
     }
 

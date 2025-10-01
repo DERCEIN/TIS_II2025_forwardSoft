@@ -19,14 +19,14 @@ class UserController
     {
         $currentUser = JWTManager::getCurrentUser();
         
-        // Solo administradores pueden ver todos los usuarios
+        
         if ($currentUser['role'] !== 'admin') {
             Response::forbidden('Acceso denegado');
         }
 
         $users = $this->userModel->getAll();
         
-        // Remover información sensible
+        
         $users = array_map(function($user) {
             unset($user['password']);
             return $user;
@@ -39,7 +39,7 @@ class UserController
     {
         $currentUser = JWTManager::getCurrentUser();
         
-        // Los usuarios solo pueden ver su propia información, excepto los admins
+       
         if ($currentUser['role'] !== 'admin' && $currentUser['id'] != $id) {
             Response::forbidden('Acceso denegado');
         }
@@ -50,7 +50,7 @@ class UserController
             Response::notFound('Usuario no encontrado');
         }
 
-        // Remover información sensible
+        
         unset($user['password']);
 
         Response::success($user, 'Usuario encontrado');
@@ -60,7 +60,7 @@ class UserController
     {
         $currentUser = JWTManager::getCurrentUser();
         
-        // Los usuarios solo pueden actualizar su propia información, excepto los admins
+        
         if ($currentUser['role'] !== 'admin' && $currentUser['id'] != $id) {
             Response::forbidden('Acceso denegado');
         }
@@ -96,7 +96,7 @@ class UserController
             $updateData['password'] = password_hash($input['password'], PASSWORD_DEFAULT);
         }
 
-        // Solo los admins pueden cambiar roles
+       
         if (isset($input['role']) && $currentUser['role'] === 'admin') {
             $updateData['role'] = $input['role'];
         }
@@ -117,12 +117,12 @@ class UserController
     {
         $currentUser = JWTManager::getCurrentUser();
         
-        // Solo los admins pueden eliminar usuarios
+        
         if ($currentUser['role'] !== 'admin') {
             Response::forbidden('Acceso denegado');
         }
 
-        // No permitir que un admin se elimine a sí mismo
+        
         if ($currentUser['id'] == $id) {
             Response::validationError(['general' => 'No puedes eliminar tu propia cuenta']);
         }
@@ -156,7 +156,7 @@ class UserController
             } elseif (!filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors['email'] = 'Email inválido';
             } else {
-                // Verificar si el email ya existe en otro usuario
+                
                 $existingUser = $this->userModel->findByEmail($input['email']);
                 if ($existingUser && $existingUser['id'] != $userId) {
                     $errors['email'] = 'El email ya está en uso por otro usuario';

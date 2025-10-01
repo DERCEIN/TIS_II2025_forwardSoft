@@ -24,7 +24,7 @@ class SimpleConfig
 
     public static function init()
     {
-        // Cargar variables de entorno si existe .env
+        
         if (file_exists(__DIR__ . '/../../.env')) {
             $lines = file(__DIR__ . '/../../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
@@ -35,15 +35,15 @@ class SimpleConfig
             }
         }
 
-        // Establecer variables de entorno
+        
         foreach (self::$config as $key => $value) {
             $_ENV[$key] = $value;
         }
 
-        // Configurar zona horaria
+       
         date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'America/Mexico_City');
 
-        // Configurar manejo de errores
+        
         if ($_ENV['APP_DEBUG'] === 'true') {
             error_reporting(E_ALL);
             ini_set('display_errors', 1);

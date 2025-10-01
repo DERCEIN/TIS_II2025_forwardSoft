@@ -53,9 +53,9 @@ $exampleRow = [
     ''
 ];
 
-// Escribir headers
+
 fputcsv(STDOUT, $headers);
 
-// Escribir fila de ejemplo
+
 fputcsv(STDOUT, $exampleRow);
 ?>

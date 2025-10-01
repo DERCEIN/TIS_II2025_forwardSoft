@@ -105,7 +105,7 @@ class Router
         $method = $_SERVER['REQUEST_METHOD'];
         $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         
-        // Remover el directorio base si existe
+        
         $basePath = '/backend/public';
         if (strpos($path, $basePath) === 0) {
             $path = substr($path, strlen($basePath));
@@ -118,7 +118,7 @@ class Router
             }
         }
 
-        // Ruta no encontrada
+        
         Response::notFound('Ruta no encontrada');
     }
 
@@ -136,7 +136,7 @@ class Router
 
     private function executeRoute($route, $path)
     {
-        // Ejecutar middleware
+        
         foreach ($route['middleware'] as $middlewareName) {
             $middleware = $this->getMiddleware($middlewareName);
             if ($middleware && !$middleware()) {
@@ -144,10 +144,10 @@ class Router
             }
         }
 
-        // Extraer parámetros de la URL
+       
         $params = $this->extractParams($route['path'], $path);
 
-        // Ejecutar el handler
+        
         $handler = $route['handler'];
         
         if (is_callable($handler)) {

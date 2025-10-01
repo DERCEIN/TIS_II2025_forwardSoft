@@ -3,6 +3,9 @@ import type { Metadata } from "next"
 import { Montserrat, Open_Sans } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
+import { AuthProvider } from "@/contexts/AuthContext"
+import { NotificationProvider } from "@/components/NotificationProvider"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 const montserrat = Montserrat({
@@ -31,7 +34,12 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${openSans.variable} ${montserrat.variable} font-sans antialiased`}>
-        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+        <AuthProvider>
+          <NotificationProvider>
+            <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+            <Toaster />
+          </NotificationProvider>
+        </AuthProvider>
         <Analytics />
       </body>
     </html>

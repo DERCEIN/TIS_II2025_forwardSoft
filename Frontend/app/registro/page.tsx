@@ -24,7 +24,7 @@ import {
 import Link from "next/link"
 
 interface FormData {
-  // Personal Information
+  
   firstName: string
   lastName: string
   ci: string
@@ -35,10 +35,10 @@ interface FormData {
   phone: string
   email: string
 
-  // Competition Areas
+  
   selectedAreas: string[]
 
-  // Team Information (for group areas)
+ 
   teams: {
     [key: string]: {
       teamName: string
@@ -126,7 +126,7 @@ export default function RegistrationPage() {
     }
 
     if (step === 3) {
-      // Validate team information for group areas
+      
       const groupAreas = formData.selectedAreas.filter(
         (areaId) => !competitionAreas.find((area) => area.id === areaId)?.individual,
       )
@@ -162,7 +162,7 @@ export default function RegistrationPage() {
         ? prev.selectedAreas.filter((id) => id !== areaId)
         : [...prev.selectedAreas, areaId]
 
-      // Initialize team data for group areas
+      
       const newTeams = { ...prev.teams }
       const area = competitionAreas.find((a) => a.id === areaId)
 
@@ -234,14 +234,14 @@ export default function RegistrationPage() {
 
     setIsSubmitting(true)
 
-    // Simulate API call
+    
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
-    // Here you would normally send the data to your backend
+    
     console.log("Form submitted:", formData)
 
     setIsSubmitting(false)
-    setCurrentStep(totalSteps + 1) // Success step
+    setCurrentStep(totalSteps + 1) 
   }
 
   const renderStepContent = () => {
