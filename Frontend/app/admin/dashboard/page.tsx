@@ -453,30 +453,33 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <Link href="/" className="flex items-center space-x-2">
-                <img src="/sansi-logo.png" alt="SanSi Logo" className="h-8 w-auto" />
-                <span className="text-xl font-heading font-bold text-foreground">Olimpiada Oh! SanSi</span>
+                <img src="/sansi-logo.png" alt="SanSi Logo" className="h-6 sm:h-8 w-auto" />
+                <span className="text-sm sm:text-xl font-heading font-bold text-foreground hidden sm:block">Olimpiada Oh! SanSi</span>
+                <span className="text-sm font-heading font-bold text-foreground sm:hidden">SanSi</span>
               </Link>
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs hidden md:block">
                 Panel de Administración
               </Badge>
             </div>
 
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm">
+            {/* Desktop Navigation */}
+            <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+              <Button variant="outline" size="sm" className="hidden lg:flex">
                 <Bell className="h-4 w-4 mr-2" />
                 Notificaciones
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
+                className="hidden md:flex"
                 onClick={() => router.push('/admin/configuracion')}
               >
                 <Settings className="h-4 w-4 mr-2" />
-                Configuración
+                <span className="hidden lg:inline">Configuración</span>
               </Button>
               <Button
                 variant="outline"
@@ -490,30 +493,64 @@ export default function AdminDashboard() {
                   }
                 }}
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Salir
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Salir</span>
+              </Button>
+            </div>
+
+            {/* Mobile Navigation */}
+            <div className="flex sm:hidden items-center space-x-2">
+              <Button variant="outline" size="sm">
+                <Bell className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await logout()
+                  } catch (e) {
+                  } finally {
+                    router.push('/login')
+                  }
+                }}
+              >
+                <LogOut className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-heading font-bold text-foreground mb-2">Panel de Administración</h1>
-              <p className="text-muted-foreground">Gestiona todos los aspectos de la Olimpiada Oh! SanSi</p>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground mb-2">Panel de Administración</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">Gestiona todos los aspectos de la Olimpiada Oh! SanSi</p>
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-medium text-blue-800">
+                    Usted está registrado como <strong>Administrador</strong>
+                  </span>
+                </div>
+                <p className="text-xs text-blue-600 mt-1">
+                  Tiene acceso completo a todas las funcionalidades del sistema
+                </p>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <Button>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <Button className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
-                Nueva Área
+                <span className="hidden sm:inline">Nueva Área</span>
+                <span className="sm:hidden">Área</span>
               </Button>
-              <Button variant="outline">
+              <Button variant="outline" className="w-full sm:w-auto">
                 <Upload className="h-4 w-4 mr-2" />
-                Importar CSV
+                <span className="hidden sm:inline">Importar CSV</span>
+                <span className="sm:hidden">Importar</span>
               </Button>
             </div>
           </div>
@@ -521,53 +558,55 @@ export default function AdminDashboard() {
 
 
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 rounded-none border-0 h-12" style={{backgroundColor: '#1a4e78'}}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="overview" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
-              Resumen
+              <span className="hidden sm:inline">Resumen</span>
+              <span className="sm:hidden">Inicio</span>
             </TabsTrigger>
             <TabsTrigger 
               value="areas" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Áreas
             </TabsTrigger>
             <TabsTrigger 
               value="participants" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r sm:border-r border-white/20 rounded-none py-2 sm:py-3"
             >
-              Participantes
+              <span className="hidden sm:inline">Participantes</span>
+              <span className="sm:hidden">Olimpistas</span>
             </TabsTrigger>
             <TabsTrigger 
               value="users" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r lg:border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Usuarios
             </TabsTrigger>
             <TabsTrigger 
               value="reports" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
             >
               Reportes
             </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
-              <p className="text-sm text-muted-foreground mt-2">Dashboard de resumen con métricas y KPIs del sistema</p>
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+            <div className="text-center py-8 sm:py-12 px-4">
+              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Dashboard de resumen con métricas y KPIs del sistema</p>
             </div>
           </TabsContent>
 
           {/* Areas Tab */}
-          <TabsContent value="areas" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
-              <p className="text-sm text-muted-foreground mt-2">CRUD de áreas de competencia con configuración de niveles y capacidades</p>
+          <TabsContent value="areas" className="space-y-4 sm:space-y-6">
+            <div className="text-center py-8 sm:py-12 px-4">
+              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2">CRUD de áreas de competencia con configuración de niveles y capacidades</p>
             </div>
           </TabsContent>
 
@@ -606,7 +645,7 @@ export default function AdminDashboard() {
               <CardContent>
                 <div className="space-y-6">
                   {/* Inscriptions Summary */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <Card className="p-4 bg-blue-50 border-blue-200">
                       <div className="flex items-center gap-3">
                         <Clock className="h-8 w-8 text-blue-600" />
@@ -708,9 +747,9 @@ export default function AdminDashboard() {
               <CardContent>
                 <div className="space-y-6">
                   {/* User Registration Form */}
-                  <Card className="p-6 bg-muted/30">
-                    <h3 className="text-lg font-semibold text-foreground mb-4">Registrar Nuevo Usuario</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card className="p-4 sm:p-6 bg-muted/30">
+                    <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">Registrar Nuevo Usuario</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       <div className="space-y-4">
                         <div>
                           <label className="text-sm font-medium text-foreground">Nombres</label>
@@ -871,10 +910,12 @@ export default function AdminDashboard() {
                         <p className="text-muted-foreground">Cargando usuarios...</p>
                       </div>
                     ) : users.length > 0 ? (
-                      <div className="overflow-hidden border border-gray-200 rounded-lg">
+                      <>
+                      {/* Tabla para desktop */}
+                      <div className="hidden md:block overflow-hidden border border-gray-200 rounded-lg">
                         {/* Header de la tabla */}
                         <div className="bg-blue-600 text-white font-semibold">
-                          <div className="grid grid-cols-4 gap-4 px-4 py-3">
+                          <div className="grid grid-cols-4 gap-4 px-4 py-3 text-sm">
                             <div>NOMBRE</div>
                             <div>EMAIL</div>
                             <div>ROL</div>
@@ -936,6 +977,63 @@ export default function AdminDashboard() {
                           </div>
                         )}
                       </div>
+
+                      {/* Vista de tarjetas para móviles */}
+                      <div className="md:hidden space-y-3">
+                        {getCurrentPageUsers().map((user, index) => (
+                          <Card key={index} className="p-4">
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-semibold text-foreground text-sm">
+                                    {user.name || user.nombre}
+                                  </h4>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {user.email}
+                                  </p>
+                                </div>
+                                <Badge variant="secondary" className="text-xs">
+                                  {user.status === "active" || user.estado === "activo" ? "Activo" : "Pendiente"}
+                                </Badge>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Rol:</span>
+                                <span className="font-medium">{user.role || user.rol}</span>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        {/* Controles de paginación móvil */}
+                        {users.length > usersPerPage && (
+                          <div className="flex items-center justify-center space-x-4 py-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handlePreviousPage}
+                              disabled={currentPage === 1}
+                              className="text-xs"
+                            >
+                              ANTERIOR
+                            </Button>
+                            
+                            <span className="text-xs text-muted-foreground">
+                              {currentPage} de {getTotalPages()}
+                            </span>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleNextPage}
+                              disabled={currentPage === getTotalPages()}
+                              className="text-xs"
+                            >
+                              SIGUIENTE
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      </>
                     ) : (
                       <div className="text-center py-8">
                         <p className="text-muted-foreground">No hay usuarios registrados</p>
@@ -944,9 +1042,9 @@ export default function AdminDashboard() {
                   </Card>
 
                   {/* Evaluator Assignment */}
-                  <Card className="p-6">
-                    <h3 className="text-lg font-semibold text-foreground mb-4">Asignación de Evaluadores</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card className="p-4 sm:p-6">
+                    <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">Asignación de Evaluadores</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                       <div>
                         <h4 className="font-medium text-foreground mb-3">Por Área de Competencia</h4>
                         <div className="space-y-3">
@@ -1027,10 +1125,10 @@ export default function AdminDashboard() {
           </TabsContent>
 
           {/* Reports Tab */}
-          <TabsContent value="reports" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-sm text-muted-foreground mt-2">Sistema de generación de reportes con exportación PDF/Excel y análisis estadísticos</p>
+          <TabsContent value="reports" className="space-y-4 sm:space-y-6">
+            <div className="text-center py-8 sm:py-12 px-4">
+              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de generación de reportes con exportación PDF/Excel y análisis estadísticos</p>
             </div>
           </TabsContent>
         </Tabs>

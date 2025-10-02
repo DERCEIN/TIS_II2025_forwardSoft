@@ -32,6 +32,7 @@ import {
   Target,
   Search,
   Cog,
+  UserCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -320,29 +321,30 @@ export default function EvaluatorDashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b backdrop-blur supports-[backdrop-filter]:bg-blue-100/95" style={{backgroundColor: '#dbeafe'}}>
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-3">
-                <img src="/sansi-logo.png" alt="SanSi Logo" className="h-8 w-auto" />
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              <Link href="/" className="flex items-center space-x-2 sm:space-x-3">
+                <img src="/sansi-logo.png" alt="SanSi Logo" className="h-6 sm:h-8 w-auto" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold" style={{color: '#2563eb'}}>SanSi</span>
-                  <span className="text-xs" style={{color: '#3b82f6'}}>Olimpiada de Ciencia y Tecnología</span>
+                  <span className="text-xs sm:text-sm font-bold" style={{color: '#2563eb'}}>SanSi</span>
+                  <span className="text-xs hidden sm:block" style={{color: '#3b82f6'}}>Olimpiada de Ciencia y Tecnología</span>
                 </div>
               </Link>
-              <Badge variant="secondary" className="text-xs" style={{backgroundColor: '#bfdbfe', color: '#1e40af'}}>
+              <Badge variant="secondary" className="text-xs hidden md:block" style={{backgroundColor: '#bfdbfe', color: '#1e40af'}}>
                 Evaluador - {evaluatorInfo.areas.length > 0 ? evaluatorInfo.areas.join(", ") : "Cargando áreas..."}
               </Badge>
             </div>
 
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
+            {/* Desktop Navigation */}
+            <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+              <Button variant="outline" size="sm" className="hidden lg:flex" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
                 <Bell className="h-4 w-4 mr-2" />
                 Notificaciones
               </Button>
-              <Button variant="outline" size="sm" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
+              <Button variant="outline" size="sm" className="hidden md:flex" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
                 <Settings className="h-4 w-4 mr-2" />
-                Configuración
+                <span className="hidden lg:inline">Configuración</span>
               </Button>
               <Button 
                 variant="outline" 
@@ -355,81 +357,116 @@ export default function EvaluatorDashboard() {
                   handleLogout()
                 }}
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Salir
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Salir</span>
+              </Button>
+            </div>
+
+            {/* Mobile Navigation */}
+            <div className="flex sm:hidden items-center space-x-2">
+              <Button variant="outline" size="sm" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
+                <Bell className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('Botón Salir clickeado!')
+                  handleLogout()
+                }}
+              >
+                <LogOut className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-heading font-bold text-foreground mb-2">Panel de Evaluación</h1>
-              <p className="text-muted-foreground">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground mb-2">Panel de Evaluación</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">
                 {evaluatorInfo.areas.length > 0 
                   ? `Evalúa participantes en ${evaluatorInfo.areas.join(" y ")}` 
                   : "Cargando información de áreas..."
                 }
               </p>
+              <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-medium text-purple-800">
+                    Usted está registrado como <strong>Evaluador</strong>
+                  </span>
+                </div>
+                <p className="text-xs text-purple-600 mt-1">
+                  Evalúa participantes en {evaluatorInfo.areas.length > 0 ? evaluatorInfo.areas.join(" y ") : "sus áreas asignadas"}
+                </p>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <Button style={{backgroundColor: '#2563eb', color: 'white'}}>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <Button className="w-full sm:w-auto" style={{backgroundColor: '#2563eb', color: 'white'}}>
                 <Edit3 className="h-4 w-4 mr-2" />
-                Iniciar Evaluación
+                <span className="hidden sm:inline">Iniciar Evaluación</span>
+                <span className="sm:hidden">Evaluar</span>
               </Button>
-              <Button variant="outline" style={{backgroundColor: '#ec4899', color: 'white', borderColor: '#ec4899'}}>
+              <Button variant="outline" className="w-full sm:w-auto" style={{backgroundColor: '#ec4899', color: 'white', borderColor: '#ec4899'}}>
                 <Calendar className="h-4 w-4 mr-2" />
-                Mi Calendario
+                <span className="hidden sm:inline">Mi Calendario</span>
+                <span className="sm:hidden">Calendario</span>
               </Button>
             </div>
           </div>
         </div>
 
         {/* Evaluator Overview Card */}
-        <Card className="mb-8 border-blue-200" style={{background: 'linear-gradient(to right, #eff6ff, #fce7f3)', borderColor: '#bfdbfe'}}>
-          <CardContent className="p-6">
+        <Card className="mb-6 sm:mb-8 border-blue-200" style={{background: 'linear-gradient(to right, #eff6ff, #fce7f3)', borderColor: '#bfdbfe'}}>
+          <CardContent className="p-4 sm:p-6">
             {loadingProfile || loadingStats ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <p className="text-muted-foreground">Cargando información del evaluador...</p>
               </div>
             ) : (
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-heading font-bold mb-2" style={{color: '#1e40af'}}>{evaluatorInfo.displayName}</h2>
-                  <p className="mb-4" style={{color: '#2563eb'}}>
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex-1">
+                  <h2 className="text-xl sm:text-2xl font-heading font-bold mb-2" style={{color: '#1e40af'}}>{evaluatorInfo.displayName}</h2>
+                  <p className="mb-4 text-sm sm:text-base" style={{color: '#2563eb'}}>
                     {evaluatorInfo.areas.length > 0 
                       ? `Evaluador de ${evaluatorInfo.areas.join(" y ")}` 
                       : "Sin áreas asignadas"
                     }
                   </p>
-                  <div className="flex items-center gap-6 text-sm" style={{color: '#1d4ed8'}}>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm" style={{color: '#1d4ed8'}}>
                     <span className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      {evaluatorInfo.totalAssigned} asignadas
+                      <FileText className="h-4 w-4 flex-shrink-0" />
+                      <span>{evaluatorInfo.totalAssigned} asignadas</span>
                     </span>
                     <span className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4" />
-                      {evaluatorInfo.completed} completadas
+                      <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                      <span>{evaluatorInfo.completed} completadas</span>
                     </span>
                     <span className="flex items-center gap-2">
-                      <Star className="h-4 w-4" />
-                      Promedio: {evaluatorInfo.averageScore.toFixed(1)}
+                      <Star className="h-4 w-4 flex-shrink-0" />
+                      <span>Promedio: {evaluatorInfo.averageScore.toFixed(1)}</span>
                     </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold mb-2" style={{color: '#2563eb'}}>
-                    {evaluatorInfo.totalAssigned > 0 ? Math.round((evaluatorInfo.completed / evaluatorInfo.totalAssigned) * 100) : 0}%
+                <div className="flex flex-row lg:flex-col items-center lg:items-end gap-4 lg:gap-2">
+                  <div className="text-center lg:text-right">
+                    <div className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2" style={{color: '#2563eb'}}>
+                      {evaluatorInfo.totalAssigned > 0 ? Math.round((evaluatorInfo.completed / evaluatorInfo.totalAssigned) * 100) : 0}%
+                    </div>
+                    <p className="text-xs sm:text-sm mb-2 sm:mb-3" style={{color: '#2563eb'}}>Progreso completado</p>
                   </div>
-                  <p className="text-sm mb-3" style={{color: '#2563eb'}}>Progreso completado</p>
                   <Progress 
                     value={evaluatorInfo.totalAssigned > 0 ? (evaluatorInfo.completed / evaluatorInfo.totalAssigned) * 100 : 0} 
-                    className="w-32" 
+                    className="w-24 sm:w-32 lg:w-32" 
                     style={{backgroundColor: '#bfdbfe'}} 
                   />
                 </div>
@@ -440,66 +477,68 @@ export default function EvaluatorDashboard() {
 
 
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 rounded-none border-0 h-12" style={{backgroundColor: '#1a4e78'}}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="overview" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
-              Resumen
+              <span className="hidden sm:inline">Resumen</span>
+              <span className="sm:hidden">Inicio</span>
             </TabsTrigger>
             <TabsTrigger 
               value="pending" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Pendientes
             </TabsTrigger>
             <TabsTrigger 
               value="evaluate" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r sm:border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Evaluar
             </TabsTrigger>
             <TabsTrigger 
               value="completed" 
-              className="text-white uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
             >
-              Completadas
+              <span className="hidden sm:inline">Completadas</span>
+              <span className="sm:hidden">Hechas</span>
             </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-sm text-muted-foreground mt-2">Sistema de resumen de evaluaciones con métricas de rendimiento y análisis estadístico</p>
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+            <div className="text-center py-8 sm:py-12 px-4">
+              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de resumen de evaluaciones con métricas de rendimiento y análisis estadístico</p>
             </div>
           </TabsContent>
 
           {/* Pending Tab */}
-          <TabsContent value="pending" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-sm text-muted-foreground mt-2">Sistema de gestión de evaluaciones pendientes con filtros avanzados y asignación automática</p>
+          <TabsContent value="pending" className="space-y-4 sm:space-y-6">
+            <div className="text-center py-8 sm:py-12 px-4">
+              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de gestión de evaluaciones pendientes con filtros avanzados y asignación automática</p>
             </div>
           </TabsContent>
 
           {/* Evaluate Tab */}
-          <TabsContent value="evaluate" className="space-y-6">
+          <TabsContent value="evaluate" className="space-y-4 sm:space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Centro de Evaluación</CardTitle>
-                <CardDescription>Evalúa el trabajo de los participantes</CardDescription>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-lg sm:text-xl">Centro de Evaluación</CardTitle>
+                <CardDescription className="text-sm">Evalúa el trabajo de los participantes</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 sm:p-6">
                 {selectedParticipant ? (
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {/* Participant Info */}
-                    <div className="p-4 bg-muted/50 rounded-lg">
-                      <h3 className="font-semibold text-foreground mb-2">
+                    <div className="p-3 sm:p-4 bg-muted/50 rounded-lg">
+                      <h3 className="font-semibold text-foreground mb-2 text-sm sm:text-base">
                         {assignedParticipants.find((p) => p.id === selectedParticipant)?.name}
                       </h3>
-                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs sm:text-sm text-muted-foreground">
                         <span>{assignedParticipants.find((p) => p.id === selectedParticipant)?.institution}</span>
                         <span>Área: {assignedParticipants.find((p) => p.id === selectedParticipant)?.area}</span>
                       </div>
@@ -507,54 +546,56 @@ export default function EvaluatorDashboard() {
 
                     {/* Evaluation Form */}
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="score">Puntuación (0-100)</Label>
-                          <Input id="score" type="number" min="0" max="100" placeholder="85" />
+                          <Label htmlFor="score" className="text-sm">Puntuación (0-100)</Label>
+                          <Input id="score" type="number" min="0" max="100" placeholder="85" className="mt-1" />
                         </div>
                         <div>
-                          <Label htmlFor="category">Categoría</Label>
-                          <Input id="category" placeholder="Excelente" />
+                          <Label htmlFor="category" className="text-sm">Categoría</Label>
+                          <Input id="category" placeholder="Excelente" className="mt-1" />
                         </div>
                       </div>
 
                       <div>
-                        <Label htmlFor="feedback">Retroalimentación</Label>
+                        <Label htmlFor="feedback" className="text-sm">Retroalimentación</Label>
                         <Textarea
                           id="feedback"
                           placeholder="Proporciona comentarios detallados sobre el desempeño del participante..."
                           rows={4}
+                          className="mt-1 text-sm"
                         />
                       </div>
 
                       <div>
-                        <Label htmlFor="recommendations">Recomendaciones</Label>
+                        <Label htmlFor="recommendations" className="text-sm">Recomendaciones</Label>
                         <Textarea
                           id="recommendations"
                           placeholder="Sugerencias para mejorar o áreas de fortaleza..."
                           rows={3}
+                          className="mt-1 text-sm"
                         />
                       </div>
 
-                      <div className="flex gap-3">
-                        <Button className="flex-1" style={{backgroundColor: '#ec4899', color: 'white'}}>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <Button className="flex-1 w-full sm:w-auto" style={{backgroundColor: '#ec4899', color: 'white'}}>
                           <Save className="h-4 w-4 mr-2" />
                           Guardar Evaluación
                         </Button>
-                        <Button variant="outline" onClick={() => setSelectedParticipant(null)}>
+                        <Button variant="outline" className="w-full sm:w-auto" onClick={() => setSelectedParticipant(null)}>
                           Cancelar
                         </Button>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold text-foreground mb-2">Selecciona un Participante</h3>
-                    <p className="text-muted-foreground mb-4">
+                  <div className="text-center py-8 sm:py-12 px-4">
+                    <BookOpen className="h-8 w-8 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">Selecciona un Participante</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
                       Elige un participante de la lista de pendientes para comenzar la evaluación
                     </p>
-                    <Button onClick={() => setActiveTab("pending")} style={{backgroundColor: '#2563eb', color: 'white'}}>
+                    <Button onClick={() => setActiveTab("pending")} className="w-full sm:w-auto" style={{backgroundColor: '#2563eb', color: 'white'}}>
                       <Users className="h-4 w-4 mr-2" />
                       Ver Pendientes
                     </Button>
@@ -565,21 +606,21 @@ export default function EvaluatorDashboard() {
           </TabsContent>
 
           {/* Completed Tab */}
-          <TabsContent value="completed" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-sm text-muted-foreground mt-2">Sistema de historial de evaluaciones con análisis de tendencias y reportes detallados</p>
+          <TabsContent value="completed" className="space-y-4 sm:space-y-6">
+            <div className="text-center py-8 sm:py-12 px-4">
+              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de historial de evaluaciones con análisis de tendencias y reportes detallados</p>
             </div>
           </TabsContent>
 
       {/* Listado por Área y Nivel */}
-      <TabsContent value="evaluate" className="space-y-6">
+      <TabsContent value="evaluate" className="space-y-4 sm:space-y-6">
         <Card>
-          <CardHeader>
-            <CardTitle>Competidores por Área y Nivel</CardTitle>
-            <CardDescription>Filtra y visualiza con nombre, categoría, puntaje y estado</CardDescription>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl">Competidores por Área y Nivel</CardTitle>
+            <CardDescription className="text-sm">Filtra y visualiza con nombre, categoría, puntaje y estado</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6">
             <EvaluacionesPorAreaNivel />
           </CardContent>
         </Card>
@@ -706,26 +747,38 @@ function EvaluacionesPorAreaNivel() {
   return (
     <div className="space-y-4">
       {/* Toolbar superior */}
-      <div className="flex flex-wrap items-center gap-2 justify-between">
-        <div className="font-semibold text-foreground">Competidores por Área y Nivel</div>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2 sm:justify-between">
+        <div className="font-semibold text-foreground text-sm sm:text-base">Competidores por Área y Nivel</div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => exportCSV('evaluaciones', applyClientFilters(filas as any[], { search, sortBy }))} disabled={loading || filas.length === 0}>
-            Exportar CSV
+          <Button variant="outline" size="sm" className="text-xs sm:text-sm" onClick={() => exportCSV('evaluaciones', applyClientFilters(filas as any[], { search, sortBy }))} disabled={loading || filas.length === 0}>
+            <span className="hidden sm:inline">Exportar </span>CSV
           </Button>
-          <Button variant="outline" onClick={handleExportPDF}>
-            Exportar PDF
+          <Button variant="outline" size="sm" className="text-xs sm:text-sm" onClick={handleExportPDF}>
+            <span className="hidden sm:inline">Exportar </span>PDF
           </Button>
-          <Button className="bg-green-600 hover:bg-green-700" onClick={handleExportClasificados}>Lista Clasificados</Button>
-          <Button className="bg-amber-600 hover:bg-amber-700" onClick={handleExportPremiados}>Lista Premiados</Button>
+          <Button className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm" size="sm" onClick={handleExportClasificados}>
+            <span className="hidden sm:inline">Lista </span>Clasificados
+          </Button>
+          <Button className="bg-amber-600 hover:bg-amber-700 text-xs sm:text-sm" size="sm" onClick={handleExportPremiados}>
+            <span className="hidden sm:inline">Lista </span>Premiados
+          </Button>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-[260px] flex-1">
-          <Input placeholder="Buscar por nombre, doc, institución..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="space-y-3">
+        {/* Barra de búsqueda */}
+        <div className="w-full">
+          <Input 
+            placeholder="Buscar por nombre, doc, institución..." 
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)}
+            className="text-sm"
+          />
         </div>
-        <div className="min-w-[220px]">
+        
+        {/* Filtros */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Select value={areaId} onValueChange={setAreaId}>
-            <SelectTrigger>
+            <SelectTrigger className="text-sm">
               <SelectValue placeholder="Selecciona un área" />
             </SelectTrigger>
             <SelectContent>
@@ -734,10 +787,9 @@ function EvaluacionesPorAreaNivel() {
               <SelectItem value="3">Química</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-        <div className="min-w-[220px]">
+          
           <Select value={nivelId} onValueChange={setNivelId}>
-            <SelectTrigger>
+            <SelectTrigger className="text-sm">
               <SelectValue placeholder="Selecciona un nivel (opcional)" />
             </SelectTrigger>
             <SelectContent>
@@ -747,10 +799,9 @@ function EvaluacionesPorAreaNivel() {
               <SelectItem value="3">Superior</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-        <div className="min-w-[220px]">
+          
           <Select value={estado} onValueChange={setEstado}>
-            <SelectTrigger>
+            <SelectTrigger className="text-sm">
               <SelectValue placeholder="Todos los estados" />
             </SelectTrigger>
             <SelectContent>
@@ -762,53 +813,59 @@ function EvaluacionesPorAreaNivel() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">Ordenar por:</span>
-          <Button variant={sortBy === 'nombre' ? 'default' : 'outline'} size="sm" onClick={() => setSortBy('nombre')}>Nombre</Button>
-          <Button variant={sortBy === 'puntaje' ? 'default' : 'outline'} size="sm" onClick={() => setSortBy('puntaje')}>Puntuación</Button>
-          <Button variant={sortBy === 'area' ? 'default' : 'outline'} size="sm" onClick={() => setSortBy('area')}>Área</Button>
-          <Button variant={sortBy === 'nivel' ? 'default' : 'outline'} size="sm" onClick={() => setSortBy('nivel')}>Nivel</Button>
-        </div>
-        <div className="ml-auto flex gap-2">
-          <Button onClick={fetchData} disabled={!areaId || loading}>
-            {loading ? "Cargando..." : "Buscar"}
-          </Button>
-          <Button variant="outline" onClick={() => exportCSV('evaluaciones', applyClientFilters(filas as any[], { search, sortBy }))} disabled={loading || filas.length === 0}>
-            Exportar CSV
-          </Button>
-          <Button variant="outline" onClick={() => { setSearch(''); setAreaId(undefined); setNivelId(undefined); setEstado(undefined); setSortBy('nombre') }}>Limpiar</Button>
+        
+        {/* Ordenamiento y acciones */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs sm:text-sm text-muted-foreground">Ordenar por:</span>
+            <Button variant={sortBy === 'nombre' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('nombre')}>Nombre</Button>
+            <Button variant={sortBy === 'puntaje' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('puntaje')}>Puntuación</Button>
+            <Button variant={sortBy === 'area' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('area')}>Área</Button>
+            <Button variant={sortBy === 'nivel' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('nivel')}>Nivel</Button>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={fetchData} disabled={!areaId || loading} size="sm" className="text-xs">
+              {loading ? "Cargando..." : "Buscar"}
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => exportCSV('evaluaciones', applyClientFilters(filas as any[], { search, sortBy }))} disabled={loading || filas.length === 0}>
+              Exportar CSV
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => { setSearch(''); setAreaId(undefined); setNivelId(undefined); setEstado(undefined); setSortBy('nombre') }}>Limpiar</Button>
+          </div>
         </div>
       </div>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
 
-      <div className="rounded-md border">
+      {/* Tabla - Solo visible en pantallas medianas y grandes */}
+      <div className="hidden md:block rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Nombre</TableHead>
-              <TableHead>Categoría</TableHead>
-              <TableHead>Área</TableHead>
-              <TableHead>Nivel</TableHead>
-              <TableHead>Puntaje</TableHead>
-              <TableHead>Estado</TableHead>
+              <TableHead className="text-xs sm:text-sm">Nombre</TableHead>
+              <TableHead className="text-xs sm:text-sm">Categoría</TableHead>
+              <TableHead className="text-xs sm:text-sm">Área</TableHead>
+              <TableHead className="text-xs sm:text-sm">Nivel</TableHead>
+              <TableHead className="text-xs sm:text-sm">Puntaje</TableHead>
+              <TableHead className="text-xs sm:text-sm">Estado</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {applyClientFilters(filas.length ? filas : demoFilas, { search, sortBy }).length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">Sin datos</TableCell>
+                <TableCell colSpan={6} className="text-center text-muted-foreground text-sm">Sin datos</TableCell>
               </TableRow>
             ) : (
               applyClientFilters(filas.length ? filas : demoFilas, { search, sortBy }).map((c) => (
                 <TableRow key={c.id || c.inscripcion_area_id}>
-                  <TableCell>{c.olimpista_nombre || c.nombre_completo}</TableCell>
-                  <TableCell>{c.categoria || c.nombre_categoria || "-"}</TableCell>
-                  <TableCell>{c.area_nombre || "-"}</TableCell>
-                  <TableCell>{c.nivel_nombre || "-"}</TableCell>
-                  <TableCell>{c.puntuacion || c.puntuacion_final || "-"}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{c.olimpista_nombre || c.nombre_completo}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{c.categoria || c.nombre_categoria || "-"}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{c.area_nombre || "-"}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{c.nivel_nombre || "-"}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{c.puntuacion || c.puntuacion_final || "-"}</TableCell>
                   <TableCell>
-                    <Badge className="bg-gray-100 text-gray-800">{c.estado || c.inscripcion_estado || "-"}</Badge>
+                    <Badge className="bg-gray-100 text-gray-800 text-xs">{c.estado || c.inscripcion_estado || "-"}</Badge>
                   </TableCell>
                 </TableRow>
               ))
@@ -817,31 +874,82 @@ function EvaluacionesPorAreaNivel() {
         </Table>
       </div>
 
-      {/* Tarjetas estilo listado rico (opcional, similar a coordinador) */}
-      <div className="space-y-3 mt-2">
+      {/* Vista de tarjetas para móviles - Solo visible en pantallas pequeñas */}
+      <div className="md:hidden space-y-3">
+        {applyClientFilters(filas.length ? filas : demoFilas, { search, sortBy }).length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Sin datos</div>
+        ) : (
+          applyClientFilters(filas.length ? filas : demoFilas, { search, sortBy }).map((c) => (
+            <div key={`mobile-card-${c.id || c.inscripcion_area_id}`} className="p-3 border rounded-md bg-background">
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-foreground text-sm mb-1 truncate">
+                      {c.olimpista_nombre || c.nombre_completo}
+                    </div>
+                    <Badge className="bg-emerald-100 text-emerald-700 text-xs">
+                      {(c.estado || c.inscripcion_estado || 'Desconocido').toString()}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="text-xs px-2 py-1">Ver</Button>
+                    <Button variant="outline" size="sm" className="text-xs px-2 py-1">⋯</Button>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span className="font-medium text-foreground">Documento:</span> 
+                    <span>{c.olimpista_documento || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-foreground">Institución:</span> 
+                    <span className="truncate ml-2">{c.unidad_educativa_nombre || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-foreground">Área:</span> 
+                    <span>{c.area_nombre || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-foreground">Nivel:</span> 
+                    <span>{c.nivel_nombre || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-foreground">Puntuación:</span> 
+                    <span className="font-semibold">{Number(c.puntuacion ?? c.puntuacion_final ?? 0).toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Vista de tarjetas expandida para tablets y desktop */}
+      <div className="hidden md:block space-y-3">
         {applyClientFilters(filas.length ? filas : demoFilas, { search, sortBy }).map((c) => (
-          <div key={`card-${c.id || c.inscripcion_area_id}`} className="p-4 border rounded-md bg-background">
+          <div key={`desktop-card-${c.id || c.inscripcion_area_id}`} className="p-4 border rounded-md bg-background">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <div className="font-semibold text-foreground truncate">{c.olimpista_nombre || c.nombre_completo}</div>
-                  <Badge className="bg-emerald-100 text-emerald-700">{(c.estado || c.inscripcion_estado || 'Desconocido').toString()}</Badge>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <div className="font-semibold text-foreground truncate text-sm lg:text-base">{c.olimpista_nombre || c.nombre_completo}</div>
+                  <Badge className="bg-emerald-100 text-emerald-700 text-xs">{(c.estado || c.inscripcion_estado || 'Desconocido').toString()}</Badge>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-muted-foreground">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 text-xs lg:text-sm text-muted-foreground">
                   <div><span className="font-medium text-foreground">Documento:</span> {c.olimpista_documento || '—'}</div>
                   <div><span className="font-medium text-foreground">Institución:</span> {c.unidad_educativa_nombre || '—'}</div>
-                  <div className="flex gap-6">
+                  <div className="flex flex-col lg:flex-row lg:gap-6">
                     <span><span className="font-medium text-foreground">Área:</span> {c.area_nombre || '—'}</span>
                     <span><span className="font-medium text-foreground">Nivel:</span> {c.nivel_nombre || '—'}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-6 mt-2 text-sm">
+                <div className="flex items-center gap-6 mt-2 text-xs lg:text-sm">
                   <span className="flex items-center gap-1"><span className="font-medium text-foreground">Puntuación:</span> {Number(c.puntuacion ?? c.puntuacion_final ?? 0).toFixed(1)}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm">Ver</Button>
-                <Button variant="outline" size="sm">⋯</Button>
+                <Button variant="outline" size="sm" className="text-xs">Ver</Button>
+                <Button variant="outline" size="sm" className="text-xs">⋯</Button>
               </div>
             </div>
           </div>
