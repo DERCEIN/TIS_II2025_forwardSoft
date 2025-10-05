@@ -1,11 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { OlimpistaService, AuthService, ReporteService, AdminService } from "@/lib/api"
+import { Input } from "@/components/ui/input"
 import {
   Trophy,
   Users,
@@ -23,15 +28,607 @@ import {
   Target,
   Award,
   Download,
+  Eye,
 } from "lucide-react"
 import Link from "next/link"
 
+function CompetidoresPorAreaNivel() {
+  const [departamentoId, setDepartamentoId] = useState<string | undefined>(undefined)
+  const [nivelId, setNivelId] = useState<string | undefined>(undefined)
+  const [loading, setLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string>("")
+  const [competidores, setCompetidores] = useState<any[]>([])
+  const [search, setSearch] = useState<string>("")
+  const [sortBy, setSortBy] = useState<string>("nombre")
+  const [estado, setEstado] = useState<string | undefined>(undefined)
+  const [openView, setOpenView] = useState<boolean>(false)
+  const [selected, setSelected] = useState<any | null>(null)
+
+  // Datos de ejemplo para simulación (sin backend)
+  const demoCompetidores: any[] = [
+    {
+      id: 2001,
+      nombre_completo: "Ana Martínez Condori",
+      documento_identidad: "44332211",
+      unidad_educativa_nombre: "Colegio Nacional",
+      departamento_nombre: "Cochabamba",
+      area_nombre: "Matemáticas",
+      nivel_nombre: "Superior",
+      puntuacion: 95.5,
+      inscripcion_estado: "clasificado",
+    },
+    {
+      id: 2002,
+      nombre_completo: "Carlos López Vargas",
+      documento_identidad: "11223344",
+      unidad_educativa_nombre: "Colegio Técnico",
+      departamento_nombre: "La Paz",
+      area_nombre: "Física",
+      nivel_nombre: "Primario",
+      puntuacion: 65.0,
+      inscripcion_estado: "no_clasificado",
+    },
+    {
+      id: 2003,
+      nombre_completo: "Juan Pérez Mamani",
+      documento_identidad: "12345678",
+      unidad_educativa_nombre: "Colegio San Simón",
+      departamento_nombre: "Cochabamba",
+      area_nombre: "Matemáticas",
+      nivel_nombre: "Primario",
+      puntuacion: 85.5,
+      inscripcion_estado: "clasificado",
+    },
+    {
+      id: 2004,
+      nombre_completo: "María González Quispe",
+      documento_identidad: "87654321",
+      unidad_educativa_nombre: "Colegio Bolivar",
+      departamento_nombre: "Santa Cruz",
+      area_nombre: "Matemáticas",
+      nivel_nombre: "Secundario",
+      puntuacion: 78.0,
+      inscripcion_estado: "clasificado",
+    },
+    {
+      id: 2005,
+      nombre_completo: "Roberto Fernández Torres",
+      documento_identidad: "11223344",
+      unidad_educativa_nombre: "Colegio Central",
+      departamento_nombre: "La Paz",
+      area_nombre: "Matemáticas",
+      nivel_nombre: "Superior",
+      puntuacion: 92.0,
+      inscripcion_estado: "clasificado",
+    },
+  ]
+
+  const SIMULATE = true
+
+  const getDepartamentoName = (id?: string) => {
+    if (!id) return ''
+    const map: Record<string, string> = { 
+      '1': 'Cochabamba', 
+      '2': 'La Paz', 
+      '3': 'Santa Cruz',
+      '4': 'Oruro',
+      '5': 'Potosí',
+      '6': 'Chuquisaca',
+      '7': 'Tarija',
+      '8': 'Beni',
+      '9': 'Pando'
+    }
+    return map[id] || ''
+  }
+
+  const getNivelName = (id?: string) => {
+    if (!id || id === 'all') return ''
+    const map: Record<string, string> = { '1': 'Primario', '2': 'Secundario', '3': 'Superior' }
+    return map[id] || ''
+  }
+
+  const handleExportPDF = () => {
+    // Generar un documento imprimible SOLO con la lista filtrada (departamento/nivel)
+    const data = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+    const html = generatePrintableHTML(data, getDepartamentoName(departamentoId), getNivelName(nivelId))
+    const w = window.open('', '_blank')
+    if (!w) {
+      alert('Por favor habilita las ventanas emergentes para permitir la exportación a PDF.')
+      return
+    }
+    try {
+      w.document.open()
+      w.document.write(html)
+      w.document.close()
+      w.focus()
+      w.print()
+    } catch (e) {
+      console.error('Print error', e)
+    }
+  }
+
+  const generatePrintableHTML = (rows: any[], departamentoLabel?: string, nivelLabel?: string) => {
+    const today = new Date().toLocaleDateString()
+    const head = `
+      <style>
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; padding: 24px; }
+        h1 { font-size: 18px; margin: 0 0 8px; }
+        p { margin: 0 0 12px; color: #555; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f3f4f6; }
+        @page { size: A4 portrait; margin: 16mm; }
+        @media print { button { display: none; } }
+      </style>
+    `
+    const header = `
+      <h1>Lista de Competidores por Departamento y Nivel</h1>
+      <p>Fecha: ${today}${departamentoLabel ? ' • Departamento: ' + departamentoLabel : ''}${nivelLabel ? ' • Nivel: ' + nivelLabel : ''}</p>
+    `
+    const tableRows = rows.map((c: any) => `
+      <tr>
+        <td>${escapeHtml(c.nombre_completo || c.olimpista_nombre || '')}</td>
+        <td>${escapeHtml(c.departamento_nombre || '')}</td>
+        <td>${escapeHtml(c.area_nombre || '')}</td>
+        <td>${escapeHtml(c.nivel_nombre || '')}</td>
+        <td>${escapeHtml(String(c.puntuacion ?? c.puntuacion_final ?? ''))}</td>
+        <td>${escapeHtml(c.inscripcion_estado || c.estado || '')}</td>
+      </tr>
+    `).join('')
+    const table = `
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Departamento</th>
+            <th>Área</th>
+            <th>Nivel</th>
+            <th>Puntuación</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    `
+    return `<!DOCTYPE html><html><head><meta charset="utf-8" />${head}</head><body>${header}${table}</body></html>`
+  }
+
+  const escapeHtml = (value: string) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+
+  const exportRowsToCSV = (data: any[], prefix: string) => {
+    const headers = ["Nombre", "Departamento", "Área", "Nivel", "Puntaje", "Estado"]
+    const rows: string[] = [headers.join(',')]
+    ;(data as any[] || []).forEach((c: any) => {
+      const row = [
+        c.nombre_completo || c.olimpista_nombre || '',
+        c.departamento_nombre || '-',
+        c.area_nombre || '-',
+        c.nivel_nombre || '-',
+        String(c.puntuacion ?? c.puntuacion_final ?? ''),
+        c.inscripcion_estado || c.estado || '-',
+      ].map((v: string) => '"' + String(v).replace(/\"/g, '"') + '"')
+      rows.push(row.join(','))
+    })
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${prefix}_${new Date().toISOString().slice(0,10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportClasificados = async () => {
+    if (!departamentoId) return
+    const nivelParam = nivelId && nivelId !== 'all' ? parseInt(nivelId, 10) : undefined
+    try {
+      // await ReporteService.exportarResultados({ departamento_id: parseInt(departamentoId, 10), nivel_id: nivelParam, fase: 'clasificacion' })
+      const rows = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+        .filter((c: any) => (c.inscripcion_estado || c.estado) === 'clasificado')
+      if (rows.length === 0) {
+        alert('No hay clasificados para exportar.')
+        return
+      }
+      exportRowsToCSV(rows, 'clasificados')
+    } catch (e) {
+      const rows = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+        .filter((c: any) => (c.inscripcion_estado || c.estado) === 'clasificado')
+      if (rows.length === 0) {
+        alert('No hay clasificados para exportar.')
+        return
+      }
+      exportRowsToCSV(rows, 'clasificados')
+    }
+  }
+
+  const handleExportPremiados = async () => {
+    if (!departamentoId) return
+    const nivelParam = nivelId && nivelId !== 'all' ? parseInt(nivelId, 10) : undefined
+    try {
+      // await ReporteService.exportarResultados({ departamento_id: parseInt(departamentoId, 10), nivel_id: nivelParam, fase: 'premiacion' })
+      const rows = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+        .filter((c: any) => (c.inscripcion_estado || c.estado) === 'premiado')
+      if (rows.length === 0) {
+        alert('No hay premiados para exportar.')
+        return
+      }
+      exportRowsToCSV(rows, 'premiados')
+    } catch (e) {
+      const rows = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+        .filter((c: any) => (c.inscripcion_estado || c.estado) === 'premiado')
+      if (rows.length === 0) {
+        alert('No hay premiados para exportar.')
+        return
+      }
+      exportRowsToCSV(rows, 'premiados')
+    }
+  }
+
+  const handleExportNoClasificados = async () => {
+    if (!departamentoId) return
+    const nivelParam = nivelId && nivelId !== 'all' ? parseInt(nivelId, 10) : undefined
+    // await ReporteService.exportarResultados({ departamento_id: parseInt(departamentoId, 10), nivel_id: nivelParam, fase: 'no_clasificado' })
+    const rows = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+      .filter((c: any) => (c.inscripcion_estado || c.estado) === 'no_clasificado')
+    if (rows.length === 0) {
+      alert('No hay no clasificados para exportar.')
+      return
+    }
+    exportRowsToCSV(rows, 'no_clasificados')
+  }
+
+  const handleExportDesclasificados = async () => {
+    if (!departamentoId) return
+    const nivelParam = nivelId && nivelId !== 'all' ? parseInt(nivelId, 10) : undefined
+    // await ReporteService.exportarResultados({ departamento_id: parseInt(departamentoId, 10), nivel_id: nivelParam, fase: 'desclasificado' })
+    const rows = applyClientFilters((competidores.length ? competidores : demoCompetidores), { search, sortBy })
+      .filter((c: any) => (c.inscripcion_estado || c.estado) === 'desclasificado')
+    if (rows.length === 0) {
+      alert('No hay desclasificados para exportar.')
+      return
+    }
+    exportRowsToCSV(rows, 'desclasificados')
+  }
+
+  const fetchData = async () => {
+    if (!departamentoId) return
+    setLoading(true)
+    setError("")
+    try {
+      const nivelParam = nivelId && nivelId !== 'all' ? parseInt(nivelId, 10) : undefined
+      // const res = await OlimpistaService.getByDepartamento(parseInt(departamentoId, 10), nivelParam)
+      // const data = (res && (res as any).data) ? (res as any).data : []
+      // setCompetidores(Array.isArray(data) ? data : [])
+      
+      // Por ahora usar datos de simulación filtrados por departamento
+      const filteredData = demoCompetidores.filter(c => {
+        const departamentoLabel = getDepartamentoName(departamentoId)
+        return c.departamento_nombre === departamentoLabel
+      })
+      setCompetidores(filteredData)
+    } catch (e: any) {
+      setError(e?.message || "Error al cargar competidores")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // Cargar departamento por defecto; en simulación llena datos demo
+    if (SIMULATE) {
+      setDepartamentoId('1') // Cochabamba por defecto
+      setCompetidores(demoCompetidores)
+      return
+    }
+    const init = async () => {
+      try {
+        const me = await AuthService.getProfile()
+        const dId = (me as any)?.data?.departamento_id
+        if (dId) {
+          setDepartamentoId(String(dId))
+        }
+      } catch {}
+    }
+    init()
+  }, [])
+
+  useEffect(() => {
+    if (SIMULATE) return
+    if (departamentoId) {
+      fetchData()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [departamentoId, nivelId, sortBy, estado])
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar superior */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="font-semibold text-foreground">Competidores</div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => exportCSV(applyClientFilters(competidores, { search, sortBy }))} disabled={loading || competidores.length === 0}>
+            Exportar CSV
+          </Button>
+          <Button variant="outline" onClick={handleExportPDF}>
+            Exportar PDF
+          </Button>
+          <Button className="bg-green-600 hover:bg-green-700" onClick={handleExportClasificados}>Lista Clasificados</Button>
+          <Button className="bg-amber-600 hover:bg-amber-700" onClick={handleExportPremiados}>Lista Premiados</Button>
+        </div>
+      </div>
+
+      {/* Caja informativa */}
+      <div className="p-4 rounded-md border bg-muted/40">
+        <div className="font-medium mb-1">Sistema de Evaluación</div>
+        <div className="text-sm text-muted-foreground">Los competidores son evaluados por múltiples evaluadores para garantizar objetividad. La puntuación mostrada es el promedio.</div>
+      </div>
+      <div className="space-y-3">
+        {/* Barra de búsqueda */}
+        <div className="w-full">
+          <Input 
+            placeholder="Buscar por nombre, doc, institución..." 
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)}
+            className="text-sm"
+          />
+        </div>
+        
+        {/* Filtros */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <Select value={departamentoId} onValueChange={(v) => { setDepartamentoId(v); }}>
+            <SelectTrigger className="text-sm">
+              <SelectValue placeholder="Selecciona un departamento" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">Cochabamba</SelectItem>
+              <SelectItem value="2">La Paz</SelectItem>
+              <SelectItem value="3">Santa Cruz</SelectItem>
+              <SelectItem value="4">Oruro</SelectItem>
+              <SelectItem value="5">Potosí</SelectItem>
+              <SelectItem value="6">Chuquisaca</SelectItem>
+              <SelectItem value="7">Tarija</SelectItem>
+              <SelectItem value="8">Beni</SelectItem>
+              <SelectItem value="9">Pando</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Select value={nivelId} onValueChange={(v) => { setNivelId(v); }}>
+            <SelectTrigger className="text-sm">
+              <SelectValue placeholder="Selecciona un nivel (opcional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="1">Primario</SelectItem>
+              <SelectItem value="2">Secundario</SelectItem>
+              <SelectItem value="3">Superior</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Select value={estado ?? 'all'} onValueChange={(v) => { setEstado(v === 'all' ? undefined : v); }}>
+            <SelectTrigger className="text-sm">
+              <SelectValue placeholder="Todos los estados" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="clasificado">Clasificado</SelectItem>
+              <SelectItem value="no_clasificado">No clasificado</SelectItem>
+              <SelectItem value="desclasificado">Desclasificado</SelectItem>
+              <SelectItem value="premiado">Premiado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* Ordenamiento y acciones */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs sm:text-sm text-muted-foreground">Ordenar por:</span>
+            <Button variant={sortBy === 'nombre' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('nombre')}>Nombre</Button>
+            <Button variant={sortBy === 'puntaje' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('puntaje')}>Puntuación</Button>
+            <Button variant={sortBy === 'departamento' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('departamento')}>Departamento</Button>
+            <Button variant={sortBy === 'area' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('area')}>Área</Button>
+            <Button variant={sortBy === 'nivel' ? 'default' : 'outline'} size="sm" className="text-xs" onClick={() => setSortBy('nivel')}>Nivel</Button>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={fetchData} disabled={!departamentoId || loading} size="sm" className="text-xs">
+              {loading ? "Cargando..." : "Buscar"}
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => exportCSV(applyClientFilters(competidores, { search, sortBy, estado }))} disabled={loading || competidores.length === 0}>
+              Exportar CSV
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => { setSearch(""); setDepartamentoId(undefined); setNivelId(undefined); setEstado(undefined); setSortBy('nombre') }}>Limpiar</Button>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-600">{error}</div>
+      )}
+
+      <div className="space-y-3 mt-2">
+        {applyClientFilters(competidores.length ? competidores : demoCompetidores, { search, sortBy, estado, departamentoId, nivelId }).length === 0 ? (
+          <div className="text-center text-sm text-muted-foreground py-6 border rounded-md">Sin datos</div>
+        ) : (
+          applyClientFilters(competidores.length ? competidores : demoCompetidores, { search, sortBy, estado, departamentoId, nivelId }).map((c) => (
+            <div key={c.id || c.inscripcion_id} className="p-3 sm:p-4 border rounded-md bg-background">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <div className="font-semibold text-foreground text-sm sm:text-base truncate">{c.nombre_completo || c.olimpista_nombre}</div>
+                    <Badge className="bg-emerald-100 text-emerald-700 text-xs">{(c.inscripcion_estado || c.estado || 'Desconocido').toString()}</Badge>
+                    {renderRendimientoBadge(c.puntuacion ?? c.puntuacion_final)}
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 text-xs sm:text-sm text-muted-foreground">
+                    <div><span className="font-medium text-foreground">Documento:</span> {c.documento_identidad || '—'}</div>
+                    <div><span className="font-medium text-foreground">Institución:</span> {c.unidad_educativa_nombre || '—'}</div>
+                    <div className="flex flex-col sm:flex-row sm:gap-6">
+                      <span><span className="font-medium text-foreground">Departamento:</span> {c.departamento_nombre || '—'}</span>
+                      <span><span className="font-medium text-foreground">Área:</span> {c.area_nombre || '—'}</span>
+                      <span><span className="font-medium text-foreground">Nivel:</span> {c.nivel_nombre || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6 mt-2 text-xs sm:text-sm">
+                    <span className="flex items-center gap-1"><span className="font-medium text-foreground">Puntuación:</span> {Number(c.puntuacion ?? c.puntuacion_final ?? 0).toFixed(1)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 sm:flex-col sm:gap-1">
+                  <Button variant="outline" size="sm" className="text-xs flex-1 sm:flex-none" onClick={() => { setSelected(c); setOpenView(true) }}>
+                    <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                    Ver
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs flex-1 sm:flex-none">⋯</Button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Dialog open={openView} onOpenChange={setOpenView}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selected?.nombre_completo || selected?.olimpista_nombre || 'Competidor'}</DialogTitle>
+            <DialogDescription>Información relacionada del competidor seleccionado</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div><span className="font-medium">Documento:</span> {selected?.documento_identidad || selected?.olimpista_documento || '—'}</div>
+            <div><span className="font-medium">Institución:</span> {selected?.unidad_educativa_nombre || '—'}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><span className="font-medium">Departamento:</span> {selected?.departamento_nombre || '—'}</div>
+              <div><span className="font-medium">Área:</span> {selected?.area_nombre || '—'}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><span className="font-medium">Nivel:</span> {selected?.nivel_nombre || '—'}</div>
+              <div><span className="font-medium">Puntuación:</span> {selected?.puntuacion ?? selected?.puntuacion_final ?? '—'}</div>
+            </div>
+            <div><span className="font-medium">Estado:</span> {selected?.inscripcion_estado || selected?.estado || '—'}</div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function applyClientFilters(
+  data: any[],
+  opts: { search: string; sortBy: string; estado?: string; departamentoId?: string; nivelId?: string }
+) {
+  const text = opts.search.trim().toLowerCase()
+  let rows = data
+  if (text) {
+    rows = rows.filter((c) => {
+      const haystack = [
+        c.nombre_completo || c.olimpista_nombre || "",
+        c.documento_identidad || c.doc || "",
+        c.unidad_educativa_nombre || c.institucion || "",
+      ].join(" ").toLowerCase()
+      return haystack.includes(text)
+    })
+  }
+  // Filtro por estado si se seleccionó (clasificado, no_clasificado, desclasificado, premiado)
+  if (opts.estado) {
+    const estadoSel = opts.estado
+    rows = rows.filter((c) => String(c.inscripcion_estado || c.estado || '').toLowerCase() === estadoSel)
+  }
+  // Filtro por departamento si está seleccionado (usa id si existe, si no, compara por nombre)
+  if (opts.departamentoId) {
+    rows = rows.filter((c) => {
+      const departamentoId = String(opts.departamentoId)
+      const byId = c.departamento_id || c.departamentoId
+      if (byId !== undefined && byId !== null && byId !== '') {
+        return String(byId) === departamentoId
+      }
+      // Fallback por nombre (modo simulación)
+      const departamentoLabel = (departamentoId === '1' ? 'Cochabamba' : departamentoId === '2' ? 'La Paz' : departamentoId === '3' ? 'Santa Cruz' : departamentoId === '4' ? 'Oruro' : departamentoId === '5' ? 'Potosí' : departamentoId === '6' ? 'Chuquisaca' : departamentoId === '7' ? 'Tarija' : departamentoId === '8' ? 'Beni' : departamentoId === '9' ? 'Pando' : '')
+      return String(c.departamento_nombre || '').toLowerCase() === String(departamentoLabel).toLowerCase()
+    })
+  }
+  // Filtro por nivel si está seleccionado (y distinto de 'all'); usa id si existe, o nombre como fallback
+  if (opts.nivelId && opts.nivelId !== 'all') {
+    rows = rows.filter((c) => {
+      const nivelId = String(opts.nivelId)
+      const byId = c.nivel_id || c.nivel_competencia_id || c.nivelNombreId
+      if (byId !== undefined && byId !== null && byId !== '') {
+        return String(byId) === nivelId
+      }
+      const nivelLabel = (nivelId === '1' ? 'Primario' : nivelId === '2' ? 'Secundario' : nivelId === '3' ? 'Superior' : '')
+      return String(c.nivel_nombre || '').toLowerCase() === String(nivelLabel).toLowerCase()
+    })
+  }
+  switch (opts.sortBy) {
+    case "puntaje":
+      rows = [...rows].sort((a, b) => (Number(b.puntuacion ?? b.puntuacion_final ?? 0) - Number(a.puntuacion ?? a.puntuacion_final ?? 0)))
+      break
+    case "departamento":
+      rows = [...rows].sort((a, b) => String(a.departamento_nombre || "").localeCompare(String(b.departamento_nombre || "")))
+      break
+    case "area":
+      rows = [...rows].sort((a, b) => String(a.area_nombre || "").localeCompare(String(b.area_nombre || "")))
+      break
+    case "nivel":
+      rows = [...rows].sort((a, b) => String(a.nivel_nombre || "").localeCompare(String(b.nivel_nombre || "")))
+      break
+    default:
+      rows = [...rows].sort((a, b) => String(a.nombre_completo || a.olimpista_nombre || "").localeCompare(String(b.nombre_completo || b.olimpista_nombre || "")))
+  }
+  return rows
+}
+
+function exportCSV(data: any[]) {
+  const headers = ["Nombre", "Departamento", "Área", "Nivel", "Puntaje", "Estado"]
+  const rows: string[] = [headers.join(',')]
+  ;(data as any[] || []).forEach((c: any) => {
+    const row = [
+      c.nombre_completo || c.olimpista_nombre || '',
+      c.departamento_nombre || '-',
+      c.area_nombre || '-',
+      c.nivel_nombre || '-',
+      String(c.puntuacion ?? c.puntuacion_final ?? ''),
+      c.inscripcion_estado || c.estado || '-',
+    ].map((v: string) => '"' + String(v).replace(/\"/g, '"') + '"')
+    rows.push(row.join(','))
+  })
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `competidores_${new Date().toISOString().slice(0,10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function renderRendimientoBadge(p: any) {
+  const score = Number(p ?? 0)
+  if (!isFinite(score) || score <= 0) return null
+  if (score >= 90) return <Badge className="bg-lime-100 text-lime-800">Sobresaliente</Badge>
+  if (score >= 75) return <Badge className="bg-green-100 text-green-800">Excelente</Badge>
+  if (score >= 60) return <Badge className="bg-amber-100 text-amber-800">Regular</Badge>
+  return <Badge className="bg-rose-100 text-rose-800">Bajo</Badge>
+}
 export default function CoordinatorDashboard() {
   const [activeTab, setActiveTab] = useState("overview")
+  const [areaName, setAreaName] = useState<string>("Matemáticas")
+  const [realEvaluators, setRealEvaluators] = useState<any[]>([])
+  const [loadingEvaluators, setLoadingEvaluators] = useState<boolean>(false)
+  const [myArea, setMyArea] = useState<any>(null)
+  const [showAssignModal, setShowAssignModal] = useState<boolean>(false)
+  const [availableEvaluators, setAvailableEvaluators] = useState<any[]>([])
+  const [loadingAvailableEvaluators, setLoadingAvailableEvaluators] = useState<boolean>(false)
+  const [selectedEvaluator, setSelectedEvaluator] = useState<string>("")
+  const [assigning, setAssigning] = useState<boolean>(false)
 
   // Coordinator is responsible for "Matemáticas" area
-  const myArea = {
-    name: "Matemáticas",
+  const defaultArea = {
+    name: areaName,
     participants: 245,
     capacity: 300,
     evaluators: 8,
@@ -42,32 +639,32 @@ export default function CoordinatorDashboard() {
   const stats = [
     {
       title: "Participantes en mi Área",
-      value: "245",
-      change: "+8",
+      value: String(myArea?.participants || 0),
+      change: "+0",
       trend: "up",
       icon: Users,
       color: "text-blue-600",
     },
     {
       title: "Evaluaciones Pendientes",
-      value: "23",
-      change: "-5",
+      value: String(myArea?.pendingEvaluations || 0),
+      change: "-0",
       trend: "down",
       icon: Clock,
       color: "text-orange-600",
     },
     {
       title: "Evaluadores Asignados",
-      value: "8",
-      change: "+1",
+      value: String(realEvaluators.length),
+      change: "+0",
       trend: "up",
       icon: UserCheck,
       color: "text-green-600",
     },
     {
       title: "Evaluaciones Completadas",
-      value: "167",
-      change: "+12",
+      value: String(myArea?.completedEvaluations || 0),
+      change: "+0",
       trend: "up",
       icon: CheckCircle,
       color: "text-purple-600",
@@ -166,304 +763,368 @@ export default function CoordinatorDashboard() {
     }
   }
 
+  
+  const fetchEvaluators = async () => {
+    setLoadingEvaluators(true)
+    try {
+      console.log('Obteniendo evaluadores reales...')
+      const response = await AdminService.getUsers()
+      console.log('Respuesta de usuarios:', response)
+      
+      if (response.success && response.data) {
+       
+        const evaluators = response.data.filter((user: any) => 
+          (user.role === 'evaluador' || user.rol === 'evaluador')
+        )
+        console.log('Evaluadores encontrados:', evaluators)
+        setRealEvaluators(evaluators)
+      } else {
+        console.error('Error al obtener usuarios:', response.message)
+        setRealEvaluators([])
+      }
+    } catch (error: any) {
+      console.error('Error al obtener evaluadores:', error)
+      setRealEvaluators([])
+    } finally {
+      setLoadingEvaluators(false)
+    }
+  }
+
+  
+  const fetchMyArea = async () => {
+    try {
+      const profile = await AuthService.getProfile()
+      console.log('Perfil del coordinador:', profile)
+      
+      if (profile && profile.data) {
+        const userData = profile.data
+        const areaName = userData.area_nombre || userData.area || 'Matemáticas'
+        setAreaName(areaName)
+        
+        
+        const areaData = {
+          name: areaName,
+          participants: 0, 
+          capacity: 300,
+          evaluators: realEvaluators.length,
+          pendingEvaluations: 0,
+          completedEvaluations: 0,
+        }
+        setMyArea(areaData)
+      }
+    } catch (error: any) {
+      console.error('Error al obtener perfil:', error)
+      setMyArea(defaultArea)
+    }
+  }
+
+  
+  useEffect(() => {
+    fetchEvaluators()
+    fetchMyArea()
+  }, [])
+
+  
+  useEffect(() => {
+    if (realEvaluators.length > 0 && myArea) {
+      setMyArea((prev: any) => ({
+        ...prev,
+        evaluators: realEvaluators.length
+      }))
+    }
+  }, [realEvaluators])
+
+  
+  const fetchAvailableEvaluators = async () => {
+    setLoadingAvailableEvaluators(true)
+    try {
+      console.log('Obteniendo evaluadores disponibles...')
+      console.log('Evaluadores actualmente asignados:', realEvaluators)
+      
+      const response = await AdminService.getUsers()
+      console.log('Respuesta de usuarios:', response)
+      
+      if (response.success && response.data) {
+        
+        const allEvaluators = response.data.filter((user: any) => 
+          (user.role === 'evaluador' || user.rol === 'evaluador')
+        )
+        
+        console.log('Todos los evaluadores:', allEvaluators)
+        
+        
+        let available = allEvaluators
+        
+        
+        if (realEvaluators.length > 0) {
+          available = allEvaluators.filter((evaluator: any) => {
+            const isAlreadyAssigned = realEvaluators.some(assigned => 
+              String(assigned.id) === String(evaluator.id)
+            )
+            console.log(`Evaluador ${evaluator.name} (ID: ${evaluator.id}) - Ya asignado: ${isAlreadyAssigned}`)
+            return !isAlreadyAssigned
+          })
+        } else {
+          console.log('No hay evaluadores asignados, mostrando todos los evaluadores')
+        }
+        
+        console.log('Evaluadores disponibles:', available)
+        setAvailableEvaluators(available)
+      } else {
+        console.error('Error al obtener usuarios:', response.message)
+        setAvailableEvaluators([])
+      }
+    } catch (error: any) {
+      console.error('Error al obtener evaluadores disponibles:', error)
+      setAvailableEvaluators([])
+    } finally {
+      setLoadingAvailableEvaluators(false)
+    }
+  }
+
+ 
+  const handleOpenAssignModal = async () => {
+    console.log('Abriendo modal de asignación...')
+    console.log('Evaluadores asignados actualmente:', realEvaluators.length)
+    setShowAssignModal(true)
+    await fetchAvailableEvaluators()
+  }
+
+ 
+  const handleAssignEvaluator = async () => {
+    if (!selectedEvaluator) {
+      alert('Por favor selecciona un evaluador')
+      return
+    }
+
+    setAssigning(true)
+    try {
+      console.log('Asignando evaluador:', selectedEvaluator)
+      
+     
+      const evaluatorToAssign = availableEvaluators.find(e => e.id.toString() === selectedEvaluator)
+      
+      if (evaluatorToAssign) {
+        
+        setRealEvaluators(prev => [...prev, evaluatorToAssign])
+        
+        
+        setAvailableEvaluators(prev => prev.filter(e => e.id.toString() !== selectedEvaluator))
+        
+       
+        setShowAssignModal(false)
+        setSelectedEvaluator("")
+        
+        alert(`Evaluador ${evaluatorToAssign.name || evaluatorToAssign.nombre} asignado exitosamente`)
+      }
+    } catch (error: any) {
+      console.error('Error al asignar evaluador:', error)
+      alert('Error al asignar evaluador. Inténtalo de nuevo.')
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  
+  const handleCloseAssignModal = () => {
+    setShowAssignModal(false)
+    setSelectedEvaluator("")
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <Link href="/" className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Trophy className="h-5 w-5 text-primary-foreground" />
+                <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary rounded-lg flex items-center justify-center">
+                  <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
                 </div>
-                <span className="text-xl font-heading font-bold text-foreground">Olimpiada Oh! SanSi</span>
+                <span className="text-sm sm:text-xl font-heading font-bold text-foreground hidden sm:block">Olimpiada Oh! SanSi</span>
+                <span className="text-sm font-heading font-bold text-foreground sm:hidden">SanSi</span>
               </Link>
-              <Badge variant="secondary" className="text-xs">
-                Coordinador - {myArea.name}
+              <Badge variant="secondary" className="text-xs hidden md:block">
+                Coordinador - {myArea?.name || areaName}
               </Badge>
             </div>
 
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm">
+            {/* Desktop Navigation */}
+            <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+              <Button variant="outline" size="sm" className="hidden lg:flex">
                 <Bell className="h-4 w-4 mr-2" />
                 Notificaciones
               </Button>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="hidden md:flex">
                 <Settings className="h-4 w-4 mr-2" />
-                Configuración
+                <span className="hidden lg:inline">Configuración</span>
               </Button>
-              <Link href="/login">
-                <Button variant="outline" size="sm">
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Salir
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" onClick={async () => {
+                try {
+                  await AuthService.logout()
+                } catch {}
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('auth_token')
+                  window.location.href = '/login'
+                }
+              }}>
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Salir</span>
+              </Button>
+            </div>
+
+            {/* Mobile Navigation */}
+            <div className="flex sm:hidden items-center space-x-2">
+              <Button variant="outline" size="sm">
+                <Bell className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={async () => {
+                try {
+                  await AuthService.logout()
+                } catch {}
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('auth_token')
+                  window.location.href = '/login'
+                }
+              }}>
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-heading font-bold text-foreground mb-2">Coordinación de {myArea.name}</h1>
-              <p className="text-muted-foreground">Gestiona participantes y evaluadores de tu área</p>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground mb-2">Competidores de {myArea?.name || areaName}</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">Lista completa de competidores registrados en el área de {myArea?.name || areaName}, clasificados por nivel y estado de evaluación</p>
+              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-medium text-green-800">
+                    Usted está registrado como <strong>Coordinador de Área</strong>
+                  </span>
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  Coordina el área de {myArea?.name || areaName} y gestiona evaluadores
+                </p>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <Button>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <Button className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
-                Asignar Evaluador
+                <span className="hidden sm:inline">Asignar Evaluador</span>
+                <span className="sm:hidden">Asignar</span>
               </Button>
-              <Button variant="outline">
+              <Button variant="outline" className="w-full sm:w-auto">
                 <Calendar className="h-4 w-4 mr-2" />
-                Programar Evaluación
+                <span className="hidden sm:inline">Programar Evaluación</span>
+                <span className="sm:hidden">Programar</span>
               </Button>
             </div>
           </div>
         </div>
 
         {/* Area Overview Card */}
-        <Card className="mb-8 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card className="mb-6 sm:mb-8 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-heading font-bold text-foreground mb-2">{myArea.name}</h2>
+                <h2 className="text-2xl font-heading font-bold text-foreground mb-2">{myArea?.name || areaName}</h2>
                 <p className="text-muted-foreground mb-4">Tu área de coordinación</p>
                 <div className="flex items-center gap-6 text-sm">
                   <span className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    {myArea.participants} participantes
+                    {myArea?.participants || 0} participantes
                   </span>
                   <span className="flex items-center gap-2">
                     <UserCheck className="h-4 w-4" />
-                    {myArea.evaluators} evaluadores
+                    {myArea?.evaluators || realEvaluators.length} evaluadores
                   </span>
                   <span className="flex items-center gap-2">
                     <Target className="h-4 w-4" />
-                    Capacidad: {myArea.capacity}
+                    Capacidad: {myArea?.capacity || 300}
                   </span>
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-3xl font-bold text-primary mb-2">
-                  {Math.round((myArea.participants / myArea.capacity) * 100)}%
+                  {Math.round(((myArea?.participants || 0) / (myArea?.capacity || 300)) * 100)}%
                 </div>
                 <p className="text-sm text-muted-foreground mb-3">Capacidad utilizada</p>
-                <Progress value={(myArea.participants / myArea.capacity) * 100} className="w-32" />
+                <Progress value={((myArea?.participants || 0) / (myArea?.capacity || 300)) * 100} className="w-32" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p
-                      className={`text-xs ${stat.trend === "up" ? "text-green-600" : "text-red-600"} flex items-center`}
-                    >
-                      <span>{stat.change}</span>
-                    </p>
-                  </div>
-                  <div className={`p-3 rounded-lg bg-muted ${stat.color}`}>
-                    <stat.icon className="h-6 w-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
 
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Resumen</TabsTrigger>
-            <TabsTrigger value="participants">Participantes</TabsTrigger>
-            <TabsTrigger value="evaluators">Evaluadores</TabsTrigger>
-            <TabsTrigger value="evaluations">Evaluaciones</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
+            <TabsTrigger 
+              value="overview" 
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
+            >
+              <span className="hidden sm:inline">Resumen</span>
+              <span className="sm:hidden">Inicio</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="participants" 
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
+            >
+              <span className="hidden sm:inline">Participantes</span>
+              <span className="sm:hidden">Olimpistas</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="evaluators" 
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r sm:border-r border-white/20 rounded-none py-2 sm:py-3"
+            >
+              Evaluadores
+            </TabsTrigger>
+            <TabsTrigger 
+              value="evaluations" 
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
+            >
+              Evaluaciones
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Recent Participants */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Participantes Recientes
-                  </CardTitle>
-                  <CardDescription>Últimas inscripciones en {myArea.name}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {recentParticipants.map((participant) => (
-                      <div key={participant.id} className="flex items-center justify-between p-3 rounded-lg border">
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">{participant.name}</p>
-                          <p className="text-sm text-muted-foreground">{participant.institution}</p>
-                          <p className="text-xs text-muted-foreground">{participant.registrationDate}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {participant.score && (
-                            <Badge variant="outline" className="text-xs">
-                              {participant.score} pts
-                            </Badge>
-                          )}
-                          <Badge className={getStatusColor(participant.status)}>
-                            {getStatusText(participant.status)}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <Button variant="outline" className="w-full mt-4 bg-transparent">
-                    Ver todos los participantes
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Evaluation Progress */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Award className="h-5 w-5" />
-                    Progreso de Evaluaciones
-                  </CardTitle>
-                  <CardDescription>Estado actual de las evaluaciones</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Evaluaciones Completadas</span>
-                        <span className="text-sm text-muted-foreground">
-                          {myArea.completedEvaluations} de {myArea.participants}
-                        </span>
-                      </div>
-                      <Progress value={(myArea.completedEvaluations / myArea.participants) * 100} className="h-3" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                        <div className="text-2xl font-bold text-green-700">{myArea.completedEvaluations}</div>
-                        <div className="text-sm text-green-600">Completadas</div>
-                      </div>
-                      <div className="text-center p-4 bg-orange-50 rounded-lg border border-orange-200">
-                        <div className="text-2xl font-bold text-orange-700">{myArea.pendingEvaluations}</div>
-                        <div className="text-sm text-orange-600">Pendientes</div>
-                      </div>
-                    </div>
-
-                    <Button className="w-full">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Programar Evaluaciones
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+            <div className="flex items-center justify-center py-12 sm:py-16">
+              <div className="text-center space-y-4">
+                <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Mensaje Técnico</h3>
+                  <p className="text-sm text-gray-600">
+                    Sistema operativo • Base de datos conectada • API funcionando correctamente
+                  </p>
+                </div>
+              </div>
             </div>
           </TabsContent>
 
           {/* Participants Tab */}
           <TabsContent value="participants" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Participantes de {myArea.name}</CardTitle>
-                    <CardDescription>Gestiona los participantes de tu área</CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Search className="h-4 w-4 mr-2" />
-                      Buscar
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Filter className="h-4 w-4 mr-2" />
-                      Filtrar
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar CSV
-                    </Button>
-                  </div>
+          
+          {/* Competidores por Área y Nivel */}
+          <Card>
+            <CardHeader className="sr-only">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Competidores de {myArea?.name || areaName}</CardTitle>
+                  <CardDescription>Lista completa de competidores registrados en el área de {myArea?.name || areaName}, clasificados por nivel y estado de evaluación</CardDescription>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {/* Export Options for Area */}
-                  <Card className="p-6 bg-blue-50 border-blue-200">
-                    <h3 className="text-lg font-semibold text-foreground mb-4">
-                      Exportar Inscripciones de {myArea.name}
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-700 mb-1">23</div>
-                        <div className="text-sm text-blue-600 mb-3">Pendientes Verificación</div>
-                        <Button variant="outline" size="sm" className="w-full bg-white">
-                          <Download className="h-4 w-4 mr-2" />
-                          Exportar
-                        </Button>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-green-700 mb-1">222</div>
-                        <div className="text-sm text-green-600 mb-3">Confirmadas</div>
-                        <Button variant="outline" size="sm" className="w-full bg-white">
-                          <Download className="h-4 w-4 mr-2" />
-                          Exportar
-                        </Button>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-700 mb-1">245</div>
-                        <div className="text-sm text-purple-600 mb-3">Total del Área</div>
-                        <Button size="sm" className="w-full">
-                          <Download className="h-4 w-4 mr-2" />
-                          Exportar Todo
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Participants List */}
-                  <div className="space-y-4">
-                    {recentParticipants.map((participant) => (
-                      <div key={participant.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="font-semibold text-foreground">{participant.name}</h3>
-                            <Badge className={getStatusColor(participant.status)}>
-                              {getStatusText(participant.status)}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                            <span>{participant.institution}</span>
-                            <span>Inscrito: {participant.registrationDate}</span>
-                            {participant.score && <span>Puntuación: {participant.score}</span>}
-                          </div>
-                        </div>
-                        <Button variant="outline" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex justify-center mt-6">
-                  <Button variant="outline" className="bg-transparent">
-                    Cargar más participantes
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CompetidoresPorAreaNivel />
+            </CardContent>
+          </Card>
           </TabsContent>
 
           {/* Evaluators Tab */}
@@ -473,294 +1134,140 @@ export default function CoordinatorDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Evaluadores Asignados</CardTitle>
-                    <CardDescription>Gestiona los evaluadores de {myArea.name}</CardDescription>
+                    <CardDescription>Gestiona los evaluadores de {myArea?.name || areaName}</CardDescription>
                   </div>
-                  <Button>
+                  <Button onClick={handleOpenAssignModal}>
                     <Plus className="h-4 w-4 mr-2" />
                     Asignar Evaluador
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {evaluators.map((evaluator) => (
-                    <div key={evaluator.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-foreground">{evaluator.name}</h3>
-                          <Badge variant="outline" className="text-green-600">
-                            Activo
-                          </Badge>
+                {loadingEvaluators ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">Cargando evaluadores...</p>
+                  </div>
+                ) : realEvaluators.length > 0 ? (
+                  <div className="space-y-4">
+                    {realEvaluators.map((evaluator) => (
+                      <div key={evaluator.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-semibold text-foreground">{evaluator.name || evaluator.nombre}</h3>
+                            <Badge variant="outline" className="text-green-600">
+                              {evaluator.is_active ? 'Activo' : 'Inactivo'}
+                            </Badge>
+                            {evaluator.area && (
+                              <Badge variant="outline" className="text-blue-600">
+                                {evaluator.area}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                            <span>{evaluator.email}</span>
+                            <span>Área: {evaluator.area || 'Sin asignar'}</span>
+                            <span>Registrado: {new Date(evaluator.created_at).toLocaleDateString()}</span>
+                          </div>
+                          <div className="mt-2">
+                            <div className="text-xs text-muted-foreground mb-1">
+                              Estado: {evaluator.is_active ? 'Activo' : 'Inactivo'}
+                            </div>
+                            <Progress
+                              value={evaluator.is_active ? 100 : 0}
+                              className="h-2"
+                            />
+                          </div>
                         </div>
-                        <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                          <span>{evaluator.email}</span>
-                          <span>Asignados: {evaluator.assignedParticipants}</span>
-                          <span>Completados: {evaluator.completedEvaluations}</span>
-                        </div>
-                        <div className="mt-2">
-                          <Progress
-                            value={(evaluator.completedEvaluations / evaluator.assignedParticipants) * 100}
-                            className="h-2"
-                          />
-                        </div>
+                        <Button variant="outline" size="sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button variant="outline" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No hay evaluadores asignados a tu área</p>
+                    <Button className="mt-4" onClick={handleOpenAssignModal}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Asignar Primer Evaluador
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* Evaluations Tab */}
           <TabsContent value="evaluations" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Gestión de Evaluaciones</CardTitle>
-                    <CardDescription>Supervisa el proceso de evaluación</CardDescription>
-                  </div>
-                  <Button>
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Programar Evaluación
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {/* Classification and Lists Section */}
-                  <Card className="p-6 bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
-                    <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                      <Trophy className="h-5 w-5" />
-                      Listas de Competidores y Clasificaciones
-                    </h3>
-
-                    {/* Level Classification */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-blue-700 mb-1">89</div>
-                        <div className="text-sm text-blue-600 mb-3">Nivel Primario</div>
-                        <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <Download className="h-4 w-4 mr-2" />
-                          Lista Primario
-                        </Button>
-                      </div>
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-green-700 mb-1">98</div>
-                        <div className="text-sm text-green-600 mb-3">Nivel Secundario</div>
-                        <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <Download className="h-4 w-4 mr-2" />
-                          Lista Secundario
-                        </Button>
-                      </div>
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-purple-700 mb-1">58</div>
-                        <div className="text-sm text-purple-600 mb-3">Nivel Superior</div>
-                        <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <Download className="h-4 w-4 mr-2" />
-                          Lista Superior
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Classification Actions */}
-                    <div className="flex gap-3 justify-center">
-                      <Button className="bg-green-600 hover:bg-green-700">
-                        <Award className="h-4 w-4 mr-2" />
-                        Generar Clasificación General
-                      </Button>
-                      <Button variant="outline" className="bg-white">
-                        <Trophy className="h-4 w-4 mr-2" />
-                        Lista de Clasificados
-                      </Button>
-                    </div>
-                  </Card>
-
-                  {/* Top Performers by Level */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Primary Level Top 5 */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Award className="h-4 w-4 text-blue-600" />
-                          Top 5 - Primario
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {[
-                            { name: "Ana Quispe", score: 95, institution: "Col. San Simón" },
-                            { name: "Carlos Mamani", score: 92, institution: "U.E. Bolívar" },
-                            { name: "María López", score: 89, institution: "Col. Nacional" },
-                            { name: "Juan Pérez", score: 87, institution: "Col. Técnico" },
-                            { name: "Sofia Vargas", score: 85, institution: "U.E. Central" },
-                          ].map((student, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 rounded border">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                    index === 0
-                                      ? "bg-yellow-100 text-yellow-800"
-                                      : index === 1
-                                        ? "bg-gray-100 text-gray-800"
-                                        : index === 2
-                                          ? "bg-orange-100 text-orange-800"
-                                          : "bg-blue-100 text-blue-800"
-                                  }`}
-                                >
-                                  {index + 1}
-                                </div>
-                                <div>
-                                  <div className="font-medium text-sm">{student.name}</div>
-                                  <div className="text-xs text-muted-foreground">{student.institution}</div>
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {student.score}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Secondary Level Top 5 */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Award className="h-4 w-4 text-green-600" />
-                          Top 5 - Secundario
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {[
-                            { name: "Roberto Condori", score: 98, institution: "Col. San Simón" },
-                            { name: "Elena Torrez", score: 96, institution: "U.E. Bolívar" },
-                            { name: "Diego Rojas", score: 94, institution: "Col. Técnico" },
-                            { name: "Carmen Silva", score: 91, institution: "U.E. Central" },
-                            { name: "Luis Mendoza", score: 89, institution: "Col. Nacional" },
-                          ].map((student, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 rounded border">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                    index === 0
-                                      ? "bg-yellow-100 text-yellow-800"
-                                      : index === 1
-                                        ? "bg-gray-100 text-gray-800"
-                                        : index === 2
-                                          ? "bg-orange-100 text-orange-800"
-                                          : "bg-blue-100 text-blue-800"
-                                  }`}
-                                >
-                                  {index + 1}
-                                </div>
-                                <div>
-                                  <div className="font-medium text-sm">{student.name}</div>
-                                  <div className="text-xs text-muted-foreground">{student.institution}</div>
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {student.score}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Superior Level Top 5 */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Award className="h-4 w-4 text-purple-600" />
-                          Top 5 - Superior
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {[
-                            { name: "Andrea Fernández", score: 97, institution: "UMSS" },
-                            { name: "Miguel Santos", score: 95, institution: "UCB" },
-                            { name: "Patricia Vega", score: 93, institution: "UMSS" },
-                            { name: "Rodrigo Paz", score: 90, institution: "UTO" },
-                            { name: "Valeria Cruz", score: 88, institution: "UCB" },
-                          ].map((student, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 rounded border">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                    index === 0
-                                      ? "bg-yellow-100 text-yellow-800"
-                                      : index === 1
-                                        ? "bg-gray-100 text-gray-800"
-                                        : index === 2
-                                          ? "bg-orange-100 text-orange-800"
-                                          : "bg-blue-100 text-blue-800"
-                                  }`}
-                                >
-                                  {index + 1}
-                                </div>
-                                <div>
-                                  <div className="font-medium text-sm">{student.name}</div>
-                                  <div className="text-xs text-muted-foreground">{student.institution}</div>
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {student.score}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Classification Summary */}
-                  <Card className="p-6 bg-yellow-50 border-yellow-200">
-                    <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                      <Trophy className="h-5 w-5 text-yellow-600" />
-                      Resumen de Clasificados - {myArea.name}
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-yellow-700 mb-1">15</div>
-                        <div className="text-sm text-yellow-600">Medallas de Oro</div>
-                      </div>
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-gray-700 mb-1">25</div>
-                        <div className="text-sm text-gray-600">Medallas de Plata</div>
-                      </div>
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-orange-700 mb-1">35</div>
-                        <div className="text-sm text-orange-600">Medallas de Bronce</div>
-                      </div>
-                      <div className="text-center p-4 bg-white rounded-lg border">
-                        <div className="text-2xl font-bold text-blue-700 mb-1">45</div>
-                        <div className="text-sm text-blue-600">Menciones Honoríficas</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 justify-center mt-4">
-                      <Button className="bg-yellow-600 hover:bg-yellow-700">
-                        <Download className="h-4 w-4 mr-2" />
-                        Exportar Lista Completa
-                      </Button>
-                      <Button variant="outline" className="bg-white">
-                        <Award className="h-4 w-4 mr-2" />
-                        Generar Certificados
-                      </Button>
-                    </div>
-                  </Card>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
+              <p className="text-sm text-muted-foreground mt-2">Sistema de gestión de evaluaciones con calificación automática, seguimiento de progreso y generación de reportes de resultados</p>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modal de Asignación de Evaluador */}
+      <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Asignar Evaluador</DialogTitle>
+            <DialogDescription>
+              Selecciona un evaluador para asignar a tu área: {myArea?.name || areaName}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {loadingAvailableEvaluators ? (
+              <div className="text-center py-4">
+                <p className="text-muted-foreground">Cargando evaluadores disponibles...</p>
+              </div>
+            ) : availableEvaluators.length > 0 ? (
+              <div className="space-y-3">
+                <label className="text-sm font-medium">Evaluadores Disponibles:</label>
+                <Select value={selectedEvaluator} onValueChange={setSelectedEvaluator}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un evaluador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableEvaluators.map((evaluator) => (
+                      <SelectItem key={evaluator.id} value={evaluator.id.toString()}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{evaluator.name || evaluator.nombre}</span>
+                          <span className="text-xs text-muted-foreground">{evaluator.email}</span>
+                          {evaluator.area && (
+                            <span className="text-xs text-blue-600">Área: {evaluator.area}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-muted-foreground">No hay evaluadores disponibles para asignar</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Todos los evaluadores ya están asignados a áreas
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={handleCloseAssignModal}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleAssignEvaluator}
+              disabled={!selectedEvaluator || assigning || availableEvaluators.length === 0}
+            >
+              {assigning ? "Asignando..." : "Asignar Evaluador"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+

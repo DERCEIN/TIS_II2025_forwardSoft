@@ -84,7 +84,7 @@ class ReporteController
         $filters = [
             'area_id' => $_GET['area_id'] ?? null,
             'nivel_id' => $_GET['nivel_id'] ?? null,
-            'fase' => $_GET['fase'] ?? 'premiacion', // clasificacion o premiacion
+            'fase' => $_GET['fase'] ?? 'premiacion', 
             'medalla' => $_GET['medalla'] ?? null
         ];
 

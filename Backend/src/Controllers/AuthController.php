@@ -6,6 +6,9 @@ use ForwardSoft\Utils\Response;
 use ForwardSoft\Utils\JWTManager;
 use ForwardSoft\Config\Database;
 use ForwardSoft\Models\User;
+use PDO;
+use PDOException;
+use Exception;
 
 class AuthController
 {
@@ -136,6 +139,38 @@ class AuthController
             Response::unauthorized('Token inválido');
         }
 
+        // Obtener áreas asignadas para evaluadores y coordinadores
+        if ($user['role'] === 'evaluador' || $user['role'] === 'coordinador') {
+            try {
+                $pdo = $this->getConnection();
+                
+                if ($user['role'] === 'evaluador') {
+                    $stmt = $pdo->prepare("
+                        SELECT ac.nombre as area_nombre 
+                        FROM evaluadores_areas ea 
+                        JOIN areas_competencia ac ON ea.area_competencia_id = ac.id 
+                        WHERE ea.user_id = ? AND ea.is_active = true
+                    ");
+                } else {
+                    $stmt = $pdo->prepare("
+                        SELECT ac.nombre as area_nombre 
+                        FROM responsables_academicos ra 
+                        JOIN areas_competencia ac ON ra.area_competencia_id = ac.id 
+                        WHERE ra.user_id = ? AND ra.is_active = true
+                    ");
+                }
+                
+                $stmt->execute([$user['id']]);
+                $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $user['areas'] = array_column($areas, 'area_nombre');
+            } catch (Exception $e) {
+                error_log("Error al obtener áreas del usuario: " . $e->getMessage());
+                $user['areas'] = [];
+            }
+        } else {
+            $user['areas'] = [];
+        }
+
         Response::success($user, 'Información del usuario');
     }
 
@@ -170,5 +205,21 @@ class AuthController
         }
 
         return $errors;
+    }
+
+    private function getConnection()
+    {
+        try {
+            $pdo = new PDO(
+                "pgsql:host={$_ENV['DB_HOST']};port={$_ENV['DB_PORT']};dbname={$_ENV['DB_DATABASE']}",
+                $_ENV['DB_USERNAME'],
+                $_ENV['DB_PASSWORD']
+            );
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            return $pdo;
+        } catch (PDOException $e) {
+            error_log("Error de conexión a la base de datos: " . $e->getMessage());
+            throw new Exception("Error de conexión a la base de datos");
+        }
     }
 }

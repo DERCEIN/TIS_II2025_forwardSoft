@@ -6,14 +6,35 @@ use ForwardSoft\Utils\Response;
 use ForwardSoft\Utils\JWTManager;
 use ForwardSoft\Utils\EmailService;
 use ForwardSoft\Models\User;
+use PDO;
+use PDOException;
+use Exception;
 
 class AdminController
 {
     private $userModel;
+    private $pdo;
 
     public function __construct()
     {
         $this->userModel = new User();
+        $this->pdo = $this->getConnection();
+    }
+
+    private function getConnection()
+    {
+        try {
+            $pdo = new PDO(
+                "pgsql:host={$_ENV['DB_HOST']};port={$_ENV['DB_PORT']};dbname={$_ENV['DB_DATABASE']}",
+                $_ENV['DB_USERNAME'],
+                $_ENV['DB_PASSWORD']
+            );
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            return $pdo;
+        } catch (PDOException $e) {
+            error_log("Error de conexión a la base de datos: " . $e->getMessage());
+            throw new Exception("Error de conexión a la base de datos");
+        }
     }
 
     public function dashboard()
@@ -33,11 +54,36 @@ class AdminController
     {
         $users = $this->userModel->getAll();
         
-        // Remover información sensible
-        $users = array_map(function($user) {
+        // Obtener áreas asignadas para cada usuario
+        
+        foreach ($users as &$user) {
             unset($user['password']);
-            return $user;
-        }, $users);
+            
+            // Obtener área del evaluador
+            if ($user['role'] === 'evaluador') {
+                $stmt = $this->pdo->prepare("
+                    SELECT ac.nombre as area_nombre 
+                    FROM evaluadores_areas ea 
+                    JOIN areas_competencia ac ON ea.area_competencia_id = ac.id 
+                    WHERE ea.user_id = ? AND ea.is_active = true
+                ");
+                $stmt->execute([$user['id']]);
+                $area = $stmt->fetch(PDO::FETCH_ASSOC);
+                $user['area'] = $area ? $area['area_nombre'] : null;
+            }
+            // Obtener área del coordinador
+            elseif ($user['role'] === 'coordinador') {
+                $stmt = $this->pdo->prepare("
+                    SELECT ac.nombre as area_nombre 
+                    FROM responsables_academicos ra 
+                    JOIN areas_competencia ac ON ra.area_competencia_id = ac.id 
+                    WHERE ra.user_id = ? AND ra.is_active = true
+                ");
+                $stmt->execute([$user['id']]);
+                $area = $stmt->fetch(PDO::FETCH_ASSOC);
+                $user['area'] = $area ? $area['area_nombre'] : null;
+            }
+        }
 
         Response::success($users, 'Lista de usuarios para administración');
     }
@@ -73,6 +119,11 @@ class AdminController
         ];
 
         $userId = $this->userModel->create($userData);
+
+        // Si es evaluador o coordinador y tiene área asignada, crear la relación
+        if ($userId && isset($input['area_id']) && $input['area_id']) {
+            $this->asignarAreaUsuario($userId, $input['area_id'], $input['role']);
+        }
 
         if ($userId) {
             $newUser = $this->userModel->findById($userId);
@@ -182,6 +233,24 @@ class AdminController
                 'temporary_password' => $passwordTemporal,
                 'warning' => 'No se pudo enviar el email. Usa la contraseña temporal mostrada.'
             ], 'Credenciales actualizadas pero error al enviar email');
+        }
+    }
+
+    private function asignarAreaUsuario($userId, $areaId, $role)
+    {
+        try {
+            
+            if ($role === 'evaluador') {
+                // Insertar en evaluadores_areas
+                $stmt = $this->pdo->prepare("INSERT INTO evaluadores_areas (user_id, area_competencia_id, fecha_asignacion, is_active) VALUES (?, ?, NOW(), true)");
+                $stmt->execute([$userId, $areaId]);
+            } elseif ($role === 'coordinador') {
+                // Insertar en responsables_academicos
+                $stmt = $this->pdo->prepare("INSERT INTO responsables_academicos (user_id, area_competencia_id, fecha_asignacion, is_active) VALUES (?, ?, NOW(), true)");
+                $stmt->execute([$userId, $areaId]);
+            }
+        } catch (Exception $e) {
+            error_log("Error al asignar área al usuario: " . $e->getMessage());
         }
     }
 }
