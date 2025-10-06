@@ -37,6 +37,32 @@ error_log("Method: " . $_SERVER['REQUEST_METHOD']);
 
 
 switch ($path) {
+    case '/':
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'message' => 'API ForwardSoft Olimpiadas',
+            'version' => '1.0.0',
+            'endpoints' => [
+                'GET /api/olimpistas' => 'Obtener lista de olimpistas',
+                'GET /api/import/template' => 'Descargar plantilla CSV',
+                'POST /api/import/olimpistas' => 'Importar olimpistas desde CSV',
+                'POST /api/olimpistas/clear' => 'Limpiar tabla de olimpistas',
+                'POST /api/auth/login' => 'Iniciar sesión',
+                'GET /api/auth/me' => 'Obtener usuario actual',
+                'POST /api/auth/logout' => 'Cerrar sesión',
+                'GET /api/admin/users' => 'Gestionar usuarios (admin)',
+                'POST /api/admin/users' => 'Crear usuario (admin)',
+                'GET /api/areas-competencia' => 'Obtener áreas de competencia',
+                'GET /api/evaluador/estadisticas' => 'Estadísticas del evaluador',
+                'POST /api/test/import' => 'Prueba de importación',
+                'GET /api/debug/import' => 'Debug de importación',
+                'GET /api/debug/users' => 'Debug de usuarios'
+            ],
+            'status' => 'running'
+        ]);
+        break;
+        
     case '/api/olimpistas':
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             try {
