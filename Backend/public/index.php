@@ -457,6 +457,71 @@ switch ($path) {
         }
         break;
         
+    case '/api/evaluador/guardar-nota':
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        try {
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            if (!isset($data['inscripcion_area_id'], $data['evaluador_id'], $data['puntuacion'])) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Faltan parámetros obligatorios: inscripcion_area_id, evaluador_id, puntuacion']);
+                break;
+            }
+
+            $observaciones = $data['observaciones'] ?? null;
+
+            require_once __DIR__ . '/../src/Controllers/EvaluadorController.php';
+            $controller = new \ForwardSoft\Controllers\EvaluadorController();
+
+            echo $controller->saveNotaClasificacion(
+                $data['inscripcion_area_id'],
+                $data['evaluador_id'],
+                $data['puntuacion'],
+                $observaciones
+            );
+
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Error al guardar nota: ' . $e->getMessage()]);
+        }
+    } else {
+        http_response_code(405);
+        echo json_encode(['error' => 'Método no permitido']);
+    }
+    break;
+
+// --------------------------
+// Cerrar calificación y generar listas de clasificados
+// --------------------------
+    case '/api/evaluador/cerrar-calificacion':
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        try {
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            if (!isset($data['area_id'], $data['nivel_id'])) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Faltan parámetros obligatorios: area_id, nivel_id']);
+                break;
+            }
+
+            require_once __DIR__ . '/../src/Controllers/EvaluadorController.php';
+            $controller = new \ForwardSoft\Controllers\EvaluadorController();
+
+            echo $controller->cerrarCalificacion(
+                $data['area_id'],
+                $data['nivel_id']
+            );
+
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Error al cerrar calificación: ' . $e->getMessage()]);
+        }
+    } else {
+        http_response_code(405);
+        echo json_encode(['error' => 'Método no permitido']);
+    }
+    break;
+
     case '/api/test/import':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {

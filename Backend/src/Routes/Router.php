@@ -45,6 +45,13 @@ class Router
         // Rutas de evaluador
         $this->addRoute('GET', '/api/evaluador/dashboard', [EvaluadorController::class, 'dashboard'], ['auth', 'evaluador']);
         $this->addRoute('GET', '/api/evaluador/evaluaciones', [EvaluadorController::class, 'evaluaciones'], ['auth', 'evaluador']);
+        $this->addRoute('GET', '/api/evaluador/competidores/{areaId}/{nivelId}', [EvaluadorController::class, 'getOlimpistas'], ['auth', 'evaluador']);
+        // Registrar o actualizar nota de clasificación
+        $this->addRoute('POST', '/api/evaluador/guardar-nota', [EvaluadorController::class, 'saveNotaClasificacion'], ['auth', 'evaluador']);
+
+        // Cerrar calificación y generar listas de clasificados
+        $this->addRoute('POST', '/api/evaluador/cerrar-calificacion', [EvaluadorController::class, 'cerrarCalificacion'], ['auth', 'evaluador']);
+
 
         // Rutas de olimpistas
         $this->addRoute('GET', '/api/olimpistas', [OlimpistaController::class, 'index'], ['auth']);
