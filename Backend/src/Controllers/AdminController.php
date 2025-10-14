@@ -54,12 +54,12 @@ class AdminController
     {
         $users = $this->userModel->getAll();
         
-        // Obtener áreas asignadas para cada usuario
+        
         
         foreach ($users as &$user) {
             unset($user['password']);
             
-            // Obtener área del evaluador
+           
             if ($user['role'] === 'evaluador') {
                 $stmt = $this->pdo->prepare("
                     SELECT ac.nombre as area_nombre 
@@ -71,7 +71,7 @@ class AdminController
                 $area = $stmt->fetch(PDO::FETCH_ASSOC);
                 $user['area'] = $area ? $area['area_nombre'] : null;
             }
-            // Obtener área del coordinador
+            
             elseif ($user['role'] === 'coordinador') {
                 $stmt = $this->pdo->prepare("
                     SELECT ac.nombre as area_nombre 
@@ -101,15 +101,17 @@ class AdminController
             Response::validationError($errors);
         }
 
-        // Verificar si el email ya existe
-        if ($this->userModel->findByEmail($input['email'])) {
+        
+        $existingUser = $this->userModel->findByEmail($input['email']);
+        if ($existingUser) {
+            error_log("🔍 Debug - Usuario ya existe: {$input['email']}");
             Response::validationError(['email' => 'El email ya está registrado']);
         }
 
-        // Generar contraseña temporal
+        
         $passwordTemporal = $this->generarPasswordTemporal();
         
-        // Crear usuario
+        
         $userData = [
             'name' => trim($input['name']),
             'email' => trim($input['email']),
@@ -120,16 +122,19 @@ class AdminController
 
         $userId = $this->userModel->create($userData);
 
-        // Si es evaluador o coordinador y tiene área asignada, crear la relación
+       
         if ($userId && isset($input['area_id']) && $input['area_id']) {
+            error_log("🔍 Debug - Asignando área al usuario: UserID=$userId, AreaID={$input['area_id']}, Role={$input['role']}");
             $this->asignarAreaUsuario($userId, $input['area_id'], $input['role']);
+        } else {
+            error_log("🔍 Debug - No se asignó área: UserID=$userId, AreaID=" . ($input['area_id'] ?? 'no definido') . ", Role={$input['role']}");
         }
 
         if ($userId) {
             $newUser = $this->userModel->findById($userId);
             $currentAdmin = JWTManager::getCurrentUser();
             
-            // Enviar credenciales por email
+           
             $emailService = new EmailService();
             $emailEnviado = $emailService->enviarCredenciales($newUser, $passwordTemporal, $currentAdmin);
             
@@ -138,10 +143,10 @@ class AdminController
                 Response::success([
                     'user' => $newUser,
                     'credentials_sent' => true,
-                    'temporary_password' => $passwordTemporal // Solo para mostrar en la respuesta del admin
+                    'temporary_password' => $passwordTemporal 
                 ], 'Usuario creado exitosamente y credenciales enviadas por email', 201);
             } else {
-                // Usuario creado pero email no enviado
+                
                 unset($newUser['password']);
                 Response::success([
                     'user' => $newUser,
@@ -171,8 +176,7 @@ class AdminController
             $errors['email'] = 'Email inválido';
         }
 
-        // La contraseña no es requerida al crear usuarios desde el panel admin,
-        // se genera una contraseña temporal automáticamente.
+        
 
         if (isset($input['role']) && !in_array($input['role'], ['admin', 'coordinador', 'evaluador'])) {
             $errors['role'] = 'Rol inválido';
@@ -183,7 +187,7 @@ class AdminController
 
     private function generarPasswordTemporal()
     {
-        // Generar contraseña temporal de 8 caracteres
+        
         $caracteres = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
         $password = '';
         $longitud = 8;
@@ -203,10 +207,10 @@ class AdminController
             Response::notFound('Usuario no encontrado');
         }
 
-        // Generar nueva contraseña temporal
+        
         $passwordTemporal = $this->generarPasswordTemporal();
         
-        // Actualizar contraseña en la base de datos
+        
         $this->userModel->update($userId, [
             'password' => password_hash($passwordTemporal, PASSWORD_DEFAULT),
             'updated_at' => date('Y-m-d H:i:s')
@@ -214,7 +218,7 @@ class AdminController
 
         $currentAdmin = JWTManager::getCurrentUser();
         
-        // Enviar credenciales por email
+        
         $emailService = new EmailService();
         $emailEnviado = $emailService->enviarCredenciales($user, $passwordTemporal, $currentAdmin);
         
@@ -239,18 +243,47 @@ class AdminController
     private function asignarAreaUsuario($userId, $areaId, $role)
     {
         try {
+            error_log("🔍 Debug - asignarAreaUsuario: UserID=$userId, AreaID=$areaId, Role=$role");
             
             if ($role === 'evaluador') {
-                // Insertar en evaluadores_areas
-                $stmt = $this->pdo->prepare("INSERT INTO evaluadores_areas (user_id, area_competencia_id, fecha_asignacion, is_active) VALUES (?, ?, NOW(), true)");
-                $stmt->execute([$userId, $areaId]);
+                
+                $stmt = $this->pdo->prepare("SELECT id FROM evaluadores_areas WHERE user_id = ? AND is_active = true");
+                $stmt->execute([$userId]);
+                $existing = $stmt->fetch();
+                
+                if ($existing) {
+                    
+                    $stmt = $this->pdo->prepare("UPDATE evaluadores_areas SET area_competencia_id = ?, fecha_asignacion = NOW() WHERE user_id = ? AND is_active = true");
+                    $stmt->execute([$areaId, $userId]);
+                    error_log("✅ Debug - Área actualizada para evaluador: UserID=$userId, AreaID=$areaId");
+                } else {
+                    
+                    $stmt = $this->pdo->prepare("INSERT INTO evaluadores_areas (user_id, area_competencia_id, fecha_asignacion, is_active) VALUES (?, ?, NOW(), true)");
+                    $stmt->execute([$userId, $areaId]);
+                    error_log("✅ Debug - Área asignada a evaluador: UserID=$userId, AreaID=$areaId");
+                }
             } elseif ($role === 'coordinador') {
-                // Insertar en responsables_academicos
-                $stmt = $this->pdo->prepare("INSERT INTO responsables_academicos (user_id, area_competencia_id, fecha_asignacion, is_active) VALUES (?, ?, NOW(), true)");
-                $stmt->execute([$userId, $areaId]);
+                
+                $stmt = $this->pdo->prepare("SELECT id FROM responsables_academicos WHERE user_id = ? AND is_active = true");
+                $stmt->execute([$userId]);
+                $existing = $stmt->fetch();
+                
+                if ($existing) {
+                    
+                    $stmt = $this->pdo->prepare("UPDATE responsables_academicos SET area_competencia_id = ?, fecha_asignacion = NOW() WHERE user_id = ? AND is_active = true");
+                    $stmt->execute([$areaId, $userId]);
+                    error_log("✅ Debug - Área actualizada para coordinador: UserID=$userId, AreaID=$areaId");
+                } else {
+                    
+                    $stmt = $this->pdo->prepare("INSERT INTO responsables_academicos (user_id, area_competencia_id, fecha_asignacion, is_active) VALUES (?, ?, NOW(), true)");
+                    $stmt->execute([$userId, $areaId]);
+                    error_log("✅ Debug - Área asignada a coordinador: UserID=$userId, AreaID=$areaId");
+                }
+            } else {
+                error_log("❌ Debug - Rol no reconocido para asignación: $role");
             }
         } catch (Exception $e) {
-            error_log("Error al asignar área al usuario: " . $e->getMessage());
+            error_log("❌ Error al asignar área al usuario: " . $e->getMessage());
         }
     }
 }

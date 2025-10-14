@@ -146,14 +146,14 @@ class AuthController
                 
                 if ($user['role'] === 'evaluador') {
                     $stmt = $pdo->prepare("
-                        SELECT ac.nombre as area_nombre 
+                        SELECT ac.id as area_id, ac.nombre as area_nombre 
                         FROM evaluadores_areas ea 
                         JOIN areas_competencia ac ON ea.area_competencia_id = ac.id 
                         WHERE ea.user_id = ? AND ea.is_active = true
                     ");
                 } else {
                     $stmt = $pdo->prepare("
-                        SELECT ac.nombre as area_nombre 
+                        SELECT ac.id as area_id, ac.nombre as area_nombre 
                         FROM responsables_academicos ra 
                         JOIN areas_competencia ac ON ra.area_competencia_id = ac.id 
                         WHERE ra.user_id = ? AND ra.is_active = true
@@ -162,7 +162,13 @@ class AuthController
                 
                 $stmt->execute([$user['id']]);
                 $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                $user['areas'] = array_column($areas, 'area_nombre');
+                $user['areas'] = $areas; // Mantener toda la información de las áreas
+                
+                // Agregar información adicional
+                if (!empty($areas)) {
+                    $user['area_nombre'] = $areas[0]['area_nombre']; // Primera área como principal
+                    $user['area_id'] = $areas[0]['area_id']; // ID de la primera área
+                }
             } catch (Exception $e) {
                 error_log("Error al obtener áreas del usuario: " . $e->getMessage());
                 $user['areas'] = [];
@@ -222,4 +228,4 @@ class AuthController
             throw new Exception("Error de conexión a la base de datos");
         }
     }
-}
+} 

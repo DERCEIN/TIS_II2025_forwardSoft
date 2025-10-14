@@ -33,9 +33,19 @@ import {
   Search,
   Cog,
   UserCheck,
+  Edit,
+  AlertCircle,
+  BarChart3,
+  TrendingUp,
+  Activity,
+  RefreshCw,
+  UserX,
+  CheckCircle2,
+  Timer,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import RegistroNotas from "@/app/evaluador/registro-notas/page"
 
 export default function EvaluatorDashboard() {
   const router = useRouter()
@@ -57,6 +67,7 @@ export default function EvaluatorDashboard() {
     name: userProfile?.name || userProfile?.nombre || "Cargando...",
     displayName: userProfile?.name || userProfile?.nombre ? `Dr. ${userProfile?.name || userProfile?.nombre}` : "Cargando...",
     areas: userProfile?.areas || [],
+    areaNames: userProfile?.areas ? userProfile.areas.map((area: any) => area.area_nombre || area.nombre) : [],
     totalAssigned: evaluationStats.totalAssigned,
     completed: evaluationStats.completed,
     pending: evaluationStats.pending,
@@ -201,8 +212,10 @@ export default function EvaluatorDashboard() {
         
         if (response.success && response.data) {
           const userData = response.data
+          
           // Obtener áreas asignadas
           const areas = userData.areas || []
+          
           setUserProfile({
             ...userData,
             areas: areas
@@ -332,7 +345,7 @@ export default function EvaluatorDashboard() {
                 </div>
               </Link>
               <Badge variant="secondary" className="text-xs hidden md:block" style={{backgroundColor: '#bfdbfe', color: '#1e40af'}}>
-                Evaluador - {evaluatorInfo.areas.length > 0 ? evaluatorInfo.areas.join(", ") : "Cargando áreas..."}
+                Evaluador - {evaluatorInfo.areaNames.length > 0 ? evaluatorInfo.areaNames.join(", ") : "Cargando áreas..."}
               </Badge>
             </div>
 
@@ -392,8 +405,8 @@ export default function EvaluatorDashboard() {
             <div className="flex-1">
               <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground mb-2">Panel de Evaluación</h1>
               <p className="text-sm sm:text-base text-muted-foreground">
-                {evaluatorInfo.areas.length > 0 
-                  ? `Evalúa participantes en ${evaluatorInfo.areas.join(" y ")}` 
+                {evaluatorInfo.areaNames.length > 0 
+                  ? `Evalúa participantes en ${evaluatorInfo.areaNames.join(" y ")}` 
                   : "Cargando información de áreas..."
                 }
               </p>
@@ -405,7 +418,7 @@ export default function EvaluatorDashboard() {
                   </span>
                 </div>
                 <p className="text-xs text-purple-600 mt-1">
-                  Evalúa participantes en {evaluatorInfo.areas.length > 0 ? evaluatorInfo.areas.join(" y ") : "sus áreas asignadas"}
+                  Evalúa participantes en {evaluatorInfo.areaNames.length > 0 ? evaluatorInfo.areaNames.join(" y ") : "sus áreas asignadas"}
                 </p>
               </div>
             </div>
@@ -437,8 +450,8 @@ export default function EvaluatorDashboard() {
                 <div className="flex-1">
                   <h2 className="text-xl sm:text-2xl font-heading font-bold mb-2" style={{color: '#1e40af'}}>{evaluatorInfo.displayName}</h2>
                   <p className="mb-4 text-sm sm:text-base" style={{color: '#2563eb'}}>
-                    {evaluatorInfo.areas.length > 0 
-                      ? `Evaluador de ${evaluatorInfo.areas.join(" y ")}` 
+                    {evaluatorInfo.areaNames.length > 0 
+                      ? `Evaluador de ${evaluatorInfo.areaNames.join(" y ")}` 
                       : "Sin áreas asignadas"
                     }
                   </p>
@@ -478,13 +491,20 @@ export default function EvaluatorDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="overview" 
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               <span className="hidden sm:inline">Resumen</span>
               <span className="sm:hidden">Inicio</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="progress" 
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
+            >
+              <span className="hidden sm:inline">Progreso</span>
+              <span className="sm:hidden">Prog.</span>
             </TabsTrigger>
             <TabsTrigger 
               value="pending" 
@@ -494,16 +514,23 @@ export default function EvaluatorDashboard() {
             </TabsTrigger>
             <TabsTrigger 
               value="evaluate" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r sm:border-r border-white/20 rounded-none py-2 sm:py-3"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Evaluar
             </TabsTrigger>
             <TabsTrigger 
               value="completed" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               <span className="hidden sm:inline">Completadas</span>
               <span className="sm:hidden">Hechas</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="registro-notas" 
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
+            >
+              <span className="hidden sm:inline">Registro de Notas</span>
+              <span className="sm:hidden">Notas</span>
             </TabsTrigger>
           </TabsList>
 
@@ -513,6 +540,11 @@ export default function EvaluatorDashboard() {
               <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
               <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de resumen de evaluaciones con métricas de rendimiento y análisis estadístico</p>
             </div>
+          </TabsContent>
+
+          {/* Progress Tab - Dashboard de Progreso de Evaluación Clasificatoria */}
+          <TabsContent value="progress" className="space-y-4 sm:space-y-6">
+            <ProgresoEvaluacionClasificatoria />
           </TabsContent>
 
           {/* Pending Tab */}
@@ -613,6 +645,7 @@ export default function EvaluatorDashboard() {
             </div>
           </TabsContent>
 
+
       {/* Listado por Área y Nivel */}
       <TabsContent value="evaluate" className="space-y-4 sm:space-y-6">
         <Card>
@@ -624,9 +657,278 @@ export default function EvaluatorDashboard() {
             <EvaluacionesPorAreaNivel />
           </CardContent>
         </Card>
-      </TabsContent>
+          </TabsContent>
+
+          {/* Registro de Notas Tab */}
+          <TabsContent value="registro-notas" className="space-y-4 sm:space-y-6">
+            <RegistroNotas />
+          </TabsContent>
         </Tabs>
       </div>
+    </div>
+  )
+}
+
+function ProgresoEvaluacionClasificatoria() {
+  const [loading, setLoading] = useState<boolean>(true)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [progressData, setProgressData] = useState<any>({
+    niveles: [
+      { nombre: "Primario", total: 150, evaluados: 120, porcentaje: 80 },
+      { nombre: "Secundario", total: 200, evaluados: 160, porcentaje: 80 },
+      { nombre: "Superior", total: 100, evaluados: 75, porcentaje: 75 }
+    ],
+    evaluadoresActivos: 12,
+    totalEvaluadores: 15,
+    olimpistasSinEvaluar: [
+      { id: 1, nombre: "Ana García López", area: "Matemáticas", nivel: "Primario", diasPendiente: 3 },
+      { id: 2, nombre: "Carlos Mendoza", area: "Física", nivel: "Secundario", diasPendiente: 5 },
+      { id: 3, nombre: "María Torres", area: "Química", nivel: "Superior", diasPendiente: 2 },
+      { id: 4, nombre: "Luis Rodríguez", area: "Matemáticas", nivel: "Primario", diasPendiente: 7 },
+      { id: 5, nombre: "Elena Vargas", area: "Física", nivel: "Secundario", diasPendiente: 1 }
+    ]
+  })
+
+  // Simular actualización en tiempo real cada 30 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastUpdate(new Date())
+      // Aquí se haría la llamada real al API para obtener datos actualizados
+      console.log('Actualizando datos de progreso...')
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      try {
+        // Simular llamada al API
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        setLoading(false)
+      } catch (error) {
+        console.error('Error cargando datos de progreso:', error)
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      // Simular actualización manual
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      setLastUpdate(new Date())
+      setLoading(false)
+    } catch (error) {
+      console.error('Error actualizando datos:', error)
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Cargando progreso de evaluación...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header con actualización en tiempo real */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground mb-2">Progreso de Evaluación Clasificatoria</h2>
+          <p className="text-muted-foreground">
+            Última actualización: {lastUpdate.toLocaleTimeString()}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+          <div className="flex items-center gap-2 text-sm text-green-600">
+            <Activity className="h-4 w-4" />
+            <span>Tiempo real</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Dashboard con porcentaje de completitud por nivel */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Progreso por Nivel
+          </CardTitle>
+          <CardDescription>
+            Porcentaje de completitud de evaluaciones por nivel educativo
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {progressData.niveles.map((nivel: any, index: number) => (
+              <div key={index} className="space-y-4">
+                <div className="text-center">
+                  <h3 className="font-semibold text-lg">{nivel.nombre}</h3>
+                  <div className="text-3xl font-bold text-blue-600 mt-2">
+                    {nivel.porcentaje}%
+                  </div>
+                </div>
+                <Progress value={nivel.porcentaje} className="h-3" />
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{nivel.evaluados} evaluados</span>
+                  <span>{nivel.total - nivel.evaluados} pendientes</span>
+                </div>
+                <div className="text-center text-sm">
+                  <span className="font-medium">{nivel.total} total</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Indicador visual de evaluadores activos */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5" />
+            Evaluadores Activos
+          </CardTitle>
+          <CardDescription>
+            Estado actual de los evaluadores en el sistema
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-600">
+                  {progressData.evaluadoresActivos}
+                </div>
+                <div className="text-sm text-muted-foreground">Activos</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-gray-400">
+                  {progressData.totalEvaluadores - progressData.evaluadoresActivos}
+                </div>
+                <div className="text-sm text-muted-foreground">Inactivos</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-sm text-green-600 font-medium">
+                {Math.round((progressData.evaluadoresActivos / progressData.totalEvaluadores) * 100)}% activos
+              </span>
+            </div>
+          </div>
+          <Progress 
+            value={(progressData.evaluadoresActivos / progressData.totalEvaluadores) * 100} 
+            className="mt-4 h-2" 
+          />
+        </CardContent>
+      </Card>
+
+      {/* Lista de olimpistas sin evaluar */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserX className="h-5 w-5" />
+            Olimpistas Sin Evaluar
+          </CardTitle>
+          <CardDescription>
+            Lista de participantes que aún requieren evaluación
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {progressData.olimpistasSinEvaluar.map((olimpista: any) => (
+              <div key={olimpista.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                <div className="flex-1">
+                  <div className="font-medium">{olimpista.nombre}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {olimpista.area} - {olimpista.nivel}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-sm text-muted-foreground">
+                      {olimpista.diasPendiente} días
+                    </div>
+                    <div className={`text-xs ${
+                      olimpista.diasPendiente > 5 ? 'text-red-600' : 
+                      olimpista.diasPendiente > 3 ? 'text-yellow-600' : 'text-green-600'
+                    }`}>
+                      {olimpista.diasPendiente > 5 ? 'Urgente' : 
+                       olimpista.diasPendiente > 3 ? 'Prioritario' : 'Normal'}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline">
+                    <Eye className="h-4 w-4 mr-1" />
+                    Evaluar
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-center">
+            <Button variant="outline" className="w-full">
+              Ver todos los pendientes
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Resumen general */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Resumen General
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">
+                {progressData.niveles.reduce((acc: number, nivel: any) => acc + nivel.total, 0)}
+              </div>
+              <div className="text-sm text-muted-foreground">Total Olimpistas</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">
+                {progressData.niveles.reduce((acc: number, nivel: any) => acc + nivel.evaluados, 0)}
+              </div>
+              <div className="text-sm text-muted-foreground">Evaluados</div>
+            </div>
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">
+                {progressData.niveles.reduce((acc: number, nivel: any) => acc + (nivel.total - nivel.evaluados), 0)}
+              </div>
+              <div className="text-sm text-muted-foreground">Pendientes</div>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">
+                {Math.round(progressData.niveles.reduce((acc: number, nivel: any) => acc + nivel.porcentaje, 0) / progressData.niveles.length)}%
+              </div>
+              <div className="text-sm text-muted-foreground">Promedio</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

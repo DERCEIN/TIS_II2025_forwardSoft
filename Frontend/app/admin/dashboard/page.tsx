@@ -279,14 +279,18 @@ export default function AdminDashboard() {
         role: mappedRole,
       }
 
-      
       if (mappedRole === 'evaluador' || mappedRole === 'coordinador') {
         if (userArea) {
-          
-          const selectedArea = areas.find(area => area.nombre === userArea)
+          const selectedArea = areas.find(area => area.id.toString() === userArea)
+          console.log('🔍 Debug - Área seleccionada (ID):', userArea)
+          console.log('🔍 Debug - Áreas disponibles:', areas)
+          console.log('🔍 Debug - Área encontrada:', selectedArea)
           if (selectedArea) {
             payload.area_id = selectedArea.id
             payload.area = selectedArea.nombre
+            console.log('🔍 Debug - Payload final:', payload)
+          } else {
+            console.error('❌ Error - No se encontró el área con ID:', userArea)
           }
         }
       }
@@ -815,7 +819,7 @@ export default function AdminDashboard() {
                           >
                             <option value="">Seleccionar área</option>
                             {areas.map((area) => (
-                              <option key={area.id} value={area.nombre}>
+                              <option key={area.id} value={area.id}>
                                 {area.nombre}
                               </option>
                             ))}

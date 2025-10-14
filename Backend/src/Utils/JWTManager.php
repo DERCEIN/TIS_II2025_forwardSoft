@@ -56,14 +56,18 @@ class JWTManager
     public static function getTokenFromHeader()
     {
         $headers = getallheaders();
+        error_log("🔍 Debug JWT - Headers: " . json_encode($headers));
         
         if (isset($headers['Authorization'])) {
             $authHeader = $headers['Authorization'];
+            error_log("🔍 Debug JWT - Authorization header: " . $authHeader);
             if (preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
+                error_log("🔍 Debug JWT - Token extracted: " . substr($matches[1], 0, 20) . "...");
                 return $matches[1];
             }
         }
         
+        error_log("❌ Debug JWT - No valid token found in headers");
         return null;
     }
 

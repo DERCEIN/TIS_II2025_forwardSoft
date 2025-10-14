@@ -1,4 +1,3 @@
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 
@@ -306,6 +305,14 @@ export class EvaluacionService {
     const params = nivelId ? `?nivel_id=${nivelId}` : ''
     return ApiService.get(`/api/evaluaciones/medallero/${areaId}${params}`)
   }
+
+  static async confirmarCierreCalificacion(data: {
+    area_id: number
+    nivel_id: number
+    fase?: string
+  }) {
+    return ApiService.post('/api/evaluador/confirmar-cierre-calificacion', data)
+  }
 }
 
 export class ReporteService {
@@ -533,6 +540,134 @@ export class CoordinadorService {
 
   static async getAreaData(areaId: number) {
     return ApiService.get(`/api/coordinador/area/${areaId}`)
+  }
+
+  static async getCatalogos() {
+    return ApiService.get('/api/coordinador/catalogos')
+  }
+
+  static async generarAsignaciones(params: {
+    area_id: number
+    nivel_id?: number
+    ronda_id?: number
+    fase: 'clasificacion' | 'premiacion'
+    num_evaluadores: number
+    metodo: 'simple' | 'balanceado'
+    evitar_misma_institucion?: boolean
+    evitar_misma_area?: boolean
+    confirmar?: boolean
+  }) {
+    return ApiService.post('/api/coordinador/asignaciones/generar', params)
+  }
+
+  static async listarAsignacionesPorArea(areaId: number, filters?: { nivel_id?: number; fase?: 'clasificacion' | 'premiacion' }) {
+    const params = new URLSearchParams()
+    if (filters?.nivel_id) params.append('nivel_id', String(filters.nivel_id))
+    if (filters?.fase) params.append('fase', filters.fase)
+    const qs = params.toString()
+    return ApiService.get(`/api/coordinador/asignaciones/area/${areaId}${qs ? `?${qs}` : ''}`)
+  }
+
+  static async exportarAsignaciones(areaId: number, filters?: { nivel_id?: number; fase?: 'clasificacion' | 'premiacion' }) {
+    const params = new URLSearchParams()
+    if (filters?.nivel_id) params.append('nivel_id', String(filters.nivel_id))
+    if (filters?.fase) params.append('fase', filters.fase)
+    const qs = params.toString()
+    
+    const response = await fetch(`${API_BASE_URL}/api/coordinador/asignaciones/exportar/${areaId}${qs ? `?${qs}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${ApiService.getToken()}`,
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Error al exportar asignaciones')
+    }
+    
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `asignaciones_${areaId}_${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  }
+
+  static async crearRonda(data: {
+    nombre: string
+    descripcion?: string
+    area_id?: number
+    nivel_id?: number
+    fecha_inicio?: string
+    fecha_fin?: string
+  }) {
+    return ApiService.post('/api/coordinador/rondas', data)
+  }
+
+  static async cerrarCalificacion(data: {
+    area_id: number
+    nivel_id: number
+    fase?: 'clasificacion' | 'premiacion'
+  }) {
+    return ApiService.post('/api/coordinador/cerrar-calificacion', data)
+  }
+
+  static async getParticipantesConEvaluaciones(filters?: {
+    area_id?: number
+    nivel_id?: number
+    fase?: string
+  }) {
+    const params = new URLSearchParams()
+    if (filters?.area_id) params.append('area_id', String(filters.area_id))
+    if (filters?.nivel_id) params.append('nivel_id', String(filters.nivel_id))
+    if (filters?.fase) params.append('fase', filters.fase)
+    const qs = params.toString()
+    return ApiService.get(`/api/coordinador/participantes-evaluaciones${qs ? `?${qs}` : ''}`)
+  }
+
+  static async getListasClasificacion(filters?: {
+    area_id?: number
+    nivel_id?: number
+    fase?: string
+  }) {
+    const params = new URLSearchParams()
+    if (filters?.area_id) params.append('area_id', String(filters.area_id))
+    if (filters?.nivel_id) params.append('nivel_id', String(filters.nivel_id))
+    if (filters?.fase) params.append('fase', filters.fase)
+    const qs = params.toString()
+    return ApiService.get(`/api/coordinador/listas-clasificacion${qs ? `?${qs}` : ''}`)
+  }
+
+  static async getLogCambiosNotas(filters?: {
+    area_id: number
+    nivel_id?: number
+    fecha_desde?: string
+    fecha_hasta?: string
+    evaluador_id?: number
+    olimpista_id?: number
+  }) {
+    const params = new URLSearchParams()
+    if (filters?.area_id) params.append('area_id', String(filters.area_id))
+    if (filters?.nivel_id) params.append('nivel_id', String(filters.nivel_id))
+    if (filters?.fecha_desde) params.append('fecha_desde', filters.fecha_desde)
+    if (filters?.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta)
+    if (filters?.evaluador_id) params.append('evaluador_id', String(filters.evaluador_id))
+    if (filters?.olimpista_id) params.append('olimpista_id', String(filters.olimpista_id))
+    
+    const qs = params.toString()
+    return ApiService.get(`/api/coordinador/log-cambios-notas${qs ? `?${qs}` : ''}`)
+  }
+
+  static async getEvaluadoresPorArea(areaId: number) {
+    return ApiService.get(`/api/coordinador/evaluadores-por-area?area_id=${areaId}`)
+  }
+}
+
+export class CatalogoService {
+  static async getNiveles() {
+    return ApiService.get('/api/catalogo/niveles')
   }
 }
 

@@ -16,19 +16,44 @@ class EvaluacionClasificacion
 
     public function create($data)
     {
-        $sql = "INSERT INTO {$this->table} (inscripcion_area_id, evaluador_id, puntuacion, observaciones, fecha_evaluacion, is_final, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        // Validar y convertir is_final a booleano
+        $isFinal = false;
+        error_log("EvaluacionClasificacion::create - is_final raw value: " . var_export($data['is_final'], true));
+        error_log("EvaluacionClasificacion::create - is_final type: " . gettype($data['is_final']));
+        
+        if (isset($data['is_final'])) {
+            if (is_bool($data['is_final'])) {
+                $isFinal = $data['is_final'];
+            } elseif (is_string($data['is_final']) && $data['is_final'] !== '') {
+                $isFinal = in_array(strtolower($data['is_final']), ['true', '1', 'yes', 'on']);
+            } elseif (is_numeric($data['is_final'])) {
+                $isFinal = (bool)$data['is_final'];
+            }
+        }
+        
+        error_log("EvaluacionClasificacion::create - is_final converted: " . var_export($isFinal, true));
+
+        // Construir la consulta con el orden correcto de las columnas
+        $fields = ['inscripcion_area_id', 'evaluador_id', 'puntuacion', 'observaciones', 'fecha_evaluacion', 'is_final', 'created_at'];
+        $values = [
+            (int)$data['inscripcion_area_id'],
+            (int)$data['evaluador_id'],
+            (float)$data['puntuacion'],
+            isset($data['observaciones']) && !empty(trim($data['observaciones'])) ? trim($data['observaciones']) : null,
+            $data['fecha_evaluacion'],
+            $isFinal ? 'true' : 'false', // Convertir booleano a string para PostgreSQL
+            date('Y-m-d H:i:s')
+        ];
+        
+        $placeholders = str_repeat('?,', count($fields) - 1) . '?';
+        $sql = "INSERT INTO {$this->table} (" . implode(', ', $fields) . ") VALUES ({$placeholders})";
+        
+        error_log("EvaluacionClasificacion::create - SQL: " . $sql);
+        error_log("EvaluacionClasificacion::create - Fields: " . print_r($fields, true));
+        error_log("EvaluacionClasificacion::create - Values: " . print_r($values, true));
         
         try {
-            $stmt = $this->db->query($sql, [
-                $data['inscripcion_area_id'],
-                $data['evaluador_id'],
-                $data['puntuacion'],
-                $data['observaciones'] ?? null,
-                $data['fecha_evaluacion'],
-                $data['is_final'] ?? false,
-                date('Y-m-d H:i:s')
-            ]);
-            
+            $stmt = $this->db->query($sql, $values);
             return $this->db->lastInsertId();
         } catch (\Exception $e) {
             error_log("Error al crear evaluación de clasificación: " . $e->getMessage());
@@ -58,7 +83,32 @@ class EvaluacionClasificacion
         foreach ($data as $key => $value) {
             if ($key !== 'id') {
                 $fields[] = "{$key} = ?";
-                $values[] = $value;
+                
+                // Convertir tipos de datos apropiados
+                switch ($key) {
+                    case 'inscripcion_area_id':
+                    case 'evaluador_id':
+                        $values[] = (int)$value;
+                        break;
+                    case 'puntuacion':
+                        $values[] = (float)$value;
+                        break;
+                    case 'is_final':
+                        // Validar y convertir is_final a booleano
+                        $isFinal = false;
+                        if (is_bool($value)) {
+                            $isFinal = $value;
+                        } elseif (is_string($value) && $value !== '') {
+                            $isFinal = in_array(strtolower($value), ['true', '1', 'yes', 'on']);
+                        } elseif (is_numeric($value)) {
+                            $isFinal = (bool)$value;
+                        }
+                        $values[] = $isFinal ? 'true' : 'false'; // Convertir booleano a string para PostgreSQL
+                        break;
+                    default:
+                        $values[] = $value;
+                        break;
+                }
             }
         }
         
@@ -66,7 +116,10 @@ class EvaluacionClasificacion
             return false;
         }
         
-        $values[] = $id;
+        // Agregar incremento de modificaciones_count
+        $fields[] = "modificaciones_count = modificaciones_count + 1";
+        
+        $values[] = (int)$id;
         $sql = "UPDATE {$this->table} SET " . implode(', ', $fields) . " WHERE id = ?";
         
         try {

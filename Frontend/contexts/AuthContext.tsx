@@ -66,11 +66,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        console.log('🔍 AuthContext - Inicializando autenticación...')
         const token = ApiService.getToken()
+        console.log('🔍 AuthContext - Token encontrado:', token ? 'Sí' : 'No')
+        
         if (token) {
           ApiService.setToken(token)
+          console.log('🔍 AuthContext - Llamando a getProfile...')
           const response = await AuthService.getProfile()
+          console.log('🔍 AuthContext - Respuesta del perfil:', response)
+          
           if (response.success && response.data) {
+            console.log('🔍 AuthContext - Usuario autenticado:', response.data)
             setState(prev => ({
               ...prev,
               user: response.data,
@@ -79,6 +86,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               isLoading: false,
             }))
           } else {
+            console.log('❌ AuthContext - Token inválido, limpiando...')
             // Token inválido, limpiar
             ApiService.setToken(null)
             setState(prev => ({
@@ -87,13 +95,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }))
           }
         } else {
+          console.log('❌ AuthContext - No hay token, usuario no autenticado')
           setState(prev => ({
             ...prev,
             isLoading: false,
           }))
         }
       } catch (error) {
-        console.error('Error al inicializar autenticación:', error)
+        console.error('❌ AuthContext - Error al inicializar autenticación:', error)
         ApiService.setToken(null)
         setState(prev => ({
           ...prev,

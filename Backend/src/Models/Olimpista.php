@@ -95,7 +95,7 @@ class Olimpista
                 FROM {$this->table} o
                 LEFT JOIN tutores_legales tl ON o.tutor_legal_id = tl.id
                 LEFT JOIN tutores_academicos ta ON o.tutor_academico_id = ta.id
-                LEFT JOIN unidades_educativas ue ON o.unidad_educativa_id = ue.id
+                LEFT JOIN unidad_educativa ue ON o.unidad_educativa_id = ue.id
                 LEFT JOIN departamentos d ON o.departamento_id = d.id
                 WHERE o.id = ?";
         
@@ -121,35 +121,62 @@ class Olimpista
 
     public function getAllWithFilters($filters = [])
     {
-        $sql = "SELECT 
-                    o.*,
-                    tl.nombre_completo as tutor_legal_nombre,
-                    ue.nombre as unidad_educativa_nombre,
-                    d.nombre as departamento_nombre
-                FROM {$this->table} o
-                LEFT JOIN tutores_legales tl ON o.tutor_legal_id = tl.id
-                LEFT JOIN unidades_educativas ue ON o.unidad_educativa_id = ue.id
-                LEFT JOIN departamentos d ON o.departamento_id = d.id
-                WHERE o.is_active = true";
-        
-        $params = [];
-        
-        if (!empty($filters['search'])) {
-            $sql .= " AND (o.nombre_completo ILIKE ? OR o.documento_identidad ILIKE ?)";
-            $searchTerm = "%{$filters['search']}%";
-            $params[] = $searchTerm;
-            $params[] = $searchTerm;
+        try {
+            // Primero verificar si la tabla olimpistas existe
+            $checkTable = "SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'olimpistas'
+            )";
+            $tableExists = $this->db->query($checkTable)->fetchColumn();
+            
+            if (!$tableExists) {
+                return [];
+            }
+            
+            // Consulta simplificada sin JOINs problemáticos
+            $sql = "SELECT 
+                        o.*,
+                        COALESCE(tl.nombre_completo, '') as tutor_legal_nombre,
+                        COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                        COALESCE(d.nombre, '') as departamento_nombre
+                    FROM {$this->table} o
+                    LEFT JOIN tutores_legales tl ON o.tutor_legal_id = tl.id
+                    LEFT JOIN unidad_educativa ue ON o.unidad_educativa_id = ue.id
+                    LEFT JOIN departamentos d ON o.departamento_id = d.id
+                    WHERE o.is_active = true";
+            
+            $params = [];
+            
+            if (!empty($filters['search'])) {
+                $sql .= " AND (o.nombre_completo ILIKE ? OR o.documento_identidad ILIKE ?)";
+                $searchTerm = "%{$filters['search']}%";
+                $params[] = $searchTerm;
+                $params[] = $searchTerm;
+            }
+            
+            if (!empty($filters['departamento_id'])) {
+                $sql .= " AND o.departamento_id = ?";
+                $params[] = $filters['departamento_id'];
+            }
+            
+            $sql .= " ORDER BY o.created_at DESC";
+            
+            $stmt = $this->db->query($sql, $params);
+            return $stmt->fetchAll();
+            
+        } catch (\Exception $e) {
+            error_log('Error en getAllWithFilters: ' . $e->getMessage());
+            // Si hay error, intentar consulta básica
+            try {
+                $sql = "SELECT * FROM {$this->table} WHERE is_active = true ORDER BY created_at DESC";
+                $stmt = $this->db->query($sql);
+                return $stmt->fetchAll();
+            } catch (\Exception $e2) {
+                error_log('Error en consulta básica: ' . $e2->getMessage());
+                return [];
+            }
         }
-        
-        if (!empty($filters['departamento_id'])) {
-            $sql .= " AND o.departamento_id = ?";
-            $params[] = $filters['departamento_id'];
-        }
-        
-        $sql .= " ORDER BY o.created_at DESC";
-        
-        $stmt = $this->db->query($sql, $params);
-        return $stmt->fetchAll();
     }
 
     public function getByAreaAndLevel($areaId, $nivelId = null)
@@ -170,7 +197,7 @@ class Olimpista
                 LEFT JOIN areas_competencia ac ON ia.area_competencia_id = ac.id
                 LEFT JOIN niveles_competencia nc ON ia.nivel_competencia_id = nc.id
                 LEFT JOIN tutores_legales tl ON o.tutor_legal_id = tl.id
-                LEFT JOIN unidades_educativas ue ON o.unidad_educativa_id = ue.id
+                LEFT JOIN unidad_educativa ue ON o.unidad_educativa_id = ue.id
                 LEFT JOIN departamentos d ON o.departamento_id = d.id
                 WHERE ia.area_competencia_id = ? AND o.is_active = true";
         

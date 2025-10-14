@@ -1,7 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Montserrat, Open_Sans } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
+
 import { Suspense } from "react"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { NotificationProvider } from "@/components/NotificationProvider"
@@ -40,7 +40,7 @@ export default function RootLayout({
             <Toaster />
           </NotificationProvider>
         </AuthProvider>
-        <Analytics />
+       
       </body>
     </html>
   )

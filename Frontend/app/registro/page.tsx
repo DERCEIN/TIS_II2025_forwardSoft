@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -59,10 +59,19 @@ interface TeamMember {
   phone: string
 }
 
+interface AreaCompetencia {
+  id: number
+  nombre: string
+  descripcion: string
+  permite_grupos: boolean
+}
+
 export default function RegistrationPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [competitionAreas, setCompetitionAreas] = useState<AreaCompetencia[]>([])
+  const [loadingAreas, setLoadingAreas] = useState(true)
 
   const [formData, setFormData] = useState<FormData>({
     firstName: "",
@@ -78,16 +87,52 @@ export default function RegistrationPage() {
     teams: {},
   })
 
-  const competitionAreas = [
-    { id: "matematicas", name: "Matemáticas", icon: "📐", individual: true },
-    { id: "fisica", name: "Física", icon: "⚛️", individual: true },
-    { id: "quimica", name: "Química", icon: "🧪", individual: true },
-    { id: "biologia", name: "Biología", icon: "🧬", individual: true },
-    { id: "astronomia", name: "Astronomía", icon: "🌟", individual: true },
-    { id: "geografia", name: "Geografía", icon: "🌍", individual: true },
-    { id: "robotica", name: "Robótica e Informática", icon: "🤖", individual: false },
-    { id: "feria", name: "Feria Científica", icon: "🔬", individual: false },
-  ]
+  // Función para cargar áreas de competencia desde la API
+  const fetchAreas = async () => {
+    try {
+      setLoadingAreas(true)
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${API_BASE_URL}/api/areas-competencia`)
+      const data = await response.json()
+      
+      if (data.success && data.data) {
+        setCompetitionAreas(data.data)
+      } else {
+        console.error('Error al obtener áreas:', data.message)
+        // Fallback a datos hardcodeados si la API falla
+        setCompetitionAreas([
+          { id: 1, nombre: "Matemáticas", descripcion: "Competencia de Matemáticas", permite_grupos: false },
+          { id: 2, nombre: "Física", descripcion: "Competencia de Física", permite_grupos: false },
+          { id: 3, nombre: "Química", descripcion: "Competencia de Química", permite_grupos: false },
+          { id: 4, nombre: "Biología", descripcion: "Competencia de Biología", permite_grupos: false },
+          { id: 5, nombre: "Astronomía", descripcion: "Competencia de Astronomía", permite_grupos: false },
+          { id: 6, nombre: "Geografía", descripcion: "Competencia de Geografía", permite_grupos: false },
+          { id: 7, nombre: "Robótica e Informática", descripcion: "Competencia de Robótica e Informática", permite_grupos: true },
+          { id: 8, nombre: "Feria Científica", descripcion: "Competencia de Feria Científica", permite_grupos: true },
+        ])
+      }
+    } catch (error) {
+      console.error('Error al obtener áreas:', error)
+      // Fallback a datos hardcodeados si hay error de red
+      setCompetitionAreas([
+        { id: 1, nombre: "Matemáticas", descripcion: "Competencia de Matemáticas", permite_grupos: false },
+        { id: 2, nombre: "Física", descripcion: "Competencia de Física", permite_grupos: false },
+        { id: 3, nombre: "Química", descripcion: "Competencia de Química", permite_grupos: false },
+        { id: 4, nombre: "Biología", descripcion: "Competencia de Biología", permite_grupos: false },
+        { id: 5, nombre: "Astronomía", descripcion: "Competencia de Astronomía", permite_grupos: false },
+        { id: 6, nombre: "Geografía", descripcion: "Competencia de Geografía", permite_grupos: false },
+        { id: 7, nombre: "Robótica e Informática", descripcion: "Competencia de Robótica e Informática", permite_grupos: true },
+        { id: 8, nombre: "Feria Científica", descripcion: "Competencia de Feria Científica", permite_grupos: true },
+      ])
+    } finally {
+      setLoadingAreas(false)
+    }
+  }
+
+  // Cargar áreas al montar el componente
+  useEffect(() => {
+    fetchAreas()
+  }, [])
 
   const departments = ["La Paz", "Cochabamba", "Santa Cruz", "Oruro", "Potosí", "Tarija", "Chuquisaca", "Beni", "Pando"]
 
@@ -128,7 +173,7 @@ export default function RegistrationPage() {
     if (step === 3) {
       
       const groupAreas = formData.selectedAreas.filter(
-        (areaId) => !competitionAreas.find((area) => area.id === areaId)?.individual,
+        (areaId) => competitionAreas.find((area) => area.id.toString() === areaId)?.permite_grupos,
       )
 
       for (const areaId of groupAreas) {
@@ -164,9 +209,9 @@ export default function RegistrationPage() {
 
       
       const newTeams = { ...prev.teams }
-      const area = competitionAreas.find((a) => a.id === areaId)
+      const area = competitionAreas.find((a) => a.id.toString() === areaId)
 
-      if (area && !area.individual && newSelectedAreas.includes(areaId)) {
+      if (area && area.permite_grupos && newSelectedAreas.includes(areaId)) {
         if (!newTeams[areaId]) {
           newTeams[areaId] = {
             teamName: "",
@@ -399,29 +444,44 @@ export default function RegistrationPage() {
               </div>
             )}
 
+            {loadingAreas ? (
+              <div className="text-center py-8">
+                <div className="text-muted-foreground">Cargando áreas de competencia...</div>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {competitionAreas.map((area) => (
                 <Card
                   key={area.id}
                   className={`cursor-pointer transition-all hover:shadow-md ${
-                    formData.selectedAreas.includes(area.id) ? "ring-2 ring-primary bg-card" : ""
+                      formData.selectedAreas.includes(area.id.toString()) ? "ring-2 ring-primary bg-card" : ""
                   }`}
-                  onClick={() => handleAreaToggle(area.id)}
+                    onClick={() => handleAreaToggle(area.id.toString())}
                 >
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
-                      <div className="text-3xl">{area.icon}</div>
+                        <div className="text-3xl">
+                          {area.nombre === "Matemáticas" && "📐"}
+                          {area.nombre === "Física" && "⚛️"}
+                          {area.nombre === "Química" && "🧪"}
+                          {area.nombre === "Biología" && "🧬"}
+                          {area.nombre === "Astronomía" && "🌟"}
+                          {area.nombre === "Geografía" && "🌍"}
+                          {area.nombre === "Robótica e Informática" && "🤖"}
+                          {area.nombre === "Feria Científica" && "🔬"}
+                          {!["Matemáticas", "Física", "Química", "Biología", "Astronomía", "Geografía", "Robótica e Informática", "Feria Científica"].includes(area.nombre) && "🏆"}
+                        </div>
                       <Checkbox
-                        checked={formData.selectedAreas.includes(area.id)}
-                        onChange={() => handleAreaToggle(area.id)}
+                          checked={formData.selectedAreas.includes(area.id.toString())}
+                          onChange={() => handleAreaToggle(area.id.toString())}
                       />
                     </div>
-                    <h3 className="font-heading font-semibold text-lg mb-2">{area.name}</h3>
+                      <h3 className="font-heading font-semibold text-lg mb-2">{area.nombre}</h3>
                     <div className="flex items-center gap-2">
-                      <Badge variant={area.individual ? "secondary" : "outline"}>
-                        {area.individual ? "Individual" : "Grupal"}
+                        <Badge variant={!area.permite_grupos ? "secondary" : "outline"}>
+                          {!area.permite_grupos ? "Individual" : "Grupal"}
                       </Badge>
-                      {area.individual ? (
+                        {!area.permite_grupos ? (
                         <User className="h-4 w-4 text-muted-foreground" />
                       ) : (
                         <Users className="h-4 w-4 text-muted-foreground" />
@@ -431,15 +491,25 @@ export default function RegistrationPage() {
                 </Card>
               ))}
             </div>
+            )}
 
             <div className="bg-muted/50 rounded-lg p-4">
               <h4 className="font-semibold mb-2">Áreas seleccionadas: {formData.selectedAreas.length}</h4>
               <div className="flex flex-wrap gap-2">
                 {formData.selectedAreas.map((areaId) => {
-                  const area = competitionAreas.find((a) => a.id === areaId)
+                  const area = competitionAreas.find((a) => a.id.toString() === areaId)
                   return (
                     <Badge key={areaId} variant="default">
-                      {area?.icon} {area?.name}
+                      {area?.nombre === "Matemáticas" && "📐"}
+                      {area?.nombre === "Física" && "⚛️"}
+                      {area?.nombre === "Química" && "🧪"}
+                      {area?.nombre === "Biología" && "🧬"}
+                      {area?.nombre === "Astronomía" && "🌟"}
+                      {area?.nombre === "Geografía" && "🌍"}
+                      {area?.nombre === "Robótica e Informática" && "🤖"}
+                      {area?.nombre === "Feria Científica" && "🔬"}
+                      {area?.nombre && !["Matemáticas", "Física", "Química", "Biología", "Astronomía", "Geografía", "Robótica e Informática", "Feria Científica"].includes(area.nombre) && "🏆"}
+                      {" "}{area?.nombre}
                     </Badge>
                   )
                 })}
@@ -450,7 +520,7 @@ export default function RegistrationPage() {
 
       case 3:
         const groupAreas = formData.selectedAreas.filter(
-          (areaId) => !competitionAreas.find((area) => area.id === areaId)?.individual,
+          (areaId) => competitionAreas.find((area) => area.id.toString() === areaId)?.permite_grupos,
         )
 
         if (groupAreas.length === 0) {
@@ -476,15 +546,25 @@ export default function RegistrationPage() {
             </div>
 
             {groupAreas.map((areaId) => {
-              const area = competitionAreas.find((a) => a.id === areaId)
+              const area = competitionAreas.find((a) => a.id.toString() === areaId)
               const team = formData.teams[areaId]
 
               return (
                 <Card key={areaId} className="p-6">
                   <div className="flex items-center mb-6">
-                    <span className="text-2xl mr-3">{area?.icon}</span>
+                    <span className="text-2xl mr-3">
+                      {area?.nombre === "Matemáticas" && "📐"}
+                      {area?.nombre === "Física" && "⚛️"}
+                      {area?.nombre === "Química" && "🧪"}
+                      {area?.nombre === "Biología" && "🧬"}
+                      {area?.nombre === "Astronomía" && "🌟"}
+                      {area?.nombre === "Geografía" && "🌍"}
+                      {area?.nombre === "Robótica e Informática" && "🤖"}
+                      {area?.nombre === "Feria Científica" && "🔬"}
+                      {area?.nombre && !["Matemáticas", "Física", "Química", "Biología", "Astronomía", "Geografía", "Robótica e Informática", "Feria Científica"].includes(area.nombre) && "🏆"}
+                    </span>
                     <div>
-                      <h3 className="font-heading font-semibold text-lg">{area?.name}</h3>
+                      <h3 className="font-heading font-semibold text-lg">{area?.nombre}</h3>
                       <p className="text-sm text-muted-foreground">Equipo de 2-4 miembros</p>
                     </div>
                   </div>
@@ -654,10 +734,19 @@ export default function RegistrationPage() {
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
                     {formData.selectedAreas.map((areaId) => {
-                      const area = competitionAreas.find((a) => a.id === areaId)
+                      const area = competitionAreas.find((a) => a.id.toString() === areaId)
                       return (
                         <Badge key={areaId} variant="default" className="text-sm">
-                          {area?.icon} {area?.name}
+                          {area?.nombre === "Matemáticas" && "📐"}
+                          {area?.nombre === "Física" && "⚛️"}
+                          {area?.nombre === "Química" && "🧪"}
+                          {area?.nombre === "Biología" && "🧬"}
+                          {area?.nombre === "Astronomía" && "🌟"}
+                          {area?.nombre === "Geografía" && "🌍"}
+                          {area?.nombre === "Robótica e Informática" && "🤖"}
+                          {area?.nombre === "Feria Científica" && "🔬"}
+                          {area?.nombre && !["Matemáticas", "Física", "Química", "Biología", "Astronomía", "Geografía", "Robótica e Informática", "Feria Científica"].includes(area.nombre) && "🏆"}
+                          {" "}{area?.nombre}
                         </Badge>
                       )
                     })}
@@ -676,11 +765,20 @@ export default function RegistrationPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {Object.entries(formData.teams).map(([areaId, team]) => {
-                      const area = competitionAreas.find((a) => a.id === areaId)
+                      const area = competitionAreas.find((a) => a.id.toString() === areaId)
                       return (
                         <div key={areaId} className="border rounded-lg p-4">
                           <h4 className="font-semibold mb-2">
-                            {area?.icon} {area?.name}: "{team.teamName}"
+                            {area?.nombre === "Matemáticas" && "📐"}
+                            {area?.nombre === "Física" && "⚛️"}
+                            {area?.nombre === "Química" && "🧪"}
+                            {area?.nombre === "Biología" && "🧬"}
+                            {area?.nombre === "Astronomía" && "🌟"}
+                            {area?.nombre === "Geografía" && "🌍"}
+                            {area?.nombre === "Robótica e Informática" && "🤖"}
+                            {area?.nombre === "Feria Científica" && "🔬"}
+                            {area?.nombre && !["Matemáticas", "Física", "Química", "Biología", "Astronomía", "Geografía", "Robótica e Informática", "Feria Científica"].includes(area.nombre) && "🏆"}
+                            {" "}{area?.nombre}: "{team.teamName}"
                           </h4>
                           <div className="text-sm text-muted-foreground">
                             <strong>Miembros ({team.members.length}):</strong>

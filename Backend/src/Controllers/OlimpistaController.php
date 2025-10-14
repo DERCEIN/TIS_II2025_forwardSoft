@@ -29,17 +29,22 @@ class OlimpistaController
 
     public function index()
     {
-        $filters = [
-            'area_id' => $_GET['area_id'] ?? null,
-            'nivel_id' => $_GET['nivel_id'] ?? null,
-            'departamento_id' => $_GET['departamento_id'] ?? null,
-            'estado' => $_GET['estado'] ?? null,
-            'search' => $_GET['search'] ?? null
-        ];
+        try {
+            $filters = [
+                'area_id' => $_GET['area_id'] ?? null,
+                'nivel_id' => $_GET['nivel_id'] ?? null,
+                'departamento_id' => $_GET['departamento_id'] ?? null,
+                'estado' => $_GET['estado'] ?? null,
+                'search' => $_GET['search'] ?? null
+            ];
 
-        $olimpistas = $this->olimpistaModel->getAllWithFilters($filters);
-        
-        Response::success($olimpistas, 'Lista de olimpistas obtenida');
+            $olimpistas = $this->olimpistaModel->getAllWithFilters($filters);
+            
+            Response::success($olimpistas, 'Lista de olimpistas obtenida');
+        } catch (\Exception $e) {
+            error_log('Error en OlimpistaController::index: ' . $e->getMessage());
+            Response::error('Error interno del servidor: ' . $e->getMessage(), 500);
+        }
     }
 
     public function show($id)

@@ -6,20 +6,31 @@ use ForwardSoft\Utils\Response;
 use ForwardSoft\Controllers\AuthController;
 use ForwardSoft\Controllers\UserController;
 use ForwardSoft\Controllers\AdminController;
-use ForwardSoft\Controllers\CoordinadorController;
 use ForwardSoft\Controllers\EvaluadorController;
+use ForwardSoft\Controllers\CoordinadorController;
 use ForwardSoft\Controllers\OlimpistaController;
 use ForwardSoft\Controllers\ImportController;
 use ForwardSoft\Controllers\EvaluacionController;
 use ForwardSoft\Controllers\ReporteController;
+use ForwardSoft\Controllers\CatalogoController;
+
 
 class Router
 {
     private $routes = [];
     private $middleware = [];
+    
+    public function __construct()
+    {
+        error_log("Router - Constructor called");
+        $this->setupRoutes();
+        error_log("Router - Routes registered: " . count($this->routes));
+    }
 
     public function setupRoutes()
     {
+        
+        
         // Rutas de autenticación
         $this->addRoute('POST', '/api/auth/login', [AuthController::class, 'login']);
         $this->addRoute('POST', '/api/auth/register', [AuthController::class, 'register']);
@@ -46,6 +57,18 @@ class Router
         $this->addRoute('GET', '/api/evaluador/dashboard', [EvaluadorController::class, 'dashboard'], ['auth', 'evaluador']);
         $this->addRoute('GET', '/api/evaluador/evaluaciones', [EvaluadorController::class, 'evaluaciones'], ['auth', 'evaluador']);
 
+        // Rutas de coordinador - asignaciones de evaluadores
+        $this->addRoute('GET', '/api/coordinador/catalogos', [CoordinadorController::class, 'getAreasNiveles'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/asignaciones/generar', [CoordinadorController::class, 'generarAsignaciones'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/asignaciones/area/{areaId}', [CoordinadorController::class, 'listarAsignacionesPorArea'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/asignaciones/exportar/{areaId}', [CoordinadorController::class, 'exportarAsignaciones'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/rondas', [CoordinadorController::class, 'crearRonda'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/cerrar-calificacion', [CoordinadorController::class, 'cerrarCalificacion'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/participantes-evaluaciones', [CoordinadorController::class, 'getParticipantesConEvaluaciones'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/listas-clasificacion', [CoordinadorController::class, 'getListasClasificacion'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/log-cambios-notas', [CoordinadorController::class, 'getLogCambiosNotas'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/evaluadores-por-area', [CoordinadorController::class, 'getEvaluadoresPorArea'], ['auth', 'coordinador']);
+
         // Rutas de olimpistas
         $this->addRoute('GET', '/api/olimpistas', [OlimpistaController::class, 'index'], ['auth']);
         $this->addRoute('GET', '/api/olimpistas/{id}', [OlimpistaController::class, 'show'], ['auth']);
@@ -69,6 +92,7 @@ class Router
         $this->addRoute('POST', '/api/evaluaciones/calcular-premiados/{areaId}', [EvaluacionController::class, 'calcularPremiados'], ['auth']);
         $this->addRoute('GET', '/api/evaluaciones/resultados/{areaId}', [EvaluacionController::class, 'getResultadosFinales'], ['auth']);
         $this->addRoute('GET', '/api/evaluaciones/medallero/{areaId}', [EvaluacionController::class, 'getMedallero'], ['auth']);
+        $this->addRoute('POST', '/api/evaluador/confirmar-cierre-calificacion', [EvaluacionController::class, 'confirmarCierreCalificacion'], ['auth', 'evaluador']);
 
         // Rutas de reportes
         $this->addRoute('GET', '/api/reportes/estadisticas', [ReporteController::class, 'getEstadisticasGenerales'], ['auth']);
@@ -84,9 +108,26 @@ class Router
         $this->addRoute('GET', '/api/reportes/exportar/inscripciones', [ReporteController::class, 'exportarInscripciones'], ['auth']);
         $this->addRoute('GET', '/api/reportes/exportar/resultados', [ReporteController::class, 'exportarResultados'], ['auth']);
 
+        // Catálogos
+        $this->addRoute('GET', '/api/catalogo/niveles', [CatalogoController::class, 'niveles'], ['auth']);
+        $this->addRoute('GET', '/api/catalogo/areas-competencia', [CatalogoController::class, 'areasCompetencia'], ['auth']);
+        
+        // Catálogos públicos (para formularios de registro)
+        $this->addRoute('GET', '/api/areas-competencia', [CatalogoController::class, 'areasCompetencia']);
+
         // Ruta de salud del API
         $this->addRoute('GET', '/api/health', function() {
             Response::success(['status' => 'ok', 'timestamp' => date('Y-m-d H:i:s')]);
+        });
+        
+        
+        // Ruta raíz
+        $this->addRoute('GET', '/', function() {
+            Response::success([
+                'message' => 'API ForwardSoft Olimpiadas',
+                'version' => '1.0.0',
+                'status' => 'running'
+            ]);
         });
     }
 
@@ -105,11 +146,21 @@ class Router
         $method = $_SERVER['REQUEST_METHOD'];
         $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         
+        error_log("Router - Method: " . $method);
+        error_log("Router - Original Path: " . $path);
+        error_log("Router - Total Routes: " . count($this->routes));
         
-        $basePath = '/backend/public';
-        if (strpos($path, $basePath) === 0) {
-            $path = substr($path, strlen($basePath));
+        // Remover cualquier prefijo de directorio si existe
+        $basePaths = ['/backend/public', '/public', '/Backend/public'];
+        foreach ($basePaths as $basePath) {
+            if (strpos($path, $basePath) === 0) {
+                $path = substr($path, strlen($basePath));
+                error_log("Router - Removed base path: " . $basePath);
+                break;
+            }
         }
+        
+        error_log("Router - Final Path: " . $path);
 
         foreach ($this->routes as $route) {
             if ($this->matchRoute($route, $method, $path)) {
@@ -186,10 +237,13 @@ class Router
         $middlewares = [
             'auth' => function() {
                 $user = \ForwardSoft\Utils\JWTManager::getCurrentUser();
+                error_log("🔍 Debug Auth Middleware - User: " . json_encode($user));
                 if (!$user) {
+                    error_log("❌ Debug Auth Middleware - No user found, token may be invalid or missing");
                     \ForwardSoft\Utils\Response::unauthorized('Token de autenticación requerido');
                     return false;
                 }
+                error_log("✅ Debug Auth Middleware - User authenticated successfully");
                 return true;
             },
             'admin' => function() {
