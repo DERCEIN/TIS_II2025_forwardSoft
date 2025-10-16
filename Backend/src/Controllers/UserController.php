@@ -168,10 +168,144 @@ class UserController
             $errors['password'] = 'La contraseña debe tener al menos 6 caracteres';
         }
 
-        if (isset($input['role']) && !in_array($input['role'], ['admin', 'coordinador', 'evaluador'])) {
+        if (isset($input['role']) && !in_array($input['role'], ['admin', 'coordinador', 'evaluador', 'responsable_academico'])) {
             $errors['role'] = 'Rol inválido';
         }
 
         return $errors;
+    }
+
+    public function changePassword($id)
+    {
+        $currentUser = JWTManager::getCurrentUser();
+        if (!$currentUser) {
+            Response::unauthorized('No autenticado');
+        }
+
+        if ($currentUser['role'] !== 'admin' && (int)$currentUser['id'] !== (int)$id) {
+            Response::forbidden('No puedes cambiar la contraseña de otro usuario');
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!$input) {
+            Response::validationError(['general' => 'Datos de entrada inválidos']);
+        }
+
+        $currentPassword = $input['current_password'] ?? '';
+        $newPassword = $input['new_password'] ?? '';
+        $confirmPassword = $input['confirm_password'] ?? '';
+
+        $errors = [];
+        if (strlen($newPassword) < 6) {
+            $errors['new_password'] = 'La contraseña debe tener al menos 6 caracteres';
+        }
+        if ($newPassword !== $confirmPassword) {
+            $errors['confirm_password'] = 'La confirmación no coincide';
+        }
+        if (!empty($errors)) {
+            Response::validationError($errors);
+        }
+
+        $user = $this->userModel->findById($id);
+        if (!$user) {
+            Response::notFound('Usuario no encontrado');
+        }
+
+        if (!password_verify($currentPassword, $user['password'])) {
+            Response::validationError(['current_password' => 'La contraseña actual es incorrecta']);
+        }
+
+        $updated = $this->userModel->update($id, [
+            'password' => password_hash($newPassword, PASSWORD_DEFAULT),
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
+
+        if ($updated) {
+            Response::success(null, 'Contraseña actualizada exitosamente');
+        }
+        Response::serverError('No se pudo actualizar la contraseña');
+    }
+
+    public function uploadAvatar()
+    {
+        $currentUser = JWTManager::getCurrentUser();
+        if (!$currentUser) {
+            Response::unauthorized('No autenticado');
+        }
+
+        if (!isset($_FILES['avatar'])) {
+            Response::validationError(['avatar' => 'Archivo requerido']);
+        }
+
+        $file = $_FILES['avatar'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            Response::validationError(['avatar' => 'Error al cargar el archivo']);
+        }
+
+        $allowed = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'];
+        $mime = mime_content_type($file['tmp_name']);
+        if (!isset($allowed[$mime])) {
+            Response::validationError(['avatar' => 'Formato no permitido. Use PNG, JPG o WEBP']);
+        }
+
+        if ($file['size'] > 2 * 1024 * 1024) { // 2MB
+            Response::validationError(['avatar' => 'El archivo excede 2MB']);
+        }
+
+        $ext = $allowed[$mime];
+        $uploadsDir = __DIR__ . '/../../public/uploads/avatars';
+        if (!is_dir($uploadsDir)) {
+            @mkdir($uploadsDir, 0775, true);
+        }
+
+        $filename = (int)$currentUser['id'] . '-' . time() . '.' . $ext;
+        $destPath = $uploadsDir . '/' . $filename;
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            Response::serverError('No se pudo guardar el archivo');
+        }
+
+        // Ruta pública relativa
+        $publicPath = '/api/avatar/' . $filename;
+
+        // Opcional: limpiar avatares antiguos del mismo usuario para no acumular archivos
+        try {
+            $existing = $this->userModel->findById($currentUser['id']);
+            if ($existing && !empty($existing['avatar_url'])) {
+                $old = __DIR__ . '/../../public' . $existing['avatar_url'];
+                if (is_file($old)) { @unlink($old); }
+            }
+        } catch (\Throwable $e) {
+            // ignorar errores
+        }
+
+        // Intentar guardar avatar_url; si la columna no existe, responder con instrucción
+        $updated = false;
+        try {
+            error_log("🔍 Debug Avatar - Intentando actualizar usuario ID: " . $currentUser['id']);
+            error_log("🔍 Debug Avatar - Datos a actualizar: " . json_encode([
+                'avatar_url' => $publicPath,
+                'updated_at' => date('Y-m-d H:i:s')
+            ]));
+            
+            $updated = $this->userModel->update($currentUser['id'], [
+                'avatar_url' => $publicPath,
+                'updated_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            error_log("🔍 Debug Avatar - Resultado de actualización: " . ($updated ? 'ÉXITO' : 'FALLO'));
+        } catch (\Throwable $e) {
+            error_log("❌ Debug Avatar - Error al actualizar: " . $e->getMessage());
+        }
+
+        $responseData = [
+            'avatar_url' => $publicPath,
+            'saved' => $updated ? true : false
+        ];
+
+        if (!$updated) {
+            $responseData['warning'] = "Agregue la columna 'avatar_url' a la tabla 'users' (VARCHAR(255) NULL) para persistir la URL.";
+        }
+
+        Response::success($responseData, 'Avatar actualizado');
     }
 }

@@ -10,6 +10,11 @@ const nextConfig = {
     unoptimized: true,
   },
   output: 'export',
+  generateBuildId: async () => {
+    return 'build-' + Date.now()
+  },
+  poweredByHeader: false,
+  generateEtags: false,
 }
 
 export default nextConfig

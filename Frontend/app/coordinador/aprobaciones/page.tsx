@@ -73,7 +73,7 @@ export default function AprobacionesPage() {
   const [filterEstado, setFilterEstado] = useState<string>('todos')
   const [filterEvaluador, setFilterEvaluador] = useState<string>('todos')
   
-  // Estados para modal de revisión
+  
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedSolicitud, setSelectedSolicitud] = useState<SolicitudCambio | null>(null)
   const [accion, setAccion] = useState<'aprobar' | 'rechazar' | 'solicitar_info'>('aprobar')
@@ -155,7 +155,7 @@ export default function AprobacionesPage() {
       if (response.ok) {
         const data = await response.json()
         
-        // Actualizar estado local
+        
         setSolicitudes(prev => prev.map(s => 
           s.id === selectedSolicitud.id 
             ? { ...s, estado: accion === 'aprobar' ? 'aprobado' : 'rechazado', observaciones_coordinador: observacionesCoordinador }

@@ -36,7 +36,7 @@ error_log("Path: " . $path);
 error_log("Method: " . $_SERVER['REQUEST_METHOD']);
 
 
-// Usar el Router class en lugar del switch manual
+
 error_log("Index.php - About to load Router");
 require_once __DIR__ . '/../src/Routes/Router.php';
 error_log("Index.php - Router loaded, creating instance");

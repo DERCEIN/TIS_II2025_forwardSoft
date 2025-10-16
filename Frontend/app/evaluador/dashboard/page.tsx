@@ -40,7 +40,12 @@ import RegistroNotas from "@/app/evaluador/registro-notas/page"
 
 export default function EvaluatorDashboard() {
   const router = useRouter()
-  const { logout: authLogout } = useAuth()
+  const { logout: authLogout, user } = useAuth() as any
+  const avatarUrl = user?.avatar_url as string | undefined
+  const toAbsolute = (p?: string) => p && /^https?:\/\//i.test(p) ? p : (p ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${p}` : undefined)
+  const avatarSrc = toAbsolute(avatarUrl)
+  const userName: string = user?.name || user?.nombre || ""
+  const initials = userName ? userName.split(' ').map((p: string)=>p[0]).slice(0,2).join('').toUpperCase() : 'U'
   const [activeTab, setActiveTab] = useState("overview")
   const [selectedParticipant, setSelectedParticipant] = useState<number | null>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
@@ -350,6 +355,14 @@ export default function EvaluatorDashboard() {
                 <Settings className="h-4 w-4 mr-2" />
                 <span className="hidden lg:inline">Configuración</span>
               </Button>
+              <Link href="/evaluador/perfil" className="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border">
+                {avatarSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarSrc} alt="Perfil" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-xs font-semibold flex items-center justify-center h-full w-full bg-blue-100 text-blue-700">{initials}</span>
+                )}
+              </Link>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -371,6 +384,14 @@ export default function EvaluatorDashboard() {
               <Button variant="outline" size="sm" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
                 <Bell className="h-4 w-4" />
               </Button>
+              <Link href="/evaluador/perfil" className="inline-flex items-center justify-center h-8 w-8 rounded-full overflow-hidden border">
+                {avatarSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarSrc} alt="Perfil" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-[10px] font-semibold flex items-center justify-center h-full w-full bg-blue-100 text-blue-700">{initials}</span>
+                )}
+              </Link>
               <Button 
                 variant="outline" 
                 size="sm" 

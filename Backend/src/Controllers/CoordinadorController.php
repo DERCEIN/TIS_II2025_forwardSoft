@@ -176,18 +176,18 @@ class CoordinadorController
             
             
             if ($evitarMismaIE) {
-                // Filtrar evaluadores de la misma institución
+                
                 $pool = array_filter($pool, function($eval) use ($ins) {
                     return $eval['institucion_id'] != $ins['unidad_id'];
                 });
             }
             
             if ($evitarMismaArea) {
-                // Ya filtrado por área en la consulta
+                
             }
 
             if (empty($pool)) {
-                // Si no hay evaluadores disponibles después de filtros, usar todos
+                
                 $pool = $evaluadores;
             }
 

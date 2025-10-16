@@ -41,6 +41,7 @@ import {
   Timer,
 } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/AuthContext"
 
 function ListaInscritosAreaNivel() {
   const [loading, setLoading] = useState<boolean>(true)
@@ -1778,6 +1779,12 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
   )
 }
 export default function CoordinatorDashboard() {
+  const { user } = useAuth() as any
+  const avatarUrl = user?.avatar_url as string | undefined
+  const toAbsolute = (p?: string) => p && /^https?:\/\//i.test(p) ? p : (p ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${p}` : undefined)
+  const avatarSrc = toAbsolute(avatarUrl)
+  const userName: string = user?.name || user?.nombre || ""
+  const initials = userName ? userName.split(' ').map((p: string)=>p[0]).slice(0,2).join('').toUpperCase() : 'U'
   const [activeTab, setActiveTab] = useState("overview")
   const [areaName, setAreaName] = useState<string>("Matemáticas")
   const [realEvaluators, setRealEvaluators] = useState<any[]>([])
@@ -2121,6 +2128,14 @@ export default function CoordinatorDashboard() {
                 <Settings className="h-4 w-4 mr-2" />
                 <span className="hidden lg:inline">Configuración</span>
               </Button>
+              <Link href="/coordinador/perfil" className="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border">
+                {avatarSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarSrc} alt="Perfil" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-xs font-semibold flex items-center justify-center h-full w-full bg-blue-100 text-blue-700">{initials}</span>
+                )}
+              </Link>
               <Button variant="outline" size="sm" onClick={async () => {
                 try {
                   await AuthService.logout()
@@ -2137,6 +2152,14 @@ export default function CoordinatorDashboard() {
 
             {/* Mobile Navigation */}
             <div className="flex sm:hidden items-center space-x-2">
+              <Link href="/coordinador/perfil" className="inline-flex items-center justify-center h-8 w-8 rounded-full overflow-hidden border">
+                {avatarSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarSrc} alt="Perfil" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-[10px] font-semibold flex items-center justify-center h-full w-full bg-blue-100 text-blue-700">{initials}</span>
+                )}
+              </Link>
               <Button variant="outline" size="sm" onClick={async () => {
                 try {
                   await AuthService.logout()

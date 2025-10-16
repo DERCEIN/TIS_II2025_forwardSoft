@@ -23,7 +23,11 @@ const openSans = Open_Sans({
 export const metadata: Metadata = {
   title: "Olimpiada Oh! SanSi - Sistema de Gestión",
   description: "Sistema de gestión para la Olimpiada en Ciencias y Tecnología San Simón",
-  generator: "v0.app",
+  icons: {
+    icon: '/sansi-logo.png',
+    shortcut: '/sansi-logo.png',
+    apple: '/sansi-logo.png',
+  },
 }
 
 export default function RootLayout({

@@ -8,7 +8,7 @@ class App
 {
     public static function init()
     {
-        // Cargar variables de entorno
+        
         if (file_exists(__DIR__ . '/../../.env')) {
             try {
                 $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
@@ -23,7 +23,7 @@ class App
                 $_ENV['DB_PORT'] = '5432';
                 $_ENV['DB_DATABASE'] = 'forwardsoft_olimpiadas';
                 $_ENV['DB_USERNAME'] = 'postgres';
-                $_ENV['DB_PASSWORD'] = 'forwardsoft';
+                $_ENV['DB_PASSWORD'] = '';
                 $_ENV['JWT_SECRET'] = 'default-secret-key';
             }
         }

@@ -78,7 +78,7 @@ class EvaluacionController
                 Response::validationError(['general' => 'No se puede modificar la nota más de una vez']);
             }
 
-            // Validar y convertir is_final a booleano
+            
             $isFinal = false;
             error_log("EvaluacionController::evaluarClasificacion - is_final raw value: " . var_export($input['is_final'], true));
             error_log("EvaluacionController::evaluarClasificacion - is_final type: " . gettype($input['is_final']));
@@ -117,7 +117,7 @@ class EvaluacionController
                 $evaluacionId = $this->evalClasificacionModel->create($evaluacionData);
             }
 
-            // Si es evaluación final, actualizar estado de la inscripción
+           
             if ($isFinal) {
                 $this->inscripcionModel->update($input['inscripcion_area_id'], [
                     'estado' => 'evaluado',
@@ -409,23 +409,20 @@ class EvaluacionController
 
     private function canEvaluate($evaluadorId, $inscripcionId)
     {
-        // Verificar si el evaluador está asignado a esta área/nivel
+       
         $inscripcion = $this->inscripcionModel->findById($inscripcionId);
         if (!$inscripcion) {
             return false;
         }
 
-        // Aquí implementarías la lógica para verificar si el evaluador
-        // está asignado a esta área y nivel específico
-        // Por ahora, asumimos que todos los evaluadores pueden evaluar
+        
         return true;
     }
 
     private function isResponsableAcademico($userId, $areaId)
     {
-        // Verificar si el usuario es responsable académico de esta área
-        // Implementar consulta a la tabla responsables_academicos
-        return true; // Por ahora, asumimos que todos los admins pueden hacer esto
+        
+        return true; 
     }
 
     /**

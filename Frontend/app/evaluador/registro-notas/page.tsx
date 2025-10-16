@@ -56,14 +56,14 @@ export default function RegistroNotas() {
   const [myAreaId, setMyAreaId] = useState<number | null>(null)
   const [myNivelId, setMyNivelId] = useState<number | null>(null)
 
-  // Carga real de participantes asignados al evaluador
+  
   const fetchParticipantes = async () => {
     try {
       setLoading(true)
       const res = await EvaluadorService.getEvaluaciones()
       const data = (res && (res as any).data) ? (res as any).data : []
 
-      // Mapear datos del backend a la interfaz local, tolerante a claves
+      
       const mapped: Participante[] = (Array.isArray(data) ? data : []).map((row: any) => ({
         id: Number(row.inscripcion_area_id || row.id || row.olimpista_id || row.participante_id),
         nombre: row.competidor || row.olimpista_nombre || row.nombre || `${row.nombres ?? ''} ${row.apellidos ?? ''}`.trim(),
@@ -314,7 +314,7 @@ export default function RegistroNotas() {
 
       if (response.success) {
         success('Éxito', 'Cierre de calificación confirmado exitosamente. Las listas de clasificación han sido generadas.')
-        // Recargar datos para mostrar el estado actualizado
+        
         await fetchParticipantes()
       } else {
         error('Error', response.message || 'No se pudo confirmar el cierre de calificación')

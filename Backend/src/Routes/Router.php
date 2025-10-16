@@ -42,6 +42,9 @@ class Router
         $this->addRoute('GET', '/api/users/{id}', [UserController::class, 'show'], ['auth']);
         $this->addRoute('PUT', '/api/users/{id}', [UserController::class, 'update'], ['auth']);
         $this->addRoute('DELETE', '/api/users/{id}', [UserController::class, 'delete'], ['auth']);
+        // Perfil del usuario autenticado
+        $this->addRoute('PUT', '/api/users/{id}/password', [UserController::class, 'changePassword'], ['auth']);
+        $this->addRoute('POST', '/api/users/avatar', [UserController::class, 'uploadAvatar'], ['auth']);
 
         // Rutas de administrador
         $this->addRoute('GET', '/api/admin/dashboard', [AdminController::class, 'dashboard'], ['auth', 'admin']);
@@ -112,6 +115,50 @@ class Router
         $this->addRoute('GET', '/api/catalogo/niveles', [CatalogoController::class, 'niveles'], ['auth']);
         $this->addRoute('GET', '/api/catalogo/areas-competencia', [CatalogoController::class, 'areasCompetencia'], ['auth']);
         
+        // Ruta para servir imágenes de avatar (debe ir antes de otras rutas dinámicas)
+        $this->addRoute('GET', '/api/avatar/{filename}', function($filename) {
+            error_log("🔍 Avatar Route - Handler ejecutado con filename: " . $filename);
+            
+            // Validar que el nombre del archivo sea seguro (solo números, guiones y extensiones de imagen)
+            if (!preg_match('/^[0-9]+-[0-9]+\.(png|jpg|jpeg|gif|webp)$/i', $filename)) {
+                error_log("❌ Avatar - Nombre de archivo no válido: " . $filename);
+                Response::notFound('Archivo no válido');
+            }
+            
+            $filePath = __DIR__ . '/../../public/uploads/avatars/' . $filename;
+            error_log("🔍 Avatar - Buscando archivo en: " . $filePath);
+            
+            if (file_exists($filePath) && is_file($filePath)) {
+                error_log("✅ Avatar - Archivo encontrado: " . $filePath);
+                
+                // Determinar el tipo MIME basado en la extensión
+                $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+                $mimeTypes = [
+                    'png' => 'image/png',
+                    'jpg' => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'gif' => 'image/gif',
+                    'webp' => 'image/webp',
+                    'svg' => 'image/svg+xml'
+                ];
+                
+                $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
+                
+                // Configurar headers para archivos estáticos
+                header('Content-Type: ' . $mimeType);
+                header('Content-Length: ' . filesize($filePath));
+                header('Cache-Control: public, max-age=31536000'); // Cache por 1 año
+                header('Last-Modified: ' . gmdate('D, d M Y H:i:s', filemtime($filePath)) . ' GMT');
+                
+                // Servir el archivo
+                readfile($filePath);
+                exit();
+            } else {
+                error_log("❌ Avatar - Archivo no encontrado: " . $filePath);
+                Response::notFound('Avatar no encontrado');
+            }
+        });
+
         // Catálogos públicos (para formularios de registro)
         $this->addRoute('GET', '/api/areas-competencia', [CatalogoController::class, 'areasCompetencia']);
 

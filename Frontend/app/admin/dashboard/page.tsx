@@ -189,6 +189,60 @@ export default function AdminDashboard() {
     }
   }
 
+  // Exportar participantes a CSV
+  const handleExportParticipantsCSV = async () => {
+    try {
+      const res = await OlimpistaService.getAll()
+      const participantes: any[] = (res && (res as any).data) ? (res as any).data : []
+
+      if (!participantes.length) {
+        toast({ title: "Sin datos", description: "No hay participantes para exportar.", variant: "destructive" })
+        return
+      }
+
+      const headers = [
+        "Nombre",
+        "Apellido",
+        "Documento",
+        "Unidad Educativa",
+        "Departamento",
+        "Área",
+        "Nivel",
+        "Estado",
+        "Fecha Registro"
+      ]
+      const rows: string[] = [headers.join(',')]
+      participantes.forEach((p: any) => {
+        const row = [
+          p.nombre || '',
+          p.apellido || '',
+          p.documento_identidad || p.documento || '',
+          p.unidad_educativa_nombre || p.institucion || '',
+          p.departamento_nombre || p.departamento || '',
+          p.area_competencia || p.area_nombre || '',
+          p.nivel_nombre || p.nivel || '',
+          p.estado || '',
+          p.fecha_registro ? new Date(p.fecha_registro).toLocaleDateString() : ''
+        ].map((v: string) => '"' + String(v).replace(/\"/g, '"') + '"')
+        rows.push(row.join(','))
+      })
+
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `participantes_${new Date().toISOString().slice(0,10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({ title: "CSV exportado", description: `Se exportaron ${participantes.length} participantes.` })
+    } catch (error: any) {
+      toast({ title: "Error al exportar", description: error?.message || 'No se pudo generar el CSV.', variant: "destructive" })
+    }
+  }
+
   // Funciones de paginación
   const getCurrentPageUsers = () => {
     const startIndex = (currentPage - 1) * usersPerPage
@@ -631,7 +685,7 @@ export default function AdminDashboard() {
                       <Search className="h-4 w-4 mr-2" />
                       Ver Olimpistas
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={handleExportParticipantsCSV}>
                       <Download className="h-4 w-4 mr-2" />
                       Exportar CSV
                     </Button>

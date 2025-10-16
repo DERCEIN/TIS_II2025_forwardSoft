@@ -16,7 +16,7 @@ class EvaluacionClasificacion
 
     public function create($data)
     {
-        // Validar y convertir is_final a booleano
+        
         $isFinal = false;
         error_log("EvaluacionClasificacion::create - is_final raw value: " . var_export($data['is_final'], true));
         error_log("EvaluacionClasificacion::create - is_final type: " . gettype($data['is_final']));
@@ -33,7 +33,7 @@ class EvaluacionClasificacion
         
         error_log("EvaluacionClasificacion::create - is_final converted: " . var_export($isFinal, true));
 
-        // Construir la consulta con el orden correcto de las columnas
+        
         $fields = ['inscripcion_area_id', 'evaluador_id', 'puntuacion', 'observaciones', 'fecha_evaluacion', 'is_final', 'created_at'];
         $values = [
             (int)$data['inscripcion_area_id'],
@@ -41,7 +41,7 @@ class EvaluacionClasificacion
             (float)$data['puntuacion'],
             isset($data['observaciones']) && !empty(trim($data['observaciones'])) ? trim($data['observaciones']) : null,
             $data['fecha_evaluacion'],
-            $isFinal ? 'true' : 'false', // Convertir booleano a string para PostgreSQL
+            $isFinal ? 'true' : 'false', 
             date('Y-m-d H:i:s')
         ];
         
@@ -84,7 +84,7 @@ class EvaluacionClasificacion
             if ($key !== 'id') {
                 $fields[] = "{$key} = ?";
                 
-                // Convertir tipos de datos apropiados
+                
                 switch ($key) {
                     case 'inscripcion_area_id':
                     case 'evaluador_id':
@@ -94,7 +94,7 @@ class EvaluacionClasificacion
                         $values[] = (float)$value;
                         break;
                     case 'is_final':
-                        // Validar y convertir is_final a booleano
+                        
                         $isFinal = false;
                         if (is_bool($value)) {
                             $isFinal = $value;
@@ -103,7 +103,7 @@ class EvaluacionClasificacion
                         } elseif (is_numeric($value)) {
                             $isFinal = (bool)$value;
                         }
-                        $values[] = $isFinal ? 'true' : 'false'; // Convertir booleano a string para PostgreSQL
+                        $values[] = $isFinal ? 'true' : 'false'; 
                         break;
                     default:
                         $values[] = $value;
@@ -116,7 +116,7 @@ class EvaluacionClasificacion
             return false;
         }
         
-        // Agregar incremento de modificaciones_count
+        
         $fields[] = "modificaciones_count = modificaciones_count + 1";
         
         $values[] = (int)$id;

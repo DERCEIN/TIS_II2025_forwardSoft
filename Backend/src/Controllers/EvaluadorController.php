@@ -59,7 +59,7 @@ class EvaluadorController
             
             $fase = $_GET['fase'] ?? 'clasificacion';
 
-            // Consulta que incluye las evaluaciones ya registradas
+           
             $sql = "SELECT 
                         ae.inscripcion_area_id,
                         ia.area_competencia_id,

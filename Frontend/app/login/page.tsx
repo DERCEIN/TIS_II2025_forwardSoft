@@ -19,7 +19,7 @@ export default function LoginPage() {
   const { login, isLoading, isAuthenticated, user, error: authError, clearError } = useAuth()
   const router = useRouter()
 
-  // Redirigir automáticamente según el rol del usuario
+  
   useEffect(() => {
     if (isAuthenticated && user) {
       console.log("Usuario autenticado, redirigiendo según rol:", user.role)
@@ -52,7 +52,7 @@ export default function LoginPage() {
 
     try {
       console.log("Intentando login con:", username)
-      // Usar el sistema de autenticación real
+      
       await login(username, password, "")
       console.log("Login exitoso")
     } catch (err: any) {

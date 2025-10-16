@@ -173,6 +173,32 @@ export class AuthService {
   }
 }
 
+// Perfil del usuario autenticado
+export class ProfileService {
+  static async changePassword(userId: number, data: { current_password: string; new_password: string; confirm_password: string }) {
+    return ApiService.put(`/api/users/${userId}/password`, data)
+  }
+
+  static async uploadAvatar(file: File) {
+    const form = new FormData()
+    form.append('avatar', file)
+
+    const url = `${API_BASE_URL}/api/users/avatar`
+    const token = ApiService.getToken()
+    const headers: HeadersInit = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(url, { method: 'POST', headers, body: form })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json?.message || 'Error al subir avatar')
+    return json as ApiResponse<{ avatar_url: string; saved: boolean; warning?: string }>
+  }
+
+  static async updateProfile(userId: number, data: { name?: string; email?: string }) {
+    return ApiService.put(`/api/users/${userId}`, data)
+  }
+}
+
 export class OlimpistaService {
   static async getAll(filters?: {
     search?: string

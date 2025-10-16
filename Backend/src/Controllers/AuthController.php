@@ -33,15 +33,15 @@ class AuthController
         $password = $input['password'];
         $role = isset($input['role']) ? trim($input['role']) : null;
 
-        // Validar email
+        
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             Response::validationError(['email' => 'Email inválido']);
         }
 
-        // Buscar usuario
+        
         $user = $this->userModel->findByEmail($email);
         
-        // Debug: log para verificar
+        
         error_log("Login attempt - Email: " . $email . ", Role: " . ($role ?: 'NULL'));
         error_log("User found: " . ($user ? 'YES' : 'NO'));
         if ($user) {
@@ -55,7 +55,7 @@ class AuthController
             Response::unauthorized('Credenciales inválidas');
         }
         
-        // Verificar que el rol coincida (solo si se proporciona rol)
+       
         if ($role && $user['role'] !== $role) {
             Response::unauthorized('Rol incorrecto para este usuario');
         }
@@ -73,12 +73,17 @@ class AuthController
         // Actualizar último login
         $this->userModel->updateLastLogin($user['id']);
 
+        // Incluir avatar_url si existe
+        $full = $this->userModel->findById($user['id']);
+        $avatarUrl = is_array($full) && array_key_exists('avatar_url', $full) ? ($full['avatar_url'] ?? null) : null;
+
         Response::success([
             'user' => [
                 'id' => $user['id'],
                 'email' => $user['email'],
                 'name' => $user['name'],
-                'role' => $user['role']
+                'role' => $user['role'],
+                'avatar_url' => $avatarUrl,
             ],
             'token' => $token
         ], 'Login exitoso');
@@ -127,7 +132,7 @@ class AuthController
 
     public function logout()
     {
-        // En una implementación más avanzada, podrías invalidar el token
+        
         Response::success(null, 'Logout exitoso');
     }
 
@@ -137,6 +142,28 @@ class AuthController
         
         if (!$user) {
             Response::unauthorized('Token inválido');
+        }
+
+        error_log("🔍 Debug ME - Usuario del JWT: " . json_encode($user));
+
+        // Completar datos desde la BD (avatar_url y name)
+        try {
+            $dbUser = $this->userModel->findById($user['id']);
+            error_log("🔍 Debug ME - Usuario de BD: " . json_encode($dbUser));
+            
+            if ($dbUser) {
+                // Asegurar que el name esté presente desde la BD
+                if (isset($dbUser['name']) && !empty($dbUser['name'])) {
+                    $user['name'] = $dbUser['name'];
+                }
+                
+                // Completar avatar_url si existe
+                if (array_key_exists('avatar_url', $dbUser)) {
+                    $user['avatar_url'] = $dbUser['avatar_url'] ?? null;
+                }
+            }
+        } catch (Exception $e) {
+            error_log("❌ Debug ME - Error al obtener usuario de BD: " . $e->getMessage());
         }
 
         // Obtener áreas asignadas para evaluadores y coordinadores
@@ -162,12 +189,12 @@ class AuthController
                 
                 $stmt->execute([$user['id']]);
                 $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                $user['areas'] = $areas; // Mantener toda la información de las áreas
+                $user['areas'] = $areas; 
                 
-                // Agregar información adicional
+                
                 if (!empty($areas)) {
-                    $user['area_nombre'] = $areas[0]['area_nombre']; // Primera área como principal
-                    $user['area_id'] = $areas[0]['area_id']; // ID de la primera área
+                    $user['area_nombre'] = $areas[0]['area_nombre']; 
+                    $user['area_id'] = $areas[0]['area_id']; 
                 }
             } catch (Exception $e) {
                 error_log("Error al obtener áreas del usuario: " . $e->getMessage());
@@ -177,6 +204,7 @@ class AuthController
             $user['areas'] = [];
         }
 
+        error_log("🔍 Debug ME - Usuario final a devolver: " . json_encode($user));
         Response::success($user, 'Información del usuario');
     }
 
