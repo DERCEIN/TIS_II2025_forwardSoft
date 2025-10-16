@@ -131,7 +131,7 @@ class Router
             if (file_exists($filePath) && is_file($filePath)) {
                 error_log("✅ Avatar - Archivo encontrado: " . $filePath);
                 
-                // Determinar el tipo MIME basado en la extensión
+                
                 $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
                 $mimeTypes = [
                     'png' => 'image/png',
@@ -144,13 +144,13 @@ class Router
                 
                 $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
                 
-                // Configurar headers para archivos estáticos
+                
                 header('Content-Type: ' . $mimeType);
                 header('Content-Length: ' . filesize($filePath));
                 header('Cache-Control: public, max-age=31536000'); // Cache por 1 año
                 header('Last-Modified: ' . gmdate('D, d M Y H:i:s', filemtime($filePath)) . ' GMT');
                 
-                // Servir el archivo
+                
                 readfile($filePath);
                 exit();
             } else {
@@ -159,16 +159,15 @@ class Router
             }
         });
 
-        // Catálogos públicos (para formularios de registro)
+        
         $this->addRoute('GET', '/api/areas-competencia', [CatalogoController::class, 'areasCompetencia']);
 
-        // Ruta de salud del API
         $this->addRoute('GET', '/api/health', function() {
             Response::success(['status' => 'ok', 'timestamp' => date('Y-m-d H:i:s')]);
         });
         
         
-        // Ruta raíz
+        
         $this->addRoute('GET', '/', function() {
             Response::success([
                 'message' => 'API ForwardSoft Olimpiadas',
@@ -197,7 +196,7 @@ class Router
         error_log("Router - Original Path: " . $path);
         error_log("Router - Total Routes: " . count($this->routes));
         
-        // Remover cualquier prefijo de directorio si existe
+        
         $basePaths = ['/backend/public', '/public', '/Backend/public'];
         foreach ($basePaths as $basePath) {
             if (strpos($path, $basePath) === 0) {

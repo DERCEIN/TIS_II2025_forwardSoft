@@ -28,7 +28,7 @@ export default function PerfilEvaluador() {
   const initials = (name || 'Usuario').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()
   const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
   
-  // Función para obtener el avatar más reciente disponible
+  
   const getLatestAvatar = () => {
     if (avatarPreview) return avatarPreview
     
@@ -42,7 +42,7 @@ export default function PerfilEvaluador() {
   const resolvedAvatar = getLatestAvatar()
 
 
-  // Actualizar el estado cuando el usuario cambie (después del refresh)
+  
   useEffect(() => {
     if (user) {
       const newName = (user?.name || user?.nombre || '') as string

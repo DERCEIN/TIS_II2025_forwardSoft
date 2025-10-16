@@ -73,7 +73,7 @@ class AuthController
         // Actualizar último login
         $this->userModel->updateLastLogin($user['id']);
 
-        // Incluir avatar_url si existe
+        
         $full = $this->userModel->findById($user['id']);
         $avatarUrl = is_array($full) && array_key_exists('avatar_url', $full) ? ($full['avatar_url'] ?? null) : null;
 
@@ -146,18 +146,18 @@ class AuthController
 
         error_log("🔍 Debug ME - Usuario del JWT: " . json_encode($user));
 
-        // Completar datos desde la BD (avatar_url y name)
+       
         try {
             $dbUser = $this->userModel->findById($user['id']);
             error_log("🔍 Debug ME - Usuario de BD: " . json_encode($dbUser));
             
             if ($dbUser) {
-                // Asegurar que el name esté presente desde la BD
+                
                 if (isset($dbUser['name']) && !empty($dbUser['name'])) {
                     $user['name'] = $dbUser['name'];
                 }
                 
-                // Completar avatar_url si existe
+                
                 if (array_key_exists('avatar_url', $dbUser)) {
                     $user['avatar_url'] = $dbUser['avatar_url'] ?? null;
                 }
@@ -166,7 +166,7 @@ class AuthController
             error_log("❌ Debug ME - Error al obtener usuario de BD: " . $e->getMessage());
         }
 
-        // Obtener áreas asignadas para evaluadores y coordinadores
+        
         if ($user['role'] === 'evaluador' || $user['role'] === 'coordinador') {
             try {
                 $pdo = $this->getConnection();

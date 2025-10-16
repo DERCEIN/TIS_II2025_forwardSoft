@@ -42,7 +42,7 @@ export default function PerfilCoordinador() {
   const resolvedAvatar = getLatestAvatar()
 
 
-  // Actualizar el estado cuando el usuario cambie (después del refresh)
+  
   useEffect(() => {
     if (user) {
       const newName = (user?.name || user?.nombre || '') as string

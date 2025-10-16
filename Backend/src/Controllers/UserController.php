@@ -264,10 +264,10 @@ class UserController
             Response::serverError('No se pudo guardar el archivo');
         }
 
-        // Ruta pública relativa
+        
         $publicPath = '/api/avatar/' . $filename;
 
-        // Opcional: limpiar avatares antiguos del mismo usuario para no acumular archivos
+        
         try {
             $existing = $this->userModel->findById($currentUser['id']);
             if ($existing && !empty($existing['avatar_url'])) {
@@ -275,10 +275,10 @@ class UserController
                 if (is_file($old)) { @unlink($old); }
             }
         } catch (\Throwable $e) {
-            // ignorar errores
+           
         }
 
-        // Intentar guardar avatar_url; si la columna no existe, responder con instrucción
+        
         $updated = false;
         try {
             error_log("🔍 Debug Avatar - Intentando actualizar usuario ID: " . $currentUser['id']);
