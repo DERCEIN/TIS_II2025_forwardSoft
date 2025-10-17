@@ -745,81 +745,105 @@ function ProgresoEvaluacionClasificatoria() {
         </div>
       </div>
 
-      {/* Dashboard con porcentaje de completitud por nivel */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Progreso por Nivel
-          </CardTitle>
-          <CardDescription>
-            Porcentaje de completitud de evaluaciones por nivel educativo
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {progressData.niveles.map((nivel: any, index: number) => (
-              <div key={index} className="space-y-4">
-                <div className="text-center">
-                  <h3 className="font-semibold text-lg">{nivel.nombre}</h3>
-                  <div className="text-3xl font-bold text-blue-600 mt-2">
-                    {nivel.porcentaje}%
+      {/* Dashboard con Progreso por Nivel y Evaluadores Activos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Progreso por Nivel */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Progreso por Nivel
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {progressData.niveles.map((nivel: any, index: number) => (
+                <div key={index} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">{nivel.nombre}</h3>
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="text-sm text-muted-foreground">
+                        Completado: <span className="font-semibold text-green-600">{nivel.evaluados}/{nivel.total}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Porcentaje: <span className="font-semibold text-blue-600">{nivel.porcentaje}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {nivel.porcentaje}%
+                    </div>
                   </div>
                 </div>
-                <Progress value={nivel.porcentaje} className="h-3" />
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{nivel.evaluados} evaluados</span>
-                  <span>{nivel.total - nivel.evaluados} pendientes</span>
-                </div>
-                <div className="text-center text-sm">
-                  <span className="font-medium">{nivel.total} total</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Indicador visual de evaluadores activos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <UserCheck className="h-5 w-5" />
-            Evaluadores Activos
-          </CardTitle>
-          <CardDescription>
-            Estado actual de los evaluadores en el sistema
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600">
-                  {progressData.evaluadoresActivos}
-                </div>
-                <div className="text-sm text-muted-foreground">Activos</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-400">
-                  {progressData.totalEvaluadores - progressData.evaluadoresActivos}
-                </div>
-                <div className="text-sm text-muted-foreground">Inactivos</div>
-              </div>
+        {/* Evaluadores Activos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Evaluadores Activos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {[
+                {
+                  id: 1,
+                  name: "Prof. Juan Méndez",
+                  completedEvaluations: 12,
+                  status: "active",
+                  assignedParticipants: 15
+                },
+                {
+                  id: 2,
+                  name: "Prof. María Torres",
+                  completedEvaluations: 18,
+                  status: "active",
+                  assignedParticipants: 20
+                },
+                {
+                  id: 3,
+                  name: "Prof. Luis Gutiérrez",
+                  completedEvaluations: 15,
+                  status: "inactive",
+                  assignedParticipants: 15
+                }
+              ].map((evaluator: any) => {
+                const initials = evaluator.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()
+                const isActive = evaluator.status === 'active'
+                const statusText = isActive ? `Evaluando ${evaluator.assignedParticipants - evaluator.completedEvaluations}` : 'Inactivo'
+                const statusColor = isActive ? 'text-green-600' : 'text-gray-500'
+                
+                return (
+                  <div key={evaluator.id} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                        <span className="text-lg font-semibold text-blue-700">{initials}</span>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg">{evaluator.name}</h3>
+                        <div className="text-sm text-muted-foreground">
+                          Completado: <span className="font-semibold text-green-600">{evaluator.completedEvaluations} completados</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-sm font-medium ${statusColor}`}>
+                        {statusText}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-green-600 font-medium">
-                {Math.round((progressData.evaluadoresActivos / progressData.totalEvaluadores) * 100)}% activos
-              </span>
-            </div>
-          </div>
-          <Progress 
-            value={(progressData.evaluadoresActivos / progressData.totalEvaluadores) * 100} 
-            className="mt-4 h-2" 
-          />
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Lista de olimpistas sin evaluar */}
       <Card>
@@ -842,23 +866,17 @@ function ProgresoEvaluacionClasificatoria() {
                     {olimpista.area} - {olimpista.nivel}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <div className="text-sm text-muted-foreground">
-                      {olimpista.diasPendiente} días
-                    </div>
-                    <div className={`text-xs ${
-                      olimpista.diasPendiente > 5 ? 'text-red-600' : 
-                      olimpista.diasPendiente > 3 ? 'text-yellow-600' : 'text-green-600'
-                    }`}>
-                      {olimpista.diasPendiente > 5 ? 'Urgente' : 
-                       olimpista.diasPendiente > 3 ? 'Prioritario' : 'Normal'}
-                    </div>
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">
+                    {olimpista.diasPendiente} días
                   </div>
-                  <Button size="sm" variant="outline">
-                    <Eye className="h-4 w-4 mr-1" />
-                    Evaluar
-                  </Button>
+                  <div className={`text-xs ${
+                    olimpista.diasPendiente > 5 ? 'text-red-600' : 
+                    olimpista.diasPendiente > 3 ? 'text-yellow-600' : 'text-green-600'
+                  }`}>
+                    {olimpista.diasPendiente > 5 ? 'Urgente' : 
+                     olimpista.diasPendiente > 3 ? 'Prioritario' : 'Normal'}
+                  </div>
                 </div>
               </div>
             ))}

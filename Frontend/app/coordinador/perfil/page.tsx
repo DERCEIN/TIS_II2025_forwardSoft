@@ -26,14 +26,19 @@ export default function PerfilCoordinador() {
   const [name, setName] = useState(initialName)
   const [email, setEmail] = useState(initialEmail)
   const initials = (name || 'Usuario').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()
-  const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
   
   // Función para obtener el avatar más reciente disponible
   const getLatestAvatar = () => {
     if (avatarPreview) return avatarPreview
     
-    if (avatarFromUser && backendBase) {
-      return `${backendBase}${avatarFromUser}`
+    if (avatarFromUser) {
+      
+      if (avatarFromUser.startsWith('http')) {
+        return avatarFromUser
+      }
+      
+      const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      return `${backendBase}${avatarFromUser.startsWith('/') ? '' : '/'}${avatarFromUser}`
     }
     
     return null
