@@ -42,7 +42,7 @@ export default function EvaluatorDashboard() {
   const router = useRouter()
   const { logout: authLogout, user } = useAuth() as any
   const avatarUrl = user?.avatar_url as string | undefined
-  const toAbsolute = (p?: string) => p && /^https?:\/\//i.test(p) ? p : (p ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${p}` : undefined)
+  const toAbsolute = (p?: string) => p && /^https?:\/\//i.test(p) ? p : (p ? `${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}${p}` : undefined)
   const avatarSrc = toAbsolute(avatarUrl)
   const userName: string = user?.name || user?.nombre || ""
   const initials = userName ? userName.split(' ').map((p: string)=>p[0]).slice(0,2).join('').toUpperCase() : 'U'

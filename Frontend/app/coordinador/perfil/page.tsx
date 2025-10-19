@@ -37,7 +37,7 @@ export default function PerfilCoordinador() {
         return avatarFromUser
       }
       
-      const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo';
       return `${backendBase}${avatarFromUser.startsWith('/') ? '' : '/'}${avatarFromUser}`
     }
     

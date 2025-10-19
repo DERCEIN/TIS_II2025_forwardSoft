@@ -175,6 +175,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const response = await AuthService.getProfile()
       if (response.success && response.data) {
+        console.log('🔍 AuthContext - Usuario refrescado:', response.data)
         setState(prev => ({
           ...prev,
           user: response.data,
