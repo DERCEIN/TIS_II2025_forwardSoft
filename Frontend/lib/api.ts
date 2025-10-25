@@ -1,4 +1,4 @@
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo').replace(/\/+$/, '')
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 
 export interface ApiResponse<T = any> {
@@ -574,7 +574,7 @@ export class CoordinadorService {
 
   static async generarAsignaciones(params: {
     area_id: number
-    nivel_id?: number
+    nivel_id?: number | string
     ronda_id?: number
     fase: 'clasificacion' | 'premiacion'
     num_evaluadores: number
@@ -688,6 +688,10 @@ export class CoordinadorService {
 
   static async getEvaluadoresPorArea(areaId: number) {
     return ApiService.get(`/api/coordinador/evaluadores-por-area?area_id=${areaId}`)
+  }
+
+  static async getProgresoEvaluacion() {
+    return ApiService.get('/api/coordinador/progreso-evaluacion')
   }
 }
 

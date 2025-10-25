@@ -46,7 +46,7 @@ import { useAuth } from "@/contexts/AuthContext"
 function ListaInscritosAreaNivel() {
   const [loading, setLoading] = useState<boolean>(true)
   const [search, setSearch] = useState<string>("")
-  const [areaFilter, setAreaFilter] = useState<string>("all")
+  const [departamentoFilter, setDepartamentoFilter] = useState<string>("all")
   const [nivelFilter, setNivelFilter] = useState<string>("all")
   const [estadoFilter, setEstadoFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<string>("nombre")
@@ -157,14 +157,15 @@ function ListaInscritosAreaNivel() {
       institucion.toLowerCase().includes(search.toLowerCase())
     
     const area = p.area_nombre || p.area || ''
+    const departamento = p.departamento_nombre || p.departamento || ''
     const nivel = p.nivel_nombre || p.nivel || ''
     const estado = p.estado_evaluacion || p.inscripcion_estado || p.estado || ''
     
-    const matchesArea = areaFilter === "all" || area === areaFilter
+    const matchesDepartamento = departamentoFilter === "all" || departamento === departamentoFilter
     const matchesNivel = nivelFilter === "all" || nivel === nivelFilter
     const matchesEstado = estadoFilter === "all" || estado === estadoFilter
 
-    return matchesSearch && matchesArea && matchesNivel && matchesEstado
+    return matchesSearch && matchesDepartamento && matchesNivel && matchesEstado
   }).sort((a, b) => {
     const nombreA = a.nombre_completo || a.nombre || ''
     const nombreB = b.nombre_completo || b.nombre || ''
@@ -412,7 +413,7 @@ function ListaInscritosAreaNivel() {
       </div>
 
       {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="text-center">
@@ -424,24 +425,8 @@ function ListaInscritosAreaNivel() {
         <Card>
           <CardContent className="p-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.porEstado.confirmado || 0}</div>
-              <div className="text-sm text-muted-foreground">Confirmados</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">{stats.porEstado.pendiente || 0}</div>
-              <div className="text-sm text-muted-foreground">Pendientes</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">{Object.keys(stats.porArea).length}</div>
-              <div className="text-sm text-muted-foreground">Áreas</div>
+              <div className="text-sm text-muted-foreground">Mi Área</div>
             </div>
           </CardContent>
         </Card>
@@ -463,17 +448,21 @@ function ListaInscritosAreaNivel() {
             
             {/* Filtros */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Select value={areaFilter} onValueChange={setAreaFilter}>
+              <Select value={departamentoFilter} onValueChange={setDepartamentoFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Filtrar por área" />
+                  <SelectValue placeholder="Filtrar por departamento" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas las áreas</SelectItem>
-                  {Object.keys(stats.porArea).map(area => (
-                    <SelectItem key={area} value={area}>
-                      {area} ({stats.porArea[area]})
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="all">Todos los departamentos</SelectItem>
+                  <SelectItem value="Cochabamba">Cochabamba</SelectItem>
+                  <SelectItem value="La Paz">La Paz</SelectItem>
+                  <SelectItem value="Santa Cruz">Santa Cruz</SelectItem>
+                  <SelectItem value="Oruro">Oruro</SelectItem>
+                  <SelectItem value="Potosí">Potosí</SelectItem>
+                  <SelectItem value="Chuquisaca">Chuquisaca</SelectItem>
+                  <SelectItem value="Tarija">Tarija</SelectItem>
+                  <SelectItem value="Beni">Beni</SelectItem>
+                  <SelectItem value="Pando">Pando</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -545,7 +534,7 @@ function ListaInscritosAreaNivel() {
               <p className="text-muted-foreground">No se encontraron participantes con los filtros aplicados</p>
               <Button variant="outline" size="sm" onClick={() => {
                 setSearch('')
-                setAreaFilter('all')
+                setDepartamentoFilter('all')
                 setNivelFilter('all')
                 setEstadoFilter('all')
               }} className="mt-2">
@@ -652,58 +641,53 @@ function ProgresoEvaluacionClasificatoria() {
   const [loading, setLoading] = useState<boolean>(true)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [progressData, setProgressData] = useState<any>({
-    niveles: [
-      { nombre: "Primario", total: 150, evaluados: 120, porcentaje: 80 },
-      { nombre: "Secundario", total: 200, evaluados: 160, porcentaje: 80 },
-      { nombre: "Superior", total: 100, evaluados: 75, porcentaje: 75 }
-    ],
-    evaluadoresActivos: 12,
-    totalEvaluadores: 15,
-    olimpistasSinEvaluar: [
-      { id: 1, nombre: "Ana García López", area: "Matemáticas", nivel: "Primario", diasPendiente: 3 },
-      { id: 2, nombre: "Carlos Mendoza", area: "Física", nivel: "Secundario", diasPendiente: 5 },
-      { id: 3, nombre: "María Torres", area: "Química", nivel: "Superior", diasPendiente: 2 },
-      { id: 4, nombre: "Luis Rodríguez", area: "Matemáticas", nivel: "Primario", diasPendiente: 7 },
-      { id: 5, nombre: "Elena Vargas", area: "Física", nivel: "Secundario", diasPendiente: 1 }
-    ]
+    niveles: [],
+    evaluadores: { total: 0, activos: 0 },
+    olimpistas_sin_evaluar: [],
+    estadisticas_generales: {
+      total_olimpistas: 0,
+      total_evaluados: 0,
+      total_pendientes: 0,
+      promedio_general: 0
+    }
   })
 
-  // Simular actualización en tiempo real cada 30 segundos
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLastUpdate(new Date())
-      // Aquí se haría la llamada real al API para obtener datos actualizados
-      console.log('Actualizando datos de progreso...')
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  // Cargar datos iniciales
+  // Actualización en tiempo real cada 30 segundos
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true)
       try {
-        // Simular llamada al API
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        setLoading(false)
+        const response = await CoordinadorService.getProgresoEvaluacion()
+        if (response.success) {
+          setProgressData(response.data)
+          setLastUpdate(new Date())
+        }
       } catch (error) {
         console.error('Error cargando datos de progreso:', error)
+      } finally {
         setLoading(false)
       }
     }
+
+    // Cargar datos iniciales
     loadData()
+
+    // Configurar actualización automática cada 30 segundos
+    const interval = setInterval(loadData, 30000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const handleRefresh = async () => {
     setLoading(true)
     try {
-      // Simular actualización manual
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setLastUpdate(new Date())
-      setLoading(false)
+      const response = await CoordinadorService.getProgresoEvaluacion()
+      if (response.success) {
+        setProgressData(response.data)
+        setLastUpdate(new Date())
+      }
     } catch (error) {
       console.error('Error actualizando datos:', error)
+    } finally {
       setLoading(false)
     }
   }
@@ -760,10 +744,10 @@ function ProgresoEvaluacionClasificatoria() {
               {progressData.niveles.map((nivel: any, index: number) => (
                 <div key={index} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{nivel.nombre}</h3>
+                    <h3 className="font-semibold text-lg">{nivel.nivel_nombre}</h3>
                     <div className="flex items-center gap-4 mt-2">
                       <div className="text-sm text-muted-foreground">
-                        Completado: <span className="font-semibold text-green-600">{nivel.evaluados}/{nivel.total}</span>
+                        Completado: <span className="font-semibold text-green-600">{nivel.evaluados}/{nivel.total_olimpistas}</span>
                       </div>
                       <div className="text-sm text-muted-foreground">
                         Porcentaje: <span className="font-semibold text-blue-600">{nivel.porcentaje}%</span>
@@ -791,55 +775,48 @@ function ProgresoEvaluacionClasificatoria() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {[
-                {
-                  id: 1,
-                  name: "Prof. Juan Méndez",
-                  completedEvaluations: 12,
-                  status: "active",
-                  assignedParticipants: 15
-                },
-                {
-                  id: 2,
-                  name: "Prof. María Torres",
-                  completedEvaluations: 18,
-                  status: "active",
-                  assignedParticipants: 20
-                },
-                {
-                  id: 3,
-                  name: "Prof. Luis Gutiérrez",
-                  completedEvaluations: 15,
-                  status: "inactive",
-                  assignedParticipants: 15
-                }
-              ].map((evaluator: any) => {
-                const initials = evaluator.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()
-                const isActive = evaluator.status === 'active'
-                const statusText = isActive ? `Evaluando ${evaluator.assignedParticipants - evaluator.completedEvaluations}` : 'Inactivo'
-                const statusColor = isActive ? 'text-green-600' : 'text-gray-500'
-                
-                return (
-                  <div key={evaluator.id} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <span className="text-lg font-semibold text-blue-700">{initials}</span>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg">{evaluator.name}</h3>
-                        <div className="text-sm text-muted-foreground">
-                          Completado: <span className="font-semibold text-green-600">{evaluator.completedEvaluations} completados</span>
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {progressData.evaluadores.activos}/{progressData.evaluadores.total}
+                </div>
+                <div className="text-sm text-muted-foreground">Evaluadores Activos</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Últimos 7 días
+                </div>
+              </div>
+              
+              {/* Lista de evaluadores */}
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm text-muted-foreground">Lista de Evaluadores</h4>
+                {progressData.evaluadores_lista && progressData.evaluadores_lista.length > 0 ? (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {progressData.evaluadores_lista.map((evaluador: any) => (
+                      <div key={evaluador.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">{evaluador.nombre}</div>
+                          <div className="text-xs text-muted-foreground">{evaluador.email}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-xs px-2 py-1 rounded-full ${
+                            evaluador.estado === 'activo' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {evaluador.estado === 'activo' ? 'Activo' : 'Inactivo'}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {evaluador.evaluaciones_completadas} evaluaciones
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-sm font-medium ${statusColor}`}>
-                        {statusText}
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                )
-              })}
+                ) : (
+                  <div className="text-center p-4 text-muted-foreground text-sm">
+                    No hay evaluadores registrados
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -858,7 +835,7 @@ function ProgresoEvaluacionClasificatoria() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {progressData.olimpistasSinEvaluar.map((olimpista: any) => (
+            {progressData.olimpistas_sin_evaluar.map((olimpista: any) => (
               <div key={olimpista.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
                 <div className="flex-1">
                   <div className="font-medium">{olimpista.nombre}</div>
@@ -868,14 +845,14 @@ function ProgresoEvaluacionClasificatoria() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">
-                    {olimpista.diasPendiente} días
+                    {olimpista.dias_pendiente} días
                   </div>
                   <div className={`text-xs ${
-                    olimpista.diasPendiente > 5 ? 'text-red-600' : 
-                    olimpista.diasPendiente > 3 ? 'text-yellow-600' : 'text-green-600'
+                    olimpista.dias_pendiente > 5 ? 'text-red-600' : 
+                    olimpista.dias_pendiente > 3 ? 'text-yellow-600' : 'text-green-600'
                   }`}>
-                    {olimpista.diasPendiente > 5 ? 'Urgente' : 
-                     olimpista.diasPendiente > 3 ? 'Prioritario' : 'Normal'}
+                    {olimpista.dias_pendiente > 5 ? 'Urgente' : 
+                     olimpista.dias_pendiente > 3 ? 'Prioritario' : 'Normal'}
                   </div>
                 </div>
               </div>
@@ -901,25 +878,25 @@ function ProgresoEvaluacionClasificatoria() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-600">
-                {progressData.niveles.reduce((acc: number, nivel: any) => acc + nivel.total, 0)}
+                {progressData.estadisticas_generales.total_olimpistas}
               </div>
               <div className="text-sm text-muted-foreground">Total Olimpistas</div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">
-                {progressData.niveles.reduce((acc: number, nivel: any) => acc + nivel.evaluados, 0)}
+                {progressData.estadisticas_generales.total_evaluados}
               </div>
               <div className="text-sm text-muted-foreground">Evaluados</div>
             </div>
             <div className="text-center p-4 bg-yellow-50 rounded-lg">
               <div className="text-2xl font-bold text-yellow-600">
-                {progressData.niveles.reduce((acc: number, nivel: any) => acc + (nivel.total - nivel.evaluados), 0)}
+                {progressData.estadisticas_generales.total_pendientes}
               </div>
               <div className="text-sm text-muted-foreground">Pendientes</div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-lg">
               <div className="text-2xl font-bold text-purple-600">
-                {Math.round(progressData.niveles.reduce((acc: number, nivel: any) => acc + nivel.porcentaje, 0) / progressData.niveles.length)}%
+                {progressData.estadisticas_generales.promedio_general}%
               </div>
               <div className="text-sm text-muted-foreground">Promedio</div>
             </div>
@@ -1671,12 +1648,15 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
   const [rows, setRows] = useState<any[]>([])
 
   const generar = async (confirmar: boolean) => {
-    if (!areaId) return
+    if (!areaId || !nivelId) {
+      console.error('Debe seleccionar un área y un nivel educativo')
+      return
+    }
     setLoading(true)
     try {
       const res = await CoordinadorService.generarAsignaciones({
         area_id: parseInt(areaId, 10),
-        nivel_id: nivelId ? parseInt(nivelId, 10) : undefined,
+        nivel_id: nivelId, // Enviar directamente 'primaria' o 'secundaria'
         fase,
         num_evaluadores: Math.max(1, Math.min(5, parseInt(numEval || '1', 10))),
         metodo,
@@ -1721,15 +1701,17 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
           </Select>
         </div>
         <div>
-          <div className="text-sm font-medium mb-1">Nivel</div>
+          <div className="text-sm font-medium mb-1">Nivel Educativo</div>
           <Select value={nivelId} onValueChange={setNivelId}>
-            <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Selecciona nivel educativo" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="1">Primario</SelectItem>
-              <SelectItem value="2">Secundario</SelectItem>
-              <SelectItem value="3">Superior</SelectItem>
+              <SelectItem value="primaria">Primario</SelectItem>
+              <SelectItem value="secundaria">Secundario</SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground mt-1">
+            El sistema asignará automáticamente 1 evaluador por cada nivel específico (1ro, 2do, 3ro, 4to, 5to, 6to)
+          </p>
         </div>
         <div>
           <div className="text-sm font-medium mb-1">Fase</div>
@@ -1768,24 +1750,66 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
         <Button variant="outline" disabled={!rows.length} onClick={exportCSV}>Exportar (Excel)</Button>
       </div>
 
+      {/* Estadísticas por nivel */}
+      {rows.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-4">Asignación Automática: 1 Evaluador por Nivel</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            El sistema ha asignado automáticamente un evaluador específico para cada nivel educativo encontrado
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {rows.reduce((acc: any[], row: any) => {
+              const nivel = row.nivel;
+              const evaluadorInfo = (row.evaluadores_info || [])[0];
+              if (!acc.find(item => item.nivel === nivel)) {
+                acc.push({
+                  nivel,
+                  evaluador: evaluadorInfo?.name || evaluadorInfo?.nombre || 'Sin asignar',
+                  total: 0
+                });
+              }
+              const item = acc.find(item => item.nivel === nivel);
+              if (item) item.total++;
+              return acc;
+            }, []).map((item, index) => (
+              <div key={index} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-800">{item.nivel}</h4>
+                <p className="text-blue-600">Evaluador: {item.evaluador}</p>
+                <p className="text-blue-600">Inscripciones: {item.total}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabla de resultados */}
       {rows.length > 0 && (
         <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Inscripción</TableHead>
-                <TableHead>Evaluadores</TableHead>
+                <TableHead>Competidor</TableHead>
+                <TableHead>Área</TableHead>
+                <TableHead>Nivel</TableHead>
+                <TableHead>Institución</TableHead>
+                <TableHead>Evaluador</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((r, i) => (
                 <TableRow key={`row-${i}`}>
                   <TableCell className="font-medium">{r.inscripcion_area_id}</TableCell>
+                  <TableCell>{r.competidor}</TableCell>
+                  <TableCell>{r.area}</TableCell>
+                  <TableCell>{r.nivel}</TableCell>
+                  <TableCell>{r.institucion}</TableCell>
                   <TableCell>
-                    {(r.evaluadores||[]).map((id: any) => {
-                      const ev = realEvaluators.find((e:any) => String(e.id) === String(id))
-                      return ev ? (ev.name || ev.nombre) : id
-                    }).join(', ')}
+                    {(r.evaluadores_info || []).map((evaluador: any, idx: number) => (
+                      <span key={idx} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                        {evaluador?.name || evaluador?.nombre || 'Sin asignar'}
+                      </span>
+                    ))}
                   </TableCell>
                 </TableRow>
               ))}

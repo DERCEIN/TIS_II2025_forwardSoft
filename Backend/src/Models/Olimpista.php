@@ -103,7 +103,7 @@ class Olimpista
         $olimpista = $stmt->fetch();
         
         if ($olimpista) {
-            // Obtener inscripciones del olimpista
+            // Obtener inscripciones del olimpista con detalles de grupos
             $inscripcionesSql = "SELECT 
                                     ia.*,
                                     ac.nombre as area_nombre,
@@ -113,7 +113,38 @@ class Olimpista
                                 LEFT JOIN niveles_competencia nc ON ia.nivel_competencia_id = nc.id
                                 WHERE ia.olimpista_id = ?";
             $inscripcionesStmt = $this->db->query($inscripcionesSql, [$id]);
-            $olimpista['inscripciones'] = $inscripcionesStmt->fetchAll();
+            $inscripciones = $inscripcionesStmt->fetchAll();
+            
+            // Agregar campos concatenados para compatibilidad
+            $areas = [];
+            $niveles = [];
+            $nombresGrupos = [];
+            $integrantesGrupos = [];
+            
+            foreach ($inscripciones as $inscripcion) {
+                if (!empty($inscripcion['area_nombre'])) {
+                    $areas[] = $inscripcion['area_nombre'];
+                }
+                if (!empty($inscripcion['nivel_nombre'])) {
+                    $niveles[] = $inscripcion['nivel_nombre'];
+                }
+                if ($inscripcion['es_grupo'] && !empty($inscripcion['nombre_grupo'])) {
+                    $nombresGrupos[] = $inscripcion['nombre_grupo'];
+                }
+                if ($inscripcion['es_grupo'] && !empty($inscripcion['integrantes_grupo'])) {
+                    $integrantesGrupos[] = $inscripcion['integrantes_grupo'];
+                }
+            }
+            
+            $olimpista['inscripciones'] = $inscripciones;
+            $olimpista['inscripciones_detalle'] = $inscripciones;
+            $olimpista['areas_competencia'] = implode(', ', array_unique($areas));
+            $olimpista['niveles_competencia'] = implode(', ', array_unique($niveles));
+            $olimpista['nombres_grupos'] = implode(', ', array_unique($nombresGrupos));
+            $olimpista['integrantes_grupos'] = implode('|', array_unique($integrantesGrupos));
+            
+            // Detectar si es grupo (si tiene al menos una inscripción grupal)
+            $olimpista['es_grupo'] = !empty($nombresGrupos);
         }
         
         return $olimpista;
@@ -134,16 +165,23 @@ class Olimpista
                 return [];
             }
             
-            // Consulta simplificada sin JOINs problemáticos
+            // Consulta que incluye las inscripciones por área con detalles de grupos
             $sql = "SELECT 
                         o.*,
                         COALESCE(tl.nombre_completo, '') as tutor_legal_nombre,
                         COALESCE(ue.nombre, '') as unidad_educativa_nombre,
-                        COALESCE(d.nombre, '') as departamento_nombre
+                        COALESCE(d.nombre, '') as departamento_nombre,
+                        STRING_AGG(DISTINCT ac.nombre, ', ') as areas_competencia,
+                        STRING_AGG(DISTINCT nc.nombre, ', ') as niveles_competencia,
+                        STRING_AGG(DISTINCT CASE WHEN ia.es_grupo THEN ia.nombre_grupo END, ', ') as nombres_grupos,
+                        STRING_AGG(DISTINCT CASE WHEN ia.es_grupo THEN ia.integrantes_grupo END, '|') as integrantes_grupos
                     FROM {$this->table} o
                     LEFT JOIN tutores_legales tl ON o.tutor_legal_id = tl.id
                     LEFT JOIN unidad_educativa ue ON o.unidad_educativa_id = ue.id
                     LEFT JOIN departamentos d ON o.departamento_id = d.id
+                    LEFT JOIN inscripciones_areas ia ON o.id = ia.olimpista_id
+                    LEFT JOIN areas_competencia ac ON ia.area_competencia_id = ac.id
+                    LEFT JOIN niveles_competencia nc ON ia.nivel_competencia_id = nc.id
                     WHERE o.is_active = true";
             
             $params = [];
@@ -160,7 +198,18 @@ class Olimpista
                 $params[] = $filters['departamento_id'];
             }
             
-            $sql .= " ORDER BY o.created_at DESC";
+            if (!empty($filters['area_id'])) {
+                $sql .= " AND ia.area_competencia_id = ?";
+                $params[] = $filters['area_id'];
+            }
+            
+            if (!empty($filters['nivel_id'])) {
+                $sql .= " AND ia.nivel_competencia_id = ?";
+                $params[] = $filters['nivel_id'];
+            }
+            
+            $sql .= " GROUP BY o.id, tl.nombre_completo, ue.nombre, d.nombre
+                      ORDER BY o.created_at DESC";
             
             $stmt = $this->db->query($sql, $params);
             return $stmt->fetchAll();
@@ -275,6 +324,26 @@ class Olimpista
                 ORDER BY total DESC";
         
         $stmt = $this->db->query($sql);
+        return $stmt->fetchAll();
+    }
+
+    public function getInscripcionesDetalle($olimpistaId)
+    {
+        $sql = "SELECT 
+                    ia.id as inscripcion_id,
+                    ia.es_grupo,
+                    ia.nombre_grupo,
+                    ia.integrantes_grupo,
+                    ia.estado as inscripcion_estado,
+                    ac.nombre as area_nombre,
+                    nc.nombre as nivel_nombre
+                FROM inscripciones_areas ia
+                LEFT JOIN areas_competencia ac ON ia.area_competencia_id = ac.id
+                LEFT JOIN niveles_competencia nc ON ia.nivel_competencia_id = nc.id
+                WHERE ia.olimpista_id = ?
+                ORDER BY ac.nombre, nc.nombre";
+        
+        $stmt = $this->db->query($sql, [$olimpistaId]);
         return $stmt->fetchAll();
     }
 }

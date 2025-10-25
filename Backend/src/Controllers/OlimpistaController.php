@@ -55,6 +55,10 @@ class OlimpistaController
             Response::notFound('Olimpista no encontrado');
         }
 
+        // Obtener detalles de inscripciones por área
+        $inscripcionesDetalle = $this->olimpistaModel->getInscripcionesDetalle($id);
+        $olimpista['inscripciones_detalle'] = $inscripcionesDetalle;
+
         Response::success($olimpista, 'Olimpista encontrado');
     }
 

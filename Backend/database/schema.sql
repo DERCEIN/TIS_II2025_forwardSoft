@@ -376,7 +376,8 @@ INSERT INTO areas_competencia (nombre, descripcion, permite_grupos, orden_displa
 ('Biología', 'Competencia de ciencias biológicas', FALSE, 4),
 ('Robótica', 'Competencia de diseño y programación de robots', TRUE, 5),
 ('Programación', 'Competencia de desarrollo de software', TRUE, 6),
-('Ciencias de la Tierra', 'Competencia de geología y ciencias ambientales', FALSE, 7)
+('Informática', 'Competencia de ciencias de la computación y tecnologías de la información', TRUE, 7),
+('Ciencias de la Tierra', 'Competencia de geología y ciencias ambientales', FALSE, 8)
 ON CONFLICT (nombre) DO NOTHING;
 
 -- Insertar niveles de competencia

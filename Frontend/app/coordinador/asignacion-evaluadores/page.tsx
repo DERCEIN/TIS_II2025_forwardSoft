@@ -122,8 +122,18 @@ export default function AsignacionEvaluadoresPage() {
 
   // Generar asignación (previsualizar)
   const generarAsignacion = async (confirmar = false) => {
+    console.log('=== INICIANDO GENERACIÓN DE ASIGNACIÓN ===')
+    console.log('Área seleccionada:', areaId)
+    console.log('Nivel seleccionado:', nivelId)
+    console.log('Ronda seleccionada:', rondaId)
+    
     if (!areaId) {
       setError("Selecciona un área de competencia")
+      return
+    }
+    
+    if (!nivelId) {
+      setError("Selecciona un nivel educativo")
       return
     }
 
@@ -135,9 +145,9 @@ export default function AsignacionEvaluadoresPage() {
     setError("")
 
     try {
-      const response = await CoordinadorService.generarAsignaciones({
+      const params = {
         area_id: parseInt(areaId),
-        nivel_id: nivelId ? parseInt(nivelId) : undefined,
+        nivel_id: nivelId, // Enviar directamente 'primaria' o 'secundaria'
         ronda_id: rondaId ? parseInt(rondaId) : undefined,
         fase: "clasificacion",
         num_evaluadores: parseInt(numEvaluadores),
@@ -145,17 +155,33 @@ export default function AsignacionEvaluadoresPage() {
         evitar_misma_institucion: evitarMismaInstitucion,
         evitar_misma_area: evitarMismaArea,
         confirmar
-      })
+      }
+      
+      console.log('Parámetros enviados:', params)
+      
+      const response = await CoordinadorService.generarAsignaciones(params)
+      
+      console.log('Respuesta del servidor:', response)
 
       if (response.success && response.data) {
+        console.log('Datos recibidos:', response.data)
+        console.log('Items:', response.data.items)
+        console.log('Estadísticas:', response.data.estadisticas)
+        
         setResultados(response.data.items || [])
         setEstadisticas(response.data.estadisticas || null)
+        
+        console.log('Resultados establecidos:', response.data.items || [])
         
         if (confirmar) {
           alert("Asignación guardada exitosamente")
         }
+      } else {
+        console.error('Error en la respuesta:', response)
+        setError(response.message || "Error en la respuesta del servidor")
       }
     } catch (err: any) {
+      console.error('Error al generar asignación:', err)
       setError(err.message || "Error al generar asignación")
     } finally {
       setGenerando(false)
@@ -282,21 +308,21 @@ export default function AsignacionEvaluadoresPage() {
                   </Select>
                 </div>
 
-                {/* Ronda/Fase */}
+                {/* Selección de nivel */}
                 <div className="space-y-2">
-                  <Label htmlFor="ronda">Ronda/Fase</Label>
-                  <Select value={rondaId} onValueChange={setRondaId} disabled={loading}>
+                  <Label htmlFor="nivelId">Nivel Educativo</Label>
+                  <Select value={nivelId} onValueChange={setNivelId} disabled={loading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona una ronda (opcional)" />
+                      <SelectValue placeholder="Selecciona nivel educativo" />
                     </SelectTrigger>
                     <SelectContent>
-                      {rondas.map((ronda) => (
-                        <SelectItem key={ronda.id} value={ronda.id.toString()}>
-                          {ronda.nombre}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="primaria">Primario</SelectItem>
+                      <SelectItem value="secundaria">Secundario</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    El sistema asignará automáticamente 1 evaluador por cada nivel específico (1ro, 2do, 3ro, 4to, 5to, 6to)
+                  </p>
                 </div>
 
               </CardContent>
@@ -374,7 +400,7 @@ export default function AsignacionEvaluadoresPage() {
               <CardContent className="space-y-3">
                 <Button 
                   onClick={() => generarAsignacion(false)} 
-                  disabled={!areaId || generando || guardando}
+                  disabled={!areaId || !nivelId || generando || guardando}
                   className="w-full"
                 >
                   {generando ? (
@@ -385,14 +411,14 @@ export default function AsignacionEvaluadoresPage() {
                   ) : (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2" />
-                      Previsualizar resultados
+                      Previsualizar Asignación Automática
                     </>
                   )}
                 </Button>
 
                 <Button 
                   onClick={() => generarAsignacion(true)} 
-                  disabled={!areaId || generando || guardando || resultados.length === 0}
+                  disabled={!areaId || !nivelId || generando || guardando || resultados.length === 0}
                   variant="outline"
                   className="w-full"
                 >

@@ -117,12 +117,16 @@ class CoordinadorController
     {
         $currentUser = JWTManager::getCurrentUser();
         $input = json_decode(file_get_contents('php://input'), true);
+        
+        error_log("=== RECIBIENDO PETICIÓN DE ASIGNACIÓN ===");
+        error_log("Input recibido: " . json_encode($input));
+        
         if (!$input) {
             Response::validationError(['general' => 'Datos inválidos']);
         }
 
         $areaId = (int)($input['area_id'] ?? 0);
-        $nivelId = isset($input['nivel_id']) ? (int)$input['nivel_id'] : null;
+        $nivelId = $input['nivel_id'] ?? null;
         $rondaId = isset($input['ronda_id']) ? (int)$input['ronda_id'] : null;
         $fase = $input['fase'] ?? 'clasificacion';
         $numEval = max(1, min(5, (int)($input['num_evaluadores'] ?? 2)));
@@ -130,15 +134,36 @@ class CoordinadorController
         $evitarMismaIE = (bool)($input['evitar_misma_institucion'] ?? true);
         $evitarMismaArea = (bool)($input['evitar_misma_area'] ?? true);
         $confirmar = (bool)($input['confirmar'] ?? false);
+        
+        error_log("Parámetros procesados:");
+        error_log("- areaId: $areaId");
+        error_log("- nivelId: $nivelId");
+        error_log("- rondaId: $rondaId");
+        error_log("- fase: $fase");
+        error_log("- numEval: $numEval");
+        error_log("- metodo: $metodo");
+        error_log("- evitarMismaIE: " . ($evitarMismaIE ? 'true' : 'false'));
+        error_log("- evitarMismaArea: " . ($evitarMismaArea ? 'true' : 'false'));
+        error_log("- confirmar: " . ($confirmar ? 'true' : 'false'));
 
         if ($areaId <= 0 || !in_array($fase, ['clasificacion','premiacion'])) {
             Response::validationError(['area_id' => 'Parámetros requeridos inválidos']);
         }
 
         
-        $whereNivel = $nivelId ? ' AND ia.nivel_competencia_id = :nivelId' : '';
+        // Manejar selección por categoría (Primaria/Secundaria)
+        $whereNivel = '';
+        if ($nivelId === 'primaria') {
+            // Buscar niveles que contengan "Primaria" o "primaria"
+            $whereNivel = " AND (LOWER(nc.nombre) LIKE '%primaria%' OR LOWER(nc.nombre) LIKE '%primario%')";
+        }
+        elseif ($nivelId === 'secundaria') {
+            // Buscar niveles que contengan "Secundaria" o "secundaria"
+            $whereNivel = " AND (LOWER(nc.nombre) LIKE '%secundaria%' OR LOWER(nc.nombre) LIKE '%secundario%')";
+        }
+        
         $sqlIns = "SELECT ia.id as inscripcion_area_id, o.nombre_completo, ue.id as unidad_id, ue.nombre as unidad_nombre, 
-                          ia.area_competencia_id, ac.nombre as area_nombre, nc.nombre as nivel_nombre
+                          ia.area_competencia_id, ac.nombre as area_nombre, nc.nombre as nivel_nombre, nc.id as nivel_id
                    FROM inscripciones_areas ia
                    JOIN olimpistas o ON o.id = ia.olimpista_id
                    JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
@@ -147,9 +172,38 @@ class CoordinadorController
                    WHERE ia.area_competencia_id = :areaId" . $whereNivel;
         $stmt = $this->pdo->prepare($sqlIns);
         $stmt->bindValue(':areaId', $areaId, PDO::PARAM_INT);
-        if ($nivelId) $stmt->bindValue(':nivelId', $nivelId, PDO::PARAM_INT);
         $stmt->execute();
         $inscripciones = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        
+        error_log("=== CONSULTA DE INSCRIPCIONES ===");
+        error_log("SQL: " . $sqlIns);
+        error_log("Área ID: $areaId");
+        error_log("Nivel ID: $nivelId");
+        error_log("WHERE nivel: $whereNivel");
+        error_log("Inscripciones encontradas: " . count($inscripciones));
+        
+        // Verificar si hay inscripciones sin filtro de nivel
+        $sqlSinFiltro = "SELECT ia.id as inscripcion_area_id, o.nombre_completo, ue.nombre as unidad_nombre, 
+                                ia.area_competencia_id, ac.nombre as area_nombre, nc.nombre as nivel_nombre, nc.id as nivel_id
+                         FROM inscripciones_areas ia
+                         JOIN olimpistas o ON o.id = ia.olimpista_id
+                         JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                         JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                         JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                         WHERE ia.area_competencia_id = :areaId";
+        $stmtSinFiltro = $this->pdo->prepare($sqlSinFiltro);
+        $stmtSinFiltro->bindValue(':areaId', $areaId, PDO::PARAM_INT);
+        $stmtSinFiltro->execute();
+        $inscripcionesSinFiltro = $stmtSinFiltro->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        
+        error_log("Inscripciones SIN filtro de nivel: " . count($inscripcionesSinFiltro));
+        if (!empty($inscripcionesSinFiltro)) {
+            error_log("Primera inscripción sin filtro: " . json_encode($inscripcionesSinFiltro[0]));
+        }
+        
+        if (!empty($inscripciones)) {
+            error_log("Primera inscripción con filtro: " . json_encode($inscripciones[0]));
+        }
 
         
         $sqlEval = "SELECT u.id, u.name, u.email, ea.area_competencia_id, 
@@ -162,66 +216,79 @@ class CoordinadorController
         $stmtE->bindValue(':areaId', $areaId, PDO::PARAM_INT);
         $stmtE->execute();
         $evaluadores = $stmtE->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        
+        error_log("=== CONSULTA DE EVALUADORES ===");
+        error_log("SQL: " . $sqlEval);
+        error_log("Evaluadores encontrados: " . count($evaluadores));
+        if (!empty($evaluadores)) {
+            error_log("Primer evaluador: " . json_encode($evaluadores[0]));
+        }
+
+        // Si no hay inscripciones con filtro de nivel, usar todas las inscripciones del área
+        if (empty($inscripciones) && !empty($inscripcionesSinFiltro)) {
+            error_log("=== USANDO INSCRIPCIONES SIN FILTRO DE NIVEL ===");
+            $inscripciones = $inscripcionesSinFiltro;
+        }
 
         if (empty($inscripciones) || empty($evaluadores)) {
+            error_log("=== ERROR: DATOS INSUFICIENTES ===");
+            error_log("Inscripciones vacías: " . (empty($inscripciones) ? 'SÍ' : 'NO'));
+            error_log("Evaluadores vacíos: " . (empty($evaluadores) ? 'SÍ' : 'NO'));
+            error_log("Inscripciones sin filtro: " . count($inscripcionesSinFiltro));
             Response::success(['items' => [], 'total' => 0, 'mensaje' => 'Sin datos suficientes para asignar'], 'Sin datos suficientes');
         }
 
-       
-        $resultado = [];
-        $asignacionesGeneradas = [];
-        
+        // Agrupar inscripciones por nivel
+        $inscripcionesPorNivel = [];
         foreach ($inscripciones as $ins) {
-            $pool = $evaluadores;
-            
-            
-            if ($evitarMismaIE) {
-                
-                $pool = array_filter($pool, function($eval) use ($ins) {
-                    return $eval['institucion_id'] != $ins['unidad_id'];
-                });
+            $nivelId = $ins['nivel_id'];
+            if (!isset($inscripcionesPorNivel[$nivelId])) {
+                $inscripcionesPorNivel[$nivelId] = [];
             }
+            $inscripcionesPorNivel[$nivelId][] = $ins;
+        }
+        
+        // Log para debug
+        error_log("=== ASIGNACIÓN AUTOMÁTICA POR NIVEL ===");
+        error_log("Categoría seleccionada: " . ($nivelId === 'primaria' ? 'PRIMARIA' : 'SECUNDARIA'));
+        error_log("Niveles encontrados: " . implode(', ', array_keys($inscripcionesPorNivel)));
+        foreach ($inscripcionesPorNivel as $nivelId => $inscripciones) {
+            error_log("Nivel $nivelId: " . count($inscripciones) . " inscripciones");
+        }
+        
+        // Asignar 1 evaluador por nivel
+        $resultado = [];
+        $evaluadoresAsignadosPorNivel = [];
+        $evaluadoresDisponibles = $evaluadores;
+        
+        foreach ($inscripcionesPorNivel as $nivelId => $inscripcionesNivel) {
+            // Seleccionar 1 evaluador para este nivel
+            $evaluadorNivel = null;
             
-            if ($evitarMismaArea) {
-                
-            }
-
-            if (empty($pool)) {
-                
-                $pool = $evaluadores;
-            }
-
-            $asignados = [];
-            
-            if ($metodo === 'simple') {
-                // Asignación aleatoria simple
-                $poolIdx = array_keys($pool);
-                shuffle($poolIdx);
-                foreach ($poolIdx as $idx) {
-                    $asignados[] = (int)$pool[$idx]['id'];
-                    if (count($asignados) >= $numEval) break;
-                }
+            if (!empty($evaluadoresDisponibles)) {
+                // Tomar el primer evaluador disponible
+                $evaluadorNivel = array_shift($evaluadoresDisponibles);
+                $evaluadoresAsignadosPorNivel[$nivelId] = $evaluadorNivel;
+                error_log("Nivel $nivelId ({$inscripcionesNivel[0]['nivel_nombre']}) asignado al evaluador: {$evaluadorNivel['name']} (ID: {$evaluadorNivel['id']})");
             } else {
-                // Asignación balanceada por área
-                $asignados = $this->asignacionBalanceada($pool, $numEval, $asignacionesGeneradas);
+                // Si no hay más evaluadores, reutilizar uno existente
+                $evaluadorNivel = $evaluadores[array_rand($evaluadores)];
+                $evaluadoresAsignadosPorNivel[$nivelId] = $evaluadorNivel;
+                error_log("Nivel $nivelId ({$inscripcionesNivel[0]['nivel_nombre']}) reasignado al evaluador: {$evaluadorNivel['name']} (ID: {$evaluadorNivel['id']})");
             }
-
-            $resultado[] = [
-                'inscripcion_area_id' => (int)$ins['inscripcion_area_id'],
-                'competidor' => $ins['nombre_completo'],
-                'area' => $ins['area_nombre'],
-                'nivel' => $ins['nivel_nombre'],
-                'institucion' => $ins['unidad_nombre'],
-                'evaluadores' => $asignados,
-                'evaluadores_info' => array_map(function($id) use ($evaluadores) {
-                    $eval = array_filter($evaluadores, fn($e) => $e['id'] == $id);
-                    return reset($eval);
-                }, $asignados)
-            ];
             
-            
-            foreach ($asignados as $evalId) {
-                $asignacionesGeneradas[$evalId] = ($asignacionesGeneradas[$evalId] ?? 0) + 1;
+            // Asignar el mismo evaluador a todas las inscripciones de este nivel
+            foreach ($inscripcionesNivel as $ins) {
+                $resultado[] = [
+                    'inscripcion_area_id' => (int)$ins['inscripcion_area_id'],
+                    'competidor' => $ins['nombre_completo'],
+                    'area' => $ins['area_nombre'],
+                    'nivel' => $ins['nivel_nombre'],
+                    'nivel_id' => $nivelId,
+                    'institucion' => $ins['unidad_nombre'],
+                    'evaluadores' => [(int)$evaluadorNivel['id']],
+                    'evaluadores_info' => [$evaluadorNivel]
+                ];
             }
         }
 
@@ -251,16 +318,36 @@ class CoordinadorController
             }
         }
 
+        // Estadísticas por nivel
+        $estadisticasNiveles = [];
+        foreach ($evaluadoresAsignadosPorNivel as $nivelId => $evaluador) {
+            $inscripcionesNivel = $inscripcionesPorNivel[$nivelId];
+            $estadisticasNiveles[] = [
+                'nivel_id' => $nivelId,
+                'nivel_nombre' => $inscripcionesNivel[0]['nivel_nombre'],
+                'evaluador_id' => $evaluador['id'],
+                'evaluador_nombre' => $evaluador['name'],
+                'total_inscripciones' => count($inscripcionesNivel)
+            ];
+        }
+        
+        $categoria = $nivelId === 'primaria' ? 'Primaria' : 'Secundaria';
+        $mensaje = $confirmar 
+            ? "Asignación automática de $categoria guardada exitosamente" 
+            : "Previsualización de asignación automática para $categoria generada";
+            
         Response::success([
             'items' => $resultado, 
             'total' => count($resultado),
             'estadisticas' => [
+                'categoria' => $categoria,
                 'total_inscripciones' => count($inscripciones),
                 'total_evaluadores' => count($evaluadores),
-                'evaluadores_por_inscripcion' => $numEval,
-                'metodo' => $metodo
+                'niveles_asignados' => count($evaluadoresAsignadosPorNivel),
+                'distribucion_niveles' => $estadisticasNiveles,
+                'metodo' => 'Asignación automática: 1 evaluador por nivel específico'
             ]
-        ], $confirmar ? 'Asignación guardada exitosamente' : 'Previsualización generada');
+        ], $mensaje);
     }
 
    
@@ -799,4 +886,152 @@ class CoordinadorController
         }
     }
 
+    public function getProgresoEvaluacion()
+    {
+        try {
+            // Obtener el área del coordinador desde el token JWT
+            $userData = JWTManager::getCurrentUser();
+            
+            if (!$userData || $userData['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            // Obtener el área del coordinador
+            $sqlAreaCoordinador = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlAreaCoordinador);
+            $stmtArea->execute([$userData['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+            
+            // Obtener datos de progreso por nivel (solo del área del coordinador)
+            $sqlNiveles = "
+                SELECT 
+                    nc.nombre as nivel_nombre,
+                    COUNT(DISTINCT ia.olimpista_id) as total_olimpistas,
+                    COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL THEN ia.olimpista_id END) as evaluados,
+                    CASE 
+                        WHEN COUNT(DISTINCT ia.olimpista_id) > 0 
+                        THEN ROUND((COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL THEN ia.olimpista_id END) * 100.0) / COUNT(DISTINCT ia.olimpista_id), 2)
+                        ELSE 0 
+                    END as porcentaje
+                FROM inscripciones_areas ia
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.estado != 'descalificado' AND ia.area_competencia_id = ?
+                GROUP BY nc.id, nc.nombre, nc.orden_display
+                ORDER BY nc.orden_display
+            ";
+            
+            $stmtNiveles = $this->pdo->prepare($sqlNiveles);
+            $stmtNiveles->execute([$areaId]);
+            $niveles = $stmtNiveles->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Obtener estadísticas de evaluadores (solo del área del coordinador)
+            $sqlEvaluadores = "
+                SELECT 
+                    COUNT(DISTINCT ea.user_id) as total_evaluadores,
+                    COUNT(DISTINCT CASE WHEN u.last_login > NOW() - INTERVAL '7 days' THEN ea.user_id END) as evaluadores_activos
+                FROM evaluadores_areas ea
+                JOIN users u ON u.id = ea.user_id
+                WHERE ea.is_active = true AND u.is_active = true AND ea.area_competencia_id = ?
+            ";
+            
+            $stmtEvaluadores = $this->pdo->prepare($sqlEvaluadores);
+            $stmtEvaluadores->execute([$areaId]);
+            $evaluadoresStats = $stmtEvaluadores->fetch(PDO::FETCH_ASSOC);
+            
+            // Obtener lista de evaluadores activos (solo del área del coordinador)
+            $sqlEvaluadoresActivos = "
+                SELECT 
+                    u.id,
+                    u.name as nombre,
+                    u.email,
+                    u.last_login,
+                    COUNT(DISTINCT ec.id) as evaluaciones_completadas,
+                    COUNT(DISTINCT ae.id) as asignaciones_pendientes,
+                    CASE 
+                        WHEN u.last_login > NOW() - INTERVAL '7 days' THEN 'activo'
+                        ELSE 'inactivo'
+                    END as estado
+                FROM evaluadores_areas ea
+                JOIN users u ON u.id = ea.user_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.evaluador_id = u.id
+                LEFT JOIN asignaciones_evaluacion ae ON ae.evaluador_id = u.id
+                WHERE ea.is_active = true AND u.is_active = true AND ea.area_competencia_id = ?
+                GROUP BY u.id, u.name, u.email, u.last_login
+                ORDER BY u.last_login DESC NULLS LAST
+            ";
+            
+            $stmtEvaluadoresActivos = $this->pdo->prepare($sqlEvaluadoresActivos);
+            $stmtEvaluadoresActivos->execute([$areaId]);
+            $evaluadoresActivos = $stmtEvaluadoresActivos->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Obtener olimpistas sin evaluar (últimos 7 días, solo del área del coordinador)
+            $sqlSinEvaluar = "
+                SELECT 
+                    o.id,
+                    CONCAT(o.nombre, ' ', o.apellido) as nombre,
+                    ac.nombre as area,
+                    nc.nombre as nivel,
+                    EXTRACT(DAYS FROM NOW() - ia.created_at) as dias_pendiente
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.estado != 'descalificado' 
+                AND ec.id IS NULL
+                AND ia.created_at > NOW() - INTERVAL '7 days'
+                AND ia.area_competencia_id = ?
+                ORDER BY ia.created_at ASC
+                LIMIT 10
+            ";
+            
+            $stmtSinEvaluar = $this->pdo->prepare($sqlSinEvaluar);
+            $stmtSinEvaluar->execute([$areaId]);
+            $olimpistasSinEvaluar = $stmtSinEvaluar->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Calcular estadísticas generales
+            $totalOlimpistas = array_sum(array_column($niveles, 'total_olimpistas'));
+            $totalEvaluados = array_sum(array_column($niveles, 'evaluados'));
+            $totalPendientes = $totalOlimpistas - $totalEvaluados;
+            $promedioGeneral = $totalOlimpistas > 0 ? round(($totalEvaluados * 100) / $totalOlimpistas, 2) : 0;
+            
+            Response::success([
+                'niveles' => $niveles,
+                'evaluadores' => [
+                    'total' => (int)$evaluadoresStats['total_evaluadores'],
+                    'activos' => (int)$evaluadoresStats['evaluadores_activos']
+                ],
+                'evaluadores_lista' => $evaluadoresActivos,
+                'olimpistas_sin_evaluar' => $olimpistasSinEvaluar,
+                'estadisticas_generales' => [
+                    'total_olimpistas' => $totalOlimpistas,
+                    'total_evaluados' => $totalEvaluados,
+                    'total_pendientes' => $totalPendientes,
+                    'promedio_general' => $promedioGeneral
+                ],
+                'ultima_actualizacion' => date('Y-m-d H:i:s')
+            ], 'Datos de progreso obtenidos');
+            
+        } catch (\Exception $e) {
+            error_log('Error obteniendo progreso de evaluación: ' . $e->getMessage());
+            Response::serverError('Error al obtener datos de progreso: ' . $e->getMessage());
+        }
+    }
 } 

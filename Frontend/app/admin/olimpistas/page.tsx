@@ -24,7 +24,8 @@ import {
   Calendar,
   MapPin,
   School,
-  FileText
+  FileText,
+  CreditCard
 } from 'lucide-react'
 import Link from 'next/link'
 import { OlimpistaService } from '@/lib/api'
@@ -39,10 +40,35 @@ interface Olimpista {
   fecha_nacimiento: string
   unidad_educativa: string
   area_competencia: string
+  areas_competencia: string
   nivel_competencia: string
+  niveles_competencia: string
   departamento: string
   fecha_registro: string
   estado: string
+  // Campos de grupo
+  es_grupo?: boolean
+  nombre_grupo?: string
+  integrantes_grupo?: string
+  nombres_grupos?: string
+  integrantes_grupos?: string
+  inscripciones_detalle?: Array<{
+    area_nombre: string
+    nivel_nombre: string
+    es_grupo: boolean
+    nombre_grupo?: string
+    integrantes_grupo?: string
+  }>
+  // Campos de tutor legal
+  tutor_legal_nombre?: string
+  tutor_legal_telefono?: string
+  tutor_legal_email?: string
+  tutor_legal_direccion?: string
+  // Campos de tutor académico
+  tutor_academico_nombre?: string
+  tutor_academico_telefono?: string
+  tutor_academico_email?: string
+  tutor_academico_especialidad?: string
 }
 
 export default function OlimpistasPage() {
@@ -84,18 +110,40 @@ export default function OlimpistasPage() {
       olimpista.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       olimpista.documento_identidad.includes(searchTerm)
     
-    const matchesArea = !filterArea || olimpista.area_competencia === filterArea
+    const matchesArea = !filterArea || 
+      olimpista.area_competencia === filterArea ||
+      (olimpista.areas_competencia && olimpista.areas_competencia.includes(filterArea))
     
     return matchesSearch && matchesArea
   })
 
-  // Obtener áreas únicas
-  const areas = [...new Set(olimpistas.map(o => o.area_competencia))]
+  // Obtener áreas únicas (incluyendo múltiples áreas por participante)
+  const areas = [...new Set(
+    olimpistas.flatMap(o => 
+      o.areas_competencia ? o.areas_competencia.split(', ') : [o.area_competencia]
+    ).filter(Boolean)
+  )]
 
   // Función para mostrar detalles del olimpista
-  const handleViewDetails = (olimpista: Olimpista) => {
-    setSelectedOlimpista(olimpista)
+  const handleViewDetails = async (olimpista: Olimpista) => {
+    try {
+      setLoading(true)
+      const response = await OlimpistaService.getById(olimpista.id)
+      if (response.success && response.data) {
+        setSelectedOlimpista(response.data)
+        setShowDetailsModal(true)
+      } else {
+        console.error('Error al obtener detalles:', response.message)
+        setSelectedOlimpista(olimpista) // Fallback a datos básicos
     setShowDetailsModal(true)
+      }
+    } catch (error) {
+      console.error('Error al obtener detalles del olimpista:', error)
+      setSelectedOlimpista(olimpista) // Fallback a datos básicos
+      setShowDetailsModal(true)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const getEstadoColor = (estado: string) => {
@@ -291,9 +339,19 @@ export default function OlimpistasPage() {
                         <Badge className={getEstadoColor(olimpista.estado)}>
                           {olimpista.estado}
                         </Badge>
+                        {olimpista.areas_competencia ? (
+                          <div className="flex flex-wrap gap-1">
+                            {olimpista.areas_competencia.split(', ').map((area, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {area.trim()}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
                         <Badge variant="outline">
-                          {olimpista.area_competencia}
+                            {olimpista.area_competencia || 'Sin área'}
                         </Badge>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-muted-foreground">
                         <div>
@@ -340,120 +398,272 @@ export default function OlimpistasPage() {
 
         {/* Modal de detalles del olimpista */}
         <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Detalles del Olimpista
+          <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+            <DialogHeader className="pb-6">
+              <DialogTitle className="text-2xl font-bold text-center bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Detalles del Participante
               </DialogTitle>
-              <DialogDescription>
-                Información completa del participante
-              </DialogDescription>
             </DialogHeader>
             
             {selectedOlimpista && (
-              <div className="space-y-6">
+              <div className="space-y-8">
+                {/* Header del participante */}
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+                      {selectedOlimpista.nombre.charAt(0)}{selectedOlimpista.apellido.charAt(0)}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-3xl font-bold text-gray-900">{selectedOlimpista.nombre} {selectedOlimpista.apellido}</h3>
+                      <p className="text-gray-600 mt-1 text-lg">Participante de las Olimpiadas</p>
+                      <div className="flex items-center gap-3 mt-3">
+                        <Badge variant={selectedOlimpista.estado === 'activo' ? 'default' : 'secondary'} className="text-sm px-3 py-1">
+                          {selectedOlimpista.estado}
+                        </Badge>
+                        {selectedOlimpista.es_grupo && (
+                          <Badge variant="outline" className="text-sm bg-green-50 text-green-700 border-green-200 px-3 py-1">
+                            <Users className="w-4 h-4 mr-1" />
+                            Participación Grupal
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                      </div>
+                    </div>
+                    
                 {/* Información personal */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Nombre Completo</p>
-                        <p className="font-semibold">{selectedOlimpista.nombre} {selectedOlimpista.apellido}</p>
+                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                  <h4 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-800">
+                    <User className="h-6 w-6 text-blue-600" />
+                    Información Personal
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200 hover:shadow-md transition-shadow">
+                      <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Mail className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-blue-600 uppercase tracking-wide mb-1">Email</p>
+                        <p className="font-semibold text-gray-900 text-xs truncate" title={selectedOlimpista.email}>{selectedOlimpista.email}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Email</p>
-                        <p>{selectedOlimpista.email}</p>
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-green-50 to-green-100 rounded-lg border border-green-200 hover:shadow-md transition-shadow">
+                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Phone className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-green-600 uppercase tracking-wide mb-1">Teléfono</p>
+                        <p className="font-semibold text-gray-900 text-xs truncate" title={selectedOlimpista.telefono}>{selectedOlimpista.telefono}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <Phone className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Teléfono</p>
-                        <p>{selectedOlimpista.telefono}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Documento de Identidad</p>
-                        <p>{selectedOlimpista.documento_identidad}</p>
-                      </div>
-                    </div>
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-red-100 rounded-lg border border-red-200 hover:shadow-md transition-shadow">
+                      <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <MapPin className="h-3 w-3 text-white" />
                   </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Fecha de Nacimiento</p>
-                        <p>{new Date(selectedOlimpista.fecha_nacimiento).toLocaleDateString()}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-red-600 uppercase tracking-wide mb-1">Departamento</p>
+                        <p className="font-semibold text-gray-900 text-xs truncate" title={selectedOlimpista.departamento}>{selectedOlimpista.departamento}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <School className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Unidad Educativa</p>
-                        <p>{selectedOlimpista.unidad_educativa}</p>
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg border border-purple-200 hover:shadow-md transition-shadow">
+                      <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <CreditCard className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-purple-600 uppercase tracking-wide mb-1">Documento</p>
+                        <p className="font-semibold text-gray-900 text-xs truncate" title={selectedOlimpista.documento_identidad}>{selectedOlimpista.documento_identidad}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Departamento</p>
-                        <p>{selectedOlimpista.departamento}</p>
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg border border-orange-200 hover:shadow-md transition-shadow">
+                      <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Calendar className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-orange-600 uppercase tracking-wide mb-1">Fecha de Nacimiento</p>
+                        <p className="font-semibold text-gray-900 text-xs truncate" title={new Date(selectedOlimpista.fecha_nacimiento).toLocaleDateString()}>{new Date(selectedOlimpista.fecha_nacimiento).toLocaleDateString()}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Fecha de Registro</p>
-                        <p>{new Date(selectedOlimpista.fecha_registro).toLocaleDateString()}</p>
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 hover:shadow-md transition-shadow">
+                      <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <School className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-indigo-600 uppercase tracking-wide mb-1">Unidad Educativa</p>
+                        <p className="font-semibold text-gray-900 text-xs truncate" title={selectedOlimpista.unidad_educativa}>{selectedOlimpista.unidad_educativa}</p>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Información del Tutor Legal */}
+                {(selectedOlimpista.tutor_legal_nombre || selectedOlimpista.tutor_legal_telefono || selectedOlimpista.tutor_legal_email) && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <h4 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-800">
+                      <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
+                        <User className="h-5 w-5 text-white" />
+                      </div>
+                      Tutor Legal
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {selectedOlimpista.tutor_legal_nombre && (
+                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm font-medium text-amber-600 uppercase tracking-wide mb-1">Nombre Completo</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_legal_nombre}</p>
+                        </div>
+                      )}
+                      {selectedOlimpista.tutor_legal_telefono && (
+                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm font-medium text-amber-600 uppercase tracking-wide mb-1">Teléfono</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_legal_telefono}</p>
+                        </div>
+                      )}
+                      {selectedOlimpista.tutor_legal_email && (
+                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm font-medium text-amber-600 uppercase tracking-wide mb-1">Email</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_legal_email}</p>
+                        </div>
+                      )}
+                      {selectedOlimpista.tutor_legal_direccion && (
+                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm font-medium text-amber-600 uppercase tracking-wide mb-1">Dirección</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_legal_direccion}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Información del Tutor Académico */}
+                {(selectedOlimpista.tutor_academico_nombre || selectedOlimpista.tutor_academico_telefono || selectedOlimpista.tutor_academico_email) && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <h4 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-800">
+                      <div className="w-8 h-8 bg-teal-500 rounded-full flex items-center justify-center">
+                        <User className="h-5 w-5 text-white" />
+                      </div>
+                      Tutor Académico
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {selectedOlimpista.tutor_academico_nombre && (
+                        <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
+                          <p className="text-sm font-medium text-teal-600 uppercase tracking-wide mb-1">Nombre Completo</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_academico_nombre}</p>
+                        </div>
+                      )}
+                      {selectedOlimpista.tutor_academico_telefono && (
+                        <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
+                          <p className="text-sm font-medium text-teal-600 uppercase tracking-wide mb-1">Teléfono</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_academico_telefono}</p>
+                        </div>
+                      )}
+                      {selectedOlimpista.tutor_academico_email && (
+                        <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
+                          <p className="text-sm font-medium text-teal-600 uppercase tracking-wide mb-1">Email</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_academico_email}</p>
+                        </div>
+                      )}
+                      {selectedOlimpista.tutor_academico_especialidad && (
+                        <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
+                          <p className="text-sm font-medium text-teal-600 uppercase tracking-wide mb-1">Especialidad</p>
+                          <p className="font-semibold text-gray-900">{selectedOlimpista.tutor_academico_especialidad}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 {/* Información académica */}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-3">Información Académica</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Área de Competencia</p>
-                      <Badge variant="outline" className="mt-1">
+                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                  <h4 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-800">
+                    <div className="w-8 h-8 bg-violet-500 rounded-full flex items-center justify-center">
+                      <School className="h-5 w-5 text-white" />
+                    </div>
+                    Información Académica
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="p-4 bg-violet-50 rounded-lg border border-violet-200">
+                      <p className="text-sm font-medium text-violet-600 uppercase tracking-wide mb-2">Área de Competencia</p>
+                      <Badge variant="outline" className="text-sm px-3 py-1 bg-violet-100 text-violet-700 border-violet-300">
                         {selectedOlimpista.area_competencia}
                       </Badge>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Nivel de Competencia</p>
-                      <Badge variant="outline" className="mt-1">
+                    <div className="p-4 bg-violet-50 rounded-lg border border-violet-200">
+                      <p className="text-sm font-medium text-violet-600 uppercase tracking-wide mb-2">Nivel de Competencia</p>
+                      <Badge variant="outline" className="text-sm px-3 py-1 bg-violet-100 text-violet-700 border-violet-300">
                         {selectedOlimpista.nivel_competencia}
                       </Badge>
                     </div>
                   </div>
                 </div>
                 
-                {/* Estado */}
-                <div className="border-t pt-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Estado del Participante</p>
-                      <Badge className={getEstadoColor(selectedOlimpista.estado)}>
-                        {selectedOlimpista.estado}
-                      </Badge>
+                {/* Información de grupos */}
+                {(selectedOlimpista.es_grupo || selectedOlimpista.nombre_grupo || selectedOlimpista.nombres_grupos) && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <h4 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-800">
+                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <Users className="h-5 w-5 text-white" />
+                      </div>
+                      Información de Grupo
+                    </h4>
+                    <div className="space-y-4">
+                      {(selectedOlimpista.nombre_grupo || selectedOlimpista.nombres_grupos) && (
+                        <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                          <p className="text-sm font-medium text-green-600 uppercase tracking-wide mb-2">Nombre del Grupo</p>
+                          <p className="font-bold text-green-800 text-lg">
+                            {selectedOlimpista.nombre_grupo || selectedOlimpista.nombres_grupos || 'N/A'}
+                          </p>
+                        </div>
+                      )}
+                      
+                      {(selectedOlimpista.integrantes_grupo || selectedOlimpista.integrantes_grupos) && (
+                        <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                          <p className="text-sm font-medium text-green-600 uppercase tracking-wide mb-2">Integrantes del Grupo</p>
+                          <div className="mt-2 p-4 bg-white rounded-lg border border-green-200">
+                            <pre className="text-sm whitespace-pre-wrap text-gray-700">
+                              {selectedOlimpista.integrantes_grupo || selectedOlimpista.integrantes_grupos || 'N/A'}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
+                )}
+
+                {/* Detalles de inscripciones por área */}
+                {selectedOlimpista.inscripciones_detalle && selectedOlimpista.inscripciones_detalle.length > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <h4 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-800">
+                      <div className="w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-white" />
+                      </div>
+                      Inscripciones Detalladas
+                    </h4>
+                    <div className="space-y-4">
+                      {selectedOlimpista.inscripciones_detalle.map((inscripcion, index) => (
+                        <div key={index} className="p-4 bg-cyan-50 rounded-lg border border-cyan-200">
+                          <div className="flex items-center justify-between mb-3">
+                            <Badge variant="outline" className="text-sm px-3 py-1 bg-cyan-100 text-cyan-700 border-cyan-300">
+                              {inscripcion.area_nombre}
+                            </Badge>
+                            <Badge variant="secondary" className="text-sm px-3 py-1">
+                              {inscripcion.nivel_nombre}
+                      </Badge>
+                    </div>
+                          {inscripcion.es_grupo && (
+                            <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200">
+                              <p className="text-sm font-medium text-cyan-600 mb-1">Grupo: {inscripcion.nombre_grupo}</p>
+                              {inscripcion.integrantes_grupo && (
+                                <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                                  <pre className="whitespace-pre-wrap text-gray-600">{inscripcion.integrantes_grupo}</pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                  </div>
+                      ))}
                 </div>
+                  </div>
+                )}
+
               </div>
             )}
           </DialogContent>

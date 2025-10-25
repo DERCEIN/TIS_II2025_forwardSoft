@@ -442,7 +442,7 @@ class ImportController
 
     private function updateExistingOlimpista($olimpistaId, $rowData, $unidadId, $departamentoId, $areaId, $nivelId)
     {
-        // Actualizar datos del olimpista con estructura unificada
+        // Actualizar solo datos básicos del olimpista (sin sobrescribir área/nivel)
         $this->olimpistaModel->update($olimpistaId, [
             'nombre' => trim($rowData['nombre']),
             'apellido' => trim($rowData['apellido']),
@@ -452,8 +452,6 @@ class ImportController
             'grado_escolaridad' => trim($rowData['grado_escolaridad']),
             'unidad_educativa' => trim($rowData['unidad_educativa']),
             'departamento' => trim($rowData['departamento']),
-            'area_competencia' => trim($rowData['area_competencia']),
-            'nivel_competencia' => trim($rowData['nivel_competencia']),
             'unidad_educativa_id' => $unidadId,
             'departamento_id' => $departamentoId,
             'tutor_legal_nombre' => trim($rowData['tutor_legal_nombre']),
@@ -479,6 +477,17 @@ class ImportController
                 'nombre_grupo' => !empty($rowData['nombre_grupo']) ? trim($rowData['nombre_grupo']) : null,
                 'integrantes_grupo' => null
             ]);
+        } else {
+            // Si ya existe la inscripción, solo actualizar datos del grupo si es necesario
+            $esGrupoValue = trim($rowData['es_grupo'] ?? '');
+            $esGrupo = !empty($esGrupoValue) && strtolower($esGrupoValue) === 'si';
+            
+            if (!empty($rowData['nombre_grupo']) && $existingInscripcion['nombre_grupo'] !== trim($rowData['nombre_grupo'])) {
+                $this->inscripcionModel->update($existingInscripcion['id'], [
+                    'nombre_grupo' => trim($rowData['nombre_grupo']),
+                    'es_grupo' => $esGrupo
+                ]);
+            }
         }
     }
 
