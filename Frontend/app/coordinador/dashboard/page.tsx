@@ -2240,15 +2240,30 @@ export default function CoordinatorDashboard() {
               <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground mb-2">Competidores de {myArea?.name || areaName}</h1>
               <p className="text-sm sm:text-base text-muted-foreground">Lista completa de competidores registrados en el área de {myArea?.name || areaName}, clasificados por nivel y estado de evaluación</p>
               <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
-                  <span className="text-xs sm:text-sm font-medium text-green-800">
-                    Usted está registrado como <strong>Coordinador de Área</strong>
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+                    <div>
+                      <span className="text-xs sm:text-sm font-medium text-green-800">
+                        Usted está registrado como <strong>Coordinador de Área</strong>
+                      </span>
+                      <p className="text-xs text-green-600 mt-1">
+                        Coordina el área de {myArea?.name || areaName} y gestiona evaluadores
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    className="bg-pink-500 hover:bg-pink-600 text-white"
+                    onClick={() => {
+                      // TODO: Implementar programación de evaluación
+                      alert('Función de programación de evaluación en desarrollo');
+                    }}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Programar Evaluación
+                  </Button>
                 </div>
-                <p className="text-xs text-green-600 mt-1">
-                  Coordina el área de {myArea?.name || areaName} y gestiona evaluadores
-                </p>
               </div>
             </div>
           </div>
