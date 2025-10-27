@@ -1,3 +1,5 @@
+import { id } from "date-fns/locale"
+
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 
@@ -708,5 +710,60 @@ export class EvaluadorService {
 
   static async getEvaluaciones() {
     return ApiService.get('/api/evaluador/evaluaciones')
+  }
+}
+
+interface NuevoTiempoEvaluador {
+  coordinador_id: number
+  evaluador_id: number
+  start_date: string  // YYYY-MM-DD
+  start_time: string   // HH:mm
+  duration_days: number
+  status: string
+}
+
+
+
+export class CoordinadorAccionService {
+  static async getTiemposEvaluadoresPorArea(areaId: number) {
+    try {
+      if (!areaId || isNaN(areaId)) {
+        console.error("❌ ID de área inválido:", areaId)
+        return []
+      }
+      const res = await ApiService.get(`/api/coordinador/tiempos-evaluadores-por-area?area_id=${areaId}`)
+
+      if (!res.success || !res.data) {
+        console.warn("⚠️ No se encontraron datos de evaluadores para el área", areaId)
+        return []
+      }
+
+      const evaluadores = res.data.evaluadores || []
+
+      return evaluadores.map((e: any) => ({
+        id: e.id?.toString(),
+        name: e.name,
+        email: e.email,
+        area: e.area_nombre,
+        status: e.status || "sin-permiso",
+        levels: [],
+        startDate: e.start_date || null,
+        startTime: e.start_time || null,
+        durationDays: e.duration_days || null,
+      }))
+    } catch (error) {
+      console.error("❌ Error al obtener tiempos de evaluadores por área:", error)
+      return []
+    }
+  }
+
+  static async postTiemposEvaluadores( tiempo: NuevoTiempoEvaluador) {
+    return ApiService.post(`/api/coordinador/tiempos-evaluadores`, {tiempo})
+  }
+  static async putTiemposEvaluadores(tiempo: NuevoTiempoEvaluador) {
+    return ApiService.put(`/api/coordinador/tiempos-evaluadores/${tiempo}`)
+  }
+  static async deleteTiemposEvaluadores(tiempoId: number) {
+    return ApiService.delete(`/api/coordinador/tiempos-evaluadores/${tiempoId}`)
   }
 }

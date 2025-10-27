@@ -160,7 +160,6 @@ export default function AsignacionEvaluadoresPage() {
       console.log('Parámetros enviados:', params)
       
       const response = await CoordinadorService.generarAsignaciones(params)
-      
       console.log('Respuesta del servidor:', response)
 
       if (response.success && response.data) {

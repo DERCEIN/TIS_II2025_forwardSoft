@@ -2373,6 +2373,14 @@ export default function CoordinatorDashboard() {
                       <Users className="h-4 w-4" />
                       Ir a Asignación Aleatoria
                     </Button>
+                    <Button
+                    onClick={() => window.open('/coordinador/tiempos-evaluadores', '_blank')}
+                    className="flex items-center gap-2 w-full sm:w-auto"
+                    size="lg"
+                    >
+                    <Clock className="h-4 w-4" />
+                    Gestionar Tiempos de Evaluación
+                    </Button>
                     
                     <div className="text-xs text-muted-foreground">
                       💡 Configura el número de evaluadores, método de asignación y restricciones

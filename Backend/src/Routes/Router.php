@@ -73,6 +73,10 @@ class Router
         $this->addRoute('GET', '/api/coordinador/evaluadores-por-area', [CoordinadorController::class, 'getEvaluadoresPorArea'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/progreso-evaluacion', [CoordinadorController::class, 'getProgresoEvaluacion'], ['auth', 'coordinador']);
 
+        //Rutas de coordinador - tiempos de evaluadores
+        $this->addRoute('GET', path: '/api/coordinador/tiempos-evaluadores-por-area' ,handler: [CoordinadorController::class,'getTiemposEvaluadoresPorArea'], middleware: ['auth','coordinador']);
+        $this->addRoute(method: 'POST', path:'/api/coordinador/tiempos-evaluadores', handler: [CoordinadorController::class,'registrarTiemposEvaluadores'], middleware: ['auth','coordinador']);
+
         // Rutas de olimpistas
         $this->addRoute('GET', '/api/olimpistas', [OlimpistaController::class, 'index'], ['auth']);
         $this->addRoute('GET', '/api/olimpistas/{id}', [OlimpistaController::class, 'show'], ['auth']);
