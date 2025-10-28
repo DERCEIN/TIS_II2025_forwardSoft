@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS niveles_competencia_backup AS 
 SELECT * FROM niveles_competencia;
 
--- 2. Verificar datos existentes antes de la migración
+
 SELECT 
     'ANTES DE MIGRACIÓN' as estado,
     nc.nombre as nivel,
@@ -26,7 +26,7 @@ SELECT
 FROM olimpistas o
 JOIN inscripciones_areas ia ON ia.olimpista_id = o.id;
 
--- 4. Insertar nuevos niveles específicos (sin eliminar los existentes)
+
 INSERT INTO niveles_competencia (nombre, descripcion, orden_display, is_active) VALUES 
 ('Primaria 1ro', 'Primer grado de educación primaria', 1, true),
 ('Primaria 2do', 'Segundo grado de educación primaria', 2, true),
@@ -41,8 +41,7 @@ INSERT INTO niveles_competencia (nombre, descripcion, orden_display, is_active) 
 ('Secundaria 5to', 'Quinto año de educación secundaria', 11, true),
 ('Secundaria 6to', 'Sexto año de educación secundaria', 12, true);
 
--- 5. Actualizar inscripciones basándose en grado_escolaridad
--- Primaria 1ro-5to
+
 UPDATE inscripciones_areas 
 SET nivel_competencia_id = (
     SELECT id FROM niveles_competencia WHERE nombre = 'Primaria 1ro'
@@ -187,7 +186,7 @@ LEFT JOIN inscripciones_areas ia ON ia.nivel_competencia_id = nc.id
 GROUP BY nc.id, nc.nombre, nc.orden_display, nc.is_active
 ORDER BY nc.orden_display;
 
--- 9. Verificar que no hay inscripciones huérfanas
+
 SELECT 
     'INSCRIPCIONES SIN NIVEL ASIGNADO' as estado,
     COUNT(*) as total
@@ -195,6 +194,6 @@ FROM inscripciones_areas ia
 LEFT JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
 WHERE nc.id IS NULL;
 
--- 10. Limpiar tabla temporal
+
 DROP TABLE IF EXISTS mapeo_niveles;
 

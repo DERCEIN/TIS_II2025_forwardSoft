@@ -13,6 +13,8 @@ use ForwardSoft\Controllers\ImportController;
 use ForwardSoft\Controllers\EvaluacionController;
 use ForwardSoft\Controllers\ReporteController;
 use ForwardSoft\Controllers\CatalogoController;
+use ForwardSoft\Controllers\ConfiguracionOlimpiadaController;
+use ForwardSoft\Controllers\DescalificacionController;
 
 
 class Router
@@ -51,6 +53,18 @@ class Router
         $this->addRoute('GET', '/api/admin/users', [AdminController::class, 'users'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/users', [AdminController::class, 'createUser'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/users/{id}/resend-credentials', [AdminController::class, 'reenviarCredenciales'], ['auth', 'admin']);
+        
+        // Rutas de configuración general
+        $this->addRoute('GET', '/api/configuracion', [ConfiguracionOlimpiadaController::class, 'getConfiguracion'], ['auth']);
+        $this->addRoute('PUT', '/api/configuracion/general', [ConfiguracionOlimpiadaController::class, 'updateConfiguracionGeneral'], ['auth', 'admin']);
+
+        // Rutas de descalificación
+        $this->addRoute('GET', '/api/descalificacion/reglas', [DescalificacionController::class, 'getReglasPorArea'], ['auth']);
+        $this->addRoute('POST', '/api/descalificacion/registrar', [DescalificacionController::class, 'registrarDescalificacion'], ['auth']);
+        $this->addRoute('GET', '/api/descalificacion/area', [DescalificacionController::class, 'getDescalificacionesPorArea'], ['auth']);
+        $this->addRoute('POST', '/api/descalificacion/revocar', [DescalificacionController::class, 'revocarDescalificacion'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/descalificacion/verificar-automatica', [DescalificacionController::class, 'verificarDescalificacionAutomatica'], ['auth']);
+        $this->addRoute('GET', '/api/descalificacion/estadisticas', [DescalificacionController::class, 'getEstadisticas'], ['auth']);
 
         // Rutas de coordinador
         $this->addRoute('GET', '/api/coordinador/dashboard', [CoordinadorController::class, 'dashboard'], ['auth', 'coordinador']);
@@ -58,7 +72,9 @@ class Router
 
         // Rutas de evaluador
         $this->addRoute('GET', '/api/evaluador/dashboard', [EvaluadorController::class, 'dashboard'], ['auth', 'evaluador']);
-        $this->addRoute('GET', '/api/evaluador/evaluaciones', [EvaluadorController::class, 'evaluaciones'], ['auth', 'evaluador']);
+        $this->addRoute('GET', '/api/evaluador/evaluaciones', [EvaluadorController::class, 'getEvaluaciones'], ['auth', 'evaluador']);
+        $this->addRoute('GET', '/api/evaluador/estadisticas', [EvaluadorController::class, 'getEstadisticas'], ['auth', 'evaluador']);
+        $this->addRoute('GET', '/api/evaluador/verificar-permisos', [EvaluadorController::class, 'verificarPermisosEvaluador'], ['auth', 'evaluador']);
 
         // Rutas de coordinador - asignaciones de evaluadores
         $this->addRoute('GET', '/api/coordinador/catalogos', [CoordinadorController::class, 'getAreasNiveles'], ['auth', 'coordinador']);
@@ -72,6 +88,11 @@ class Router
         $this->addRoute('GET', '/api/coordinador/log-cambios-notas', [CoordinadorController::class, 'getLogCambiosNotas'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/evaluadores-por-area', [CoordinadorController::class, 'getEvaluadoresPorArea'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/progreso-evaluacion', [CoordinadorController::class, 'getProgresoEvaluacion'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/alertas-criticas', [CoordinadorController::class, 'getAlertasCriticas'], ['auth', 'coordinador']);
+
+        //Rutas de coordinador - tiempos de evaluadores
+        $this->addRoute('GET', path: '/api/coordinador/tiempos-evaluadores-por-area' ,handler: [CoordinadorController::class,'getTiemposEvaluadoresPorArea'], middleware: ['auth','coordinador']);
+        $this->addRoute(method: 'POST', path:'/api/coordinador/tiempos-evaluadores', handler: [CoordinadorController::class,'registrarTiemposEvaluadores'], middleware: ['auth','coordinador']);
 
         // Rutas de olimpistas
         $this->addRoute('GET', '/api/olimpistas', [OlimpistaController::class, 'index'], ['auth']);

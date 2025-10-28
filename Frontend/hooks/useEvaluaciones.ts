@@ -42,7 +42,7 @@ export interface EvaluacionFinal {
 export interface ResultadoFinal {
   id: number
   inscripcion_area_id: number
-  fase: 'clasificacion' | 'premiacion'
+  fase: 'clasificacion' | 'final'
   posicion: number
   medalla: 'oro' | 'plata' | 'bronce' | 'mencion_honor' | 'sin_medalla'
   puntuacion_final: number

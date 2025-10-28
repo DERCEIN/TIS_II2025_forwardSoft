@@ -10,6 +10,7 @@ use ForwardSoft\Models\InscripcionArea;
 use ForwardSoft\Models\User;
 use ForwardSoft\Models\EvaluacionClasificacion;
 use ForwardSoft\Models\EvaluacionFinal;
+use ForwardSoft\Models\tiemposEvaluadores;
 use PDO;
 
 class CoordinadorController
@@ -151,14 +152,14 @@ class CoordinadorController
         }
 
         
-        // Manejar selección por categoría (Primaria/Secundaria)
+        
         $whereNivel = '';
         if ($nivelId === 'primaria') {
-            // Buscar niveles que contengan "Primaria" o "primaria"
+            
             $whereNivel = " AND (LOWER(nc.nombre) LIKE '%primaria%' OR LOWER(nc.nombre) LIKE '%primario%')";
         }
         elseif ($nivelId === 'secundaria') {
-            // Buscar niveles que contengan "Secundaria" o "secundaria"
+            
             $whereNivel = " AND (LOWER(nc.nombre) LIKE '%secundaria%' OR LOWER(nc.nombre) LIKE '%secundario%')";
         }
         
@@ -182,7 +183,7 @@ class CoordinadorController
         error_log("WHERE nivel: $whereNivel");
         error_log("Inscripciones encontradas: " . count($inscripciones));
         
-        // Verificar si hay inscripciones sin filtro de nivel
+        
         $sqlSinFiltro = "SELECT ia.id as inscripcion_area_id, o.nombre_completo, ue.nombre as unidad_nombre, 
                                 ia.area_competencia_id, ac.nombre as area_nombre, nc.nombre as nivel_nombre, nc.id as nivel_id
                          FROM inscripciones_areas ia
@@ -224,7 +225,7 @@ class CoordinadorController
             error_log("Primer evaluador: " . json_encode($evaluadores[0]));
         }
 
-        // Si no hay inscripciones con filtro de nivel, usar todas las inscripciones del área
+        
         if (empty($inscripciones) && !empty($inscripcionesSinFiltro)) {
             error_log("=== USANDO INSCRIPCIONES SIN FILTRO DE NIVEL ===");
             $inscripciones = $inscripcionesSinFiltro;
@@ -924,15 +925,23 @@ class CoordinadorController
                     nc.nombre as nivel_nombre,
                     COUNT(DISTINCT ia.olimpista_id) as total_olimpistas,
                     COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL THEN ia.olimpista_id END) as evaluados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'descalificado' THEN ia.olimpista_id END) as descalificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'pendiente' AND ec.id IS NULL THEN ia.olimpista_id END) as pendientes,
+                    AVG(CASE WHEN ec.id IS NOT NULL THEN ec.puntuacion END) as promedio_puntuacion,
                     CASE 
                         WHEN COUNT(DISTINCT ia.olimpista_id) > 0 
                         THEN ROUND((COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL THEN ia.olimpista_id END) * 100.0) / COUNT(DISTINCT ia.olimpista_id), 2)
                         ELSE 0 
-                    END as porcentaje
+                    END as porcentaje,
+                    CASE 
+                        WHEN COUNT(DISTINCT ia.olimpista_id) > 0 
+                        THEN ROUND((COUNT(DISTINCT CASE WHEN ia.estado = 'descalificado' THEN ia.olimpista_id END) * 100.0) / COUNT(DISTINCT ia.olimpista_id), 2)
+                        ELSE 0 
+                    END as porcentaje_descalificados
                 FROM inscripciones_areas ia
                 JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
                 LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
-                WHERE ia.estado != 'descalificado' AND ia.area_competencia_id = ?
+                WHERE ia.area_competencia_id = ?
                 GROUP BY nc.id, nc.nombre, nc.orden_display
                 ORDER BY nc.orden_display
             ";
@@ -981,36 +990,80 @@ class CoordinadorController
             $stmtEvaluadoresActivos->execute([$areaId]);
             $evaluadoresActivos = $stmtEvaluadoresActivos->fetchAll(PDO::FETCH_ASSOC);
             
-            // Obtener olimpistas sin evaluar (últimos 7 días, solo del área del coordinador)
+            // Obtener olimpistas sin evaluar con alertas de retraso
             $sqlSinEvaluar = "
                 SELECT 
-                    o.id,
-                    CONCAT(o.nombre, ' ', o.apellido) as nombre,
+                    ia.id,
+                    COALESCE(o.nombre_completo, CONCAT(o.nombre, ' ', COALESCE(o.apellido, ''))) as nombre,
                     ac.nombre as area,
                     nc.nombre as nivel,
-                    EXTRACT(DAYS FROM NOW() - ia.created_at) as dias_pendiente
+                    EXTRACT(DAYS FROM NOW() - ia.created_at) as dias_pendiente,
+                    CASE 
+                        WHEN EXTRACT(DAYS FROM NOW() - ia.created_at) > 5 THEN 'critico'
+                        WHEN EXTRACT(DAYS FROM NOW() - ia.created_at) > 3 THEN 'advertencia'
+                        ELSE 'normal'
+                    END as nivel_alerta,
+                    ae.evaluador_id,
+                    u.name as evaluador_nombre
                 FROM inscripciones_areas ia
                 JOIN olimpistas o ON o.id = ia.olimpista_id
                 JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
                 JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
                 LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
-                WHERE ia.estado != 'descalificado' 
+                LEFT JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id
+                LEFT JOIN users u ON u.id = ae.evaluador_id
+                WHERE (ia.estado IS NULL OR ia.estado != 'descalificado')
                 AND ec.id IS NULL
-                AND ia.created_at > NOW() - INTERVAL '7 days'
                 AND ia.area_competencia_id = ?
                 ORDER BY ia.created_at ASC
-                LIMIT 10
+                LIMIT 20
             ";
             
             $stmtSinEvaluar = $this->pdo->prepare($sqlSinEvaluar);
             $stmtSinEvaluar->execute([$areaId]);
             $olimpistasSinEvaluar = $stmtSinEvaluar->fetchAll(PDO::FETCH_ASSOC);
             
-            // Calcular estadísticas generales
+            // Obtener estadísticas de descalificaciones
+            $sqlDescalificaciones = "
+                SELECT 
+                    COUNT(DISTINCT d.id) as total_descalificaciones,
+                    COUNT(DISTINCT CASE WHEN d.fecha_descalificacion > NOW() - INTERVAL '7 days' THEN d.id END) as descalificaciones_recientes,
+                    rd.tipo,
+                    COUNT(*) as cantidad_por_tipo
+                FROM descalificaciones d
+                JOIN reglas_descalificacion rd ON rd.id = d.regla_descalificacion_id
+                JOIN inscripciones_areas ia ON ia.id = d.inscripcion_area_id
+                WHERE ia.area_competencia_id = ?
+                GROUP BY rd.tipo
+            ";
+            
+            $stmtDescalificaciones = $this->pdo->prepare($sqlDescalificaciones);
+            $stmtDescalificaciones->execute([$areaId]);
+            $descalificacionesStats = $stmtDescalificaciones->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Obtener métricas de tiempo promedio
+            $sqlTiempoPromedio = "
+                SELECT 
+                    AVG(EXTRACT(EPOCH FROM (ec.fecha_evaluacion - ia.created_at))/86400) as dias_promedio_evaluacion,
+                    MIN(EXTRACT(EPOCH FROM (ec.fecha_evaluacion - ia.created_at))/86400) as tiempo_minimo,
+                    MAX(EXTRACT(EPOCH FROM (ec.fecha_evaluacion - ia.created_at))/86400) as tiempo_maximo
+                FROM inscripciones_areas ia
+                JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ec.fecha_evaluacion IS NOT NULL
+            ";
+            
+            $stmtTiempo = $this->pdo->prepare($sqlTiempoPromedio);
+            $stmtTiempo->execute([$areaId]);
+            $tiempoStats = $stmtTiempo->fetch(PDO::FETCH_ASSOC);
+            
+            // Calcular estadísticas generales mejoradas
             $totalOlimpistas = array_sum(array_column($niveles, 'total_olimpistas'));
             $totalEvaluados = array_sum(array_column($niveles, 'evaluados'));
-            $totalPendientes = $totalOlimpistas - $totalEvaluados;
+            $totalDescalificados = array_sum(array_column($niveles, 'descalificados'));
+            $totalPendientes = $totalOlimpistas - $totalEvaluados - $totalDescalificados;
             $promedioGeneral = $totalOlimpistas > 0 ? round(($totalEvaluados * 100) / $totalOlimpistas, 2) : 0;
+            $promedioDescalificados = $totalOlimpistas > 0 ? round(($totalDescalificados * 100) / $totalOlimpistas, 2) : 0;
             
             Response::success([
                 'niveles' => $niveles,
@@ -1020,11 +1073,28 @@ class CoordinadorController
                 ],
                 'evaluadores_lista' => $evaluadoresActivos,
                 'olimpistas_sin_evaluar' => $olimpistasSinEvaluar,
+                'descalificaciones' => [
+                    'estadisticas' => $descalificacionesStats,
+                    'total_descalificados' => $totalDescalificados,
+                    'porcentaje_descalificados' => $promedioDescalificados
+                ],
+                'metricas_tiempo' => [
+                    'dias_promedio_evaluacion' => round($tiempoStats['dias_promedio_evaluacion'] ?? 0, 1),
+                    'tiempo_minimo' => round($tiempoStats['tiempo_minimo'] ?? 0, 1),
+                    'tiempo_maximo' => round($tiempoStats['tiempo_maximo'] ?? 0, 1)
+                ],
+                'alertas' => [
+                    'criticas' => count(array_filter($olimpistasSinEvaluar, fn($p) => $p['nivel_alerta'] === 'critico')),
+                    'advertencias' => count(array_filter($olimpistasSinEvaluar, fn($p) => $p['nivel_alerta'] === 'advertencia')),
+                    'total_alertas' => count(array_filter($olimpistasSinEvaluar, fn($p) => $p['nivel_alerta'] !== 'normal'))
+                ],
                 'estadisticas_generales' => [
                     'total_olimpistas' => $totalOlimpistas,
                     'total_evaluados' => $totalEvaluados,
                     'total_pendientes' => $totalPendientes,
-                    'promedio_general' => $promedioGeneral
+                    'total_descalificados' => $totalDescalificados,
+                    'promedio_general' => $promedioGeneral,
+                    'promedio_descalificados' => $promedioDescalificados
                 ],
                 'ultima_actualizacion' => date('Y-m-d H:i:s')
             ], 'Datos de progreso obtenidos');
@@ -1034,4 +1104,235 @@ class CoordinadorController
             Response::serverError('Error al obtener datos de progreso: ' . $e->getMessage());
         }
     }
+
+    public function getAlertasCriticas()
+    {
+        try {
+            $userData = JWTManager::getCurrentUser();
+            
+            if (!$userData || $userData['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            // Obtener el área del coordinador
+            $sqlAreaCoordinador = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlAreaCoordinador);
+            $stmtArea->execute([$userData['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            
+            // Alertas críticas: evaluaciones pendientes > 5 días
+            $sqlAlertasCriticas = "
+                SELECT 
+                    ia.id,
+                    COALESCE(o.nombre_completo, CONCAT(o.nombre, ' ', COALESCE(o.apellido, ''))) as nombre,
+                    ac.nombre as area,
+                    nc.nombre as nivel,
+                    EXTRACT(DAYS FROM NOW() - ia.created_at) as dias_pendiente,
+                    ae.evaluador_id,
+                    u.name as evaluador_nombre,
+                    u.email as evaluador_email
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                LEFT JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id
+                LEFT JOIN users u ON u.id = ae.evaluador_id
+                WHERE (ia.estado IS NULL OR ia.estado != 'descalificado')
+                AND ec.id IS NULL
+                AND EXTRACT(DAYS FROM NOW() - ia.created_at) > 5
+                AND ia.area_competencia_id = ?
+                ORDER BY ia.created_at ASC
+            ";
+            
+            $stmtAlertas = $this->pdo->prepare($sqlAlertasCriticas);
+            $stmtAlertas->execute([$areaId]);
+            $alertasCriticas = $stmtAlertas->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Alertas de evaluadores inactivos
+            $sqlEvaluadoresInactivos = "
+                SELECT 
+                    u.id,
+                    u.name as nombre,
+                    u.email,
+                    u.last_login,
+                    COUNT(DISTINCT ae.id) as asignaciones_pendientes,
+                    EXTRACT(DAYS FROM NOW() - u.last_login) as dias_inactivo
+                FROM evaluadores_areas ea
+                JOIN users u ON u.id = ea.user_id
+                LEFT JOIN asignaciones_evaluacion ae ON ae.evaluador_id = u.id
+                WHERE ea.is_active = true 
+                AND u.is_active = true 
+                AND ea.area_competencia_id = ?
+                AND u.last_login < NOW() - INTERVAL '3 days'
+                GROUP BY u.id, u.name, u.email, u.last_login
+                ORDER BY u.last_login ASC
+            ";
+            
+            $stmtInactivos = $this->pdo->prepare($sqlEvaluadoresInactivos);
+            $stmtInactivos->execute([$areaId]);
+            $evaluadoresInactivos = $stmtInactivos->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Métricas críticas
+            $totalAlertas = count($alertasCriticas) + count($evaluadoresInactivos);
+            $nivelCriticidad = $totalAlertas > 10 ? 'alto' : ($totalAlertas > 5 ? 'medio' : 'bajo');
+            
+            Response::success([
+                'alertas_criticas' => $alertasCriticas,
+                'evaluadores_inactivos' => $evaluadoresInactivos,
+                'metricas' => [
+                    'total_alertas' => $totalAlertas,
+                    'evaluaciones_criticas' => count($alertasCriticas),
+                    'evaluadores_inactivos' => count($evaluadoresInactivos),
+                    'nivel_criticidad' => $nivelCriticidad
+                ],
+                'ultima_actualizacion' => date('Y-m-d H:i:s')
+            ], 'Alertas críticas obtenidas');
+            
+        } catch (\Exception $e) {
+            error_log('Error obteniendo alertas críticas: ' . $e->getMessage());
+            Response::serverError('Error al obtener alertas críticas: ' . $e->getMessage());
+        }
+    }
+
+    public function getTiemposEvaluadoresPorArea() {
+    try {
+        $areaId = $_GET['area_id'] ?? null;
+
+        if (!$areaId || !is_numeric($areaId)) {
+            Response::validationError(['area_id' => 'El área es requerida y debe ser un número válido']);
+            return;
+        }
+
+        $sql = "
+            SELECT 
+    u.id,
+    u.name,
+    u.email,
+    u.role,
+    ea.area_competencia_id,
+    ac.nombre AS area_nombre,
+    pe.start_date,
+    pe.start_time,
+    pe.duration_days,
+    pe.status
+FROM evaluadores_areas AS ea
+JOIN users AS u ON u.id = ea.user_id
+JOIN areas_competencia AS ac ON ac.id = ea.area_competencia_id
+LEFT JOIN (
+    SELECT DISTINCT ON (evaluador_id)
+        evaluador_id,
+        start_date,
+        start_time,
+        duration_days,
+        status
+    FROM permisos_evaluadores
+    ORDER BY evaluador_id, created_at DESC
+) AS pe ON pe.evaluador_id = u.id
+WHERE ea.area_competencia_id = ?
+  AND ea.is_active = true
+  AND u.is_active = true
+ORDER BY u.name;
+
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([(int)$areaId]);
+        $evaluadores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        Response::success([
+            'evaluadores' => $evaluadores,
+            'total' => count($evaluadores),
+            'area_id' => (int)$areaId
+        ], 'Evaluadores del área obtenidos');
+
+    } catch (\Exception $e) {
+        error_log('Error obteniendo evaluadores por área: ' . $e->getMessage());
+        Response::serverError('Error al obtener evaluadores del área: ' . $e->getMessage());
+    }
+    
+}
+public function registrarTiemposEvaluadores()
+{
+    try {
+        
+       
+        $input = json_decode(file_get_contents('php://input'), true);
+        error_log("BODY RECIBIDO: " . json_encode($input));
+
+        if (!$input) {
+            Response::validationError(['general' => 'Datos de entrada inválidos']);
+        }
+
+        
+        if (isset($input['tiempo'])) {
+            $input = $input['tiempo'];
+        }
+
+        
+        $required = ['coordinador_id', 'evaluador_id', 'start_date', 'start_time','duration_days'];
+        foreach ($required as $field) {
+            if (empty($input[$field])) {
+                Response::validationError([$field => "El campo $field es obligatorio"]);
+            }
+        }
+
+        
+        if (!isset($input['status'])) {
+            $input['status'] = 'activo';
+        }
+
+        error_log("DATOS PROCESADOS: " . json_encode($input));
+
+        
+        $model = new tiemposEvaluadores();
+        
+        error_log("🎯 Llamando a createTiempoEvaluador con datos: " . json_encode($input));
+        
+        try {
+            $insertId = $model->createTiempoEvaluador($input);
+            
+            error_log("✅ Insert ID obtenido: " . $insertId);
+            
+            if ($insertId) {
+                Response::success([
+                    'insert_id' => $insertId,
+                    'data' => $input
+                ], 'Tiempo de evaluación registrado exitosamente.');
+            } else {
+                error_log("❌ Insert ID es false o null");
+                Response::serverError('No se pudo registrar el tiempo de evaluación.');
+            }
+        } catch (\Exception $modelException) {
+            error_log("❌ Error en el modelo: " . $modelException->getMessage());
+            error_log("❌ Trace del modelo: " . $modelException->getTraceAsString());
+            throw $modelException;
+        }
+
+    } catch (\PDOException $e) {
+        error_log('Error PDO al registrar tiempo del evaluador: ' . $e->getMessage());
+        error_log('Trace: ' . $e->getTraceAsString());
+        Response::serverError('Error de base de datos: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        error_log('Error al registrar tiempo del evaluador: ' . $e->getMessage());
+        error_log('Trace: ' . $e->getTraceAsString());
+        Response::serverError('Error interno del servidor: ' . $e->getMessage());
+    }
+}
+
+
+
 } 

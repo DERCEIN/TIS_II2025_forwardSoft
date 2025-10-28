@@ -149,7 +149,7 @@ export default function AsignacionEvaluadoresPage() {
         area_id: parseInt(areaId),
         nivel_id: nivelId, // Enviar directamente 'primaria' o 'secundaria'
         ronda_id: rondaId ? parseInt(rondaId) : undefined,
-        fase: "clasificacion",
+        fase: "clasificacion" as const,
         num_evaluadores: parseInt(numEvaluadores),
         metodo,
         evitar_misma_institucion: evitarMismaInstitucion,

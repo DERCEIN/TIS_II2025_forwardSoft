@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
+import { ConfiguracionService } from "@/lib/api"
 
 export default function ConfiguracionPage() {
   const router = useRouter()
@@ -40,6 +41,10 @@ export default function ConfiguracionPage() {
       estado: true,
       fechaInicio: "2025-01-01",
       fechaFin: "2025-12-31",
+      clasificacion_fecha_inicio: "",
+      clasificacion_fecha_fin: "",
+      final_fecha_inicio: "",
+      final_fecha_fin: "",
     },
     
    
@@ -53,15 +58,14 @@ export default function ConfiguracionPage() {
       fromName: "ForwardSoft",
     },
     
-    // Configuración de Evaluación
+   
     evaluacion: {
       puntuacionMaxima: 100,
-      porcentajeClasificacion: 70,
-      evaluadoresPorArea: 3,
-      tiempoEvaluacion: 120, // minutos
+      puntuacionMinimaClasificacion: 51,
+      tiempoEvaluacion: 120, 
     },
     
-    // Configuración de Notificaciones
+    
     notificaciones: {
       emailInscripcion: true,
       emailEvaluacion: true,
@@ -69,31 +73,83 @@ export default function ConfiguracionPage() {
       recordatorios: true,
     },
     
-    // Configuración de Seguridad
+    
     seguridad: {
       longitudPassword: 8,
       expiracionToken: 3600,
       intentosMaximos: 3,
-      bloqueoTemporal: 15, // minutos
+      bloqueoTemporal: 15, 
     }
   })
 
   const [isSaving, setIsSaving] = useState(false)
 
+  
+  useEffect(() => {
+    const cargarConfiguracion = async () => {
+      try {
+        const response = await ConfiguracionService.getConfiguracion()
+        if (response.success && response.data) {
+          const data = response.data
+          setConfig(prev => ({
+            ...prev,
+            olimpiada: {
+              nombre: data.nombre || prev.olimpiada.nombre,
+              descripcion: data.descripcion || prev.olimpiada.descripcion,
+              estado: data.estado || prev.olimpiada.estado,
+              fechaInicio: data.fecha_inicio || prev.olimpiada.fechaInicio,
+              fechaFin: data.fecha_fin || prev.olimpiada.fechaFin,
+              clasificacion_fecha_inicio: data.clasificacion_fecha_inicio || prev.olimpiada.clasificacion_fecha_inicio,
+              clasificacion_fecha_fin: data.clasificacion_fecha_fin || prev.olimpiada.clasificacion_fecha_fin,
+              final_fecha_inicio: data.final_fecha_inicio || prev.olimpiada.final_fecha_inicio,
+              final_fecha_fin: data.final_fecha_fin || prev.olimpiada.final_fecha_fin,
+            },
+            evaluacion: {
+              ...prev.evaluacion,
+              tiempoEvaluacion: data.tiempo_evaluacion || prev.evaluacion.tiempoEvaluacion,
+            }
+          }))
+        }
+      } catch (error) {
+        console.error("Error al cargar configuración:", error)
+      }
+    }
+    cargarConfiguracion()
+  }, [])
+
   const handleSave = async (section: string) => {
     setIsSaving(true)
     try {
-      
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simular guardado
+      if (section === "General") {
+        await ConfiguracionService.updateConfiguracionGeneral({
+          nombre: config.olimpiada.nombre,
+          descripcion: config.olimpiada.descripcion,
+          estado: config.olimpiada.estado,
+          fecha_inicio: config.olimpiada.fechaInicio,
+          fecha_fin: config.olimpiada.fechaFin,
+          clasificacion_fecha_inicio: config.olimpiada.clasificacion_fecha_inicio || null,
+          clasificacion_fecha_fin: config.olimpiada.clasificacion_fecha_fin || null,
+          clasificacion_puntuacion_minima: config.evaluacion.puntuacionMinimaClasificacion,
+          final_fecha_inicio: config.olimpiada.final_fecha_inicio || null,
+          final_fecha_fin: config.olimpiada.final_fecha_fin || null,
+          tiempo_evaluacion: config.evaluacion.tiempoEvaluacion,
+        })
+      } else if (section === "Evaluación") {
+        await ConfiguracionService.updateConfiguracionGeneral({
+          clasificacion_puntuacion_minima: config.evaluacion.puntuacionMinimaClasificacion,
+          tiempo_evaluacion: config.evaluacion.tiempoEvaluacion,
+        })
+      }
       
       toast({
         title: "Configuración guardada",
         description: `La configuración de ${section} se ha guardado exitosamente.`,
       })
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Error al guardar configuración:", error)
       toast({
         title: "Error al guardar",
-        description: "No se pudo guardar la configuración. Inténtalo de nuevo.",
+        description: error?.message || "No se pudo guardar la configuración. Inténtalo de nuevo.",
         variant: "destructive",
       })
     } finally {
@@ -237,6 +293,70 @@ export default function ConfiguracionPage() {
                           olimpiada: { ...prev.olimpiada, fechaFin: e.target.value }
                         }))}
                       />
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Fase de Clasificación</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="clasifFechaInicio">Fecha de Inicio Clasificación</Label>
+                        <Input
+                          id="clasifFechaInicio"
+                          type="datetime-local"
+                          value={config.olimpiada.clasificacion_fecha_inicio}
+                          onChange={(e) => setConfig(prev => ({
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, clasificacion_fecha_inicio: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="clasifFechaFin">Fecha de Fin Clasificación</Label>
+                        <Input
+                          id="clasifFechaFin"
+                          type="datetime-local"
+                          value={config.olimpiada.clasificacion_fecha_fin}
+                          onChange={(e) => setConfig(prev => ({
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, clasificacion_fecha_fin: e.target.value }
+                          }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Fase Final</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="finalFechaInicio">Fecha de Inicio Final</Label>
+                        <Input
+                          id="finalFechaInicio"
+                          type="datetime-local"
+                          value={config.olimpiada.final_fecha_inicio}
+                          onChange={(e) => setConfig(prev => ({
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, final_fecha_inicio: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="finalFechaFin">Fecha de Fin Final</Label>
+                        <Input
+                          id="finalFechaFin"
+                          type="datetime-local"
+                          value={config.olimpiada.final_fecha_fin}
+                          onChange={(e) => setConfig(prev => ({
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, final_fecha_fin: e.target.value }
+                          }))}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -399,7 +519,7 @@ export default function ConfiguracionPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="puntuacionMaxima">Puntuación Máxima</Label>
                       <Input
@@ -413,29 +533,14 @@ export default function ConfiguracionPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="porcentajeClasificacion">% Clasificación</Label>
+                      <Label htmlFor="puntuacionMinima">Puntuación Mínima para Clasificar</Label>
                       <Input
-                        id="porcentajeClasificacion"
+                        id="puntuacionMinima"
                         type="number"
-                        value={config.evaluacion.porcentajeClasificacion}
+                        value={config.evaluacion.puntuacionMinimaClasificacion}
                         onChange={(e) => setConfig(prev => ({
                           ...prev,
-                          evaluacion: { ...prev.evaluacion, porcentajeClasificacion: parseInt(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="evaluadoresPorArea">Evaluadores por Área</Label>
-                      <Input
-                        id="evaluadoresPorArea"
-                        type="number"
-                        value={config.evaluacion.evaluadoresPorArea}
-                        onChange={(e) => setConfig(prev => ({
-                          ...prev,
-                          evaluacion: { ...prev.evaluacion, evaluadoresPorArea: parseInt(e.target.value) }
+                          evaluacion: { ...prev.evaluacion, puntuacionMinimaClasificacion: parseInt(e.target.value) }
                         }))}
                       />
                     </div>

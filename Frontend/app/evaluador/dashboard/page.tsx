@@ -22,10 +22,8 @@ import {
   Bell,
   LogOut,
   BookOpen,
-  Edit3,
   Save,
   Eye,
-  Calendar,
   Award,
   Target,
   UserCheck,
@@ -42,7 +40,7 @@ export default function EvaluatorDashboard() {
   const router = useRouter()
   const { logout: authLogout, user } = useAuth() as any
   const avatarUrl = user?.avatar_url as string | undefined
-  const toAbsolute = (p?: string) => p && /^https?:\/\//i.test(p) ? p : (p ? `${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}${p}` : undefined)
+  const toAbsolute = (p?: string) => p && /^https?:\/\//i.test(p) ? p : (p ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${p}` : undefined)
   const avatarSrc = toAbsolute(avatarUrl)
   const userName: string = user?.name || user?.nombre || ""
   const initials = userName ? userName.split(' ').map((p: string)=>p[0]).slice(0,2).join('').toUpperCase() : 'U'
@@ -237,7 +235,7 @@ export default function EvaluatorDashboard() {
         console.log('Obteniendo estadísticas reales de evaluaciones...')
         
         
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/evaluador/estadisticas`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}/api/evaluador/estadisticas`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -433,18 +431,6 @@ export default function EvaluatorDashboard() {
                   Evalúa participantes en {evaluatorInfo.areaNames.length > 0 ? evaluatorInfo.areaNames.join(" y ") : "sus áreas asignadas"}
                 </p>
               </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <Button className="w-full sm:w-auto" style={{backgroundColor: '#2563eb', color: 'white'}}>
-                <Edit3 className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Iniciar Evaluación</span>
-                <span className="sm:hidden">Evaluar</span>
-              </Button>
-              <Button variant="outline" className="w-full sm:w-auto" style={{backgroundColor: '#ec4899', color: 'white', borderColor: '#ec4899'}}>
-                <Calendar className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Mi Calendario</span>
-                <span className="sm:hidden">Calendario</span>
-              </Button>
             </div>
           </div>
         </div>

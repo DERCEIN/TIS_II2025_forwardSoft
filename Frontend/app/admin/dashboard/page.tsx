@@ -31,7 +31,7 @@ import Link from "next/link"
 import { AdminService, ApiService, OlimpistaService } from "@/lib/api"
 
 // Importar la URL base para logs
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/AuthContext"
 

@@ -58,7 +58,7 @@ function ListaInscritosAreaNivel() {
     porEstado: {}
   })
 
-  // Datos de ejemplo para demostración
+  
   const demoParticipantes = [
     {
       id: 1,
@@ -140,12 +140,12 @@ function ListaInscritosAreaNivel() {
     }
   ]
 
-  // Cargar datos iniciales
+  
   useEffect(() => {
     loadData()
   }, [])
 
-  // Filtrar y ordenar participantes
+  
   const filteredParticipantes = participantes.filter(p => {
     const nombre = p.nombre_completo || p.nombre || ''
     const documento = p.documento_identidad || p.documento || ''
@@ -237,14 +237,14 @@ function ListaInscritosAreaNivel() {
     try {
       console.log('Cargando participantes desde el backend...')
       
-      // Obtener el área del coordinador desde el perfil
+      
       const profileResponse = await AuthService.getProfile()
       let areaId = null
       
       if (profileResponse.success && profileResponse.data) {
         console.log('Perfil completo del coordinador:', profileResponse.data)
         
-        // El coordinador tiene un área asignada - buscar en diferentes campos
+        
         areaId = profileResponse.data.area_id || 
                  profileResponse.data.area?.id || 
                  profileResponse.data.areas?.[0]?.id ||
@@ -255,7 +255,7 @@ function ListaInscritosAreaNivel() {
         console.log('Área nombre:', profileResponse.data.area_nombre)
       }
       
-      // Si no tenemos areaId, intentar obtenerlo de otra manera
+      
       if (!areaId) {
         console.log('No se encontró areaId, intentando obtener áreas...')
         try {
@@ -263,7 +263,7 @@ function ListaInscritosAreaNivel() {
           console.log('Catálogos obtenidos:', catalogosResponse)
           
           if (catalogosResponse.success && catalogosResponse.data?.areas) {
-            // Buscar el área de matemáticas
+            
             const areaMatematicas = catalogosResponse.data.areas.find((area: any) => 
               area.nombre.toLowerCase().includes('matemática') || 
               area.nombre.toLowerCase().includes('matematicas')
@@ -280,7 +280,7 @@ function ListaInscritosAreaNivel() {
       
       console.log('Área ID final a usar:', areaId)
       
-      // Usar el servicio CoordinadorService para obtener participantes con evaluaciones filtrados por área
+      
       const response = await CoordinadorService.getParticipantesConEvaluaciones({
         area_id: areaId
       })
@@ -297,7 +297,7 @@ function ListaInscritosAreaNivel() {
           institucion: p.institucion
         })))
         
-        // Calcular estadísticas desde datos reales
+        
         const total = participantesData.length
         const porArea = participantesData.reduce((acc: any, p: any) => {
           const area = p.area_nombre || p.area || 'Sin área'
@@ -319,7 +319,7 @@ function ListaInscritosAreaNivel() {
         setParticipantes(participantesData)
       } else {
         console.error('Error en respuesta del backend:', response.message)
-        // Fallback a datos vacíos si hay error
+        
         setStats({ total: 0, porArea: {}, porNivel: {}, porEstado: {} })
         setParticipantes([])
       }
@@ -327,7 +327,7 @@ function ListaInscritosAreaNivel() {
       setLoading(false)
     } catch (error) {
       console.error('Error cargando participantes:', error)
-      // Fallback a datos vacíos si hay error
+      
       setStats({ total: 0, porArea: {}, porNivel: {}, porEstado: {} })
       setParticipantes([])
       setLoading(false)
@@ -652,7 +652,7 @@ function ProgresoEvaluacionClasificatoria() {
     }
   })
 
-  // Actualización en tiempo real cada 30 segundos
+  
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -668,10 +668,10 @@ function ProgresoEvaluacionClasificatoria() {
       }
     }
 
-    // Cargar datos iniciales
+    
     loadData()
 
-    // Configurar actualización automática cada 30 segundos
+    
     const interval = setInterval(loadData, 30000)
 
     return () => clearInterval(interval)
@@ -729,6 +729,40 @@ function ProgresoEvaluacionClasificatoria() {
         </div>
       </div>
 
+      {/* Dashboard de Alertas */}
+      {progressData.alertas && progressData.alertas.total_alertas > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-800">
+              <AlertCircle className="h-5 w-5" />
+              Alertas de Evaluación
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-red-100 rounded-lg">
+                <div className="text-2xl font-bold text-red-600">
+                  {progressData.alertas.criticas}
+                </div>
+                <div className="text-sm text-red-700">Críticas (&gt;5 días)</div>
+              </div>
+              <div className="text-center p-4 bg-orange-100 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">
+                  {progressData.alertas.advertencias}
+                </div>
+                <div className="text-sm text-orange-700">Advertencias (3-5 días)</div>
+              </div>
+              <div className="text-center p-4 bg-yellow-100 rounded-lg">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {progressData.alertas.total_alertas}
+                </div>
+                <div className="text-sm text-yellow-700">Total Alertas</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Dashboard con Progreso por Nivel y Evaluadores Activos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Progreso por Nivel */}
@@ -745,13 +779,30 @@ function ProgresoEvaluacionClasificatoria() {
                 <div key={index} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg">{nivel.nivel_nombre}</h3>
-                    <div className="flex items-center gap-4 mt-2">
-                      <div className="text-sm text-muted-foreground">
-                        Completado: <span className="font-semibold text-green-600">{nivel.evaluados}/{nivel.total_olimpistas}</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-sm">
+                      <div className="text-center p-2 bg-green-50 rounded">
+                        <div className="font-semibold text-green-700">{nivel.evaluados}</div>
+                        <div className="text-xs text-green-600">Evaluados</div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        Porcentaje: <span className="font-semibold text-blue-600">{nivel.porcentaje}%</span>
+                      <div className="text-center p-2 bg-orange-50 rounded">
+                        <div className="font-semibold text-orange-700">{nivel.pendientes || 0}</div>
+                        <div className="text-xs text-orange-600">Pendientes</div>
                       </div>
+                      <div className="text-center p-2 bg-red-50 rounded">
+                        <div className="font-semibold text-red-700">{nivel.descalificados || 0}</div>
+                        <div className="text-xs text-red-600">Descalificados</div>
+                      </div>
+                      <div className="text-center p-2 bg-blue-50 rounded">
+                        <div className="font-semibold text-blue-700">{nivel.promedio_puntuacion ? Math.round(nivel.promedio_puntuacion) : 0}</div>
+                        <div className="text-xs text-blue-600">Promedio</div>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Progreso: {nivel.porcentaje}%</span>
+                        <span>Descalificados: {nivel.porcentaje_descalificados || 0}%</span>
+                      </div>
+                      <Progress value={nivel.porcentaje} className="h-2" />
                     </div>
                   </div>
                   <div className="text-right">
@@ -777,11 +828,11 @@ function ProgresoEvaluacionClasificatoria() {
             <div className="space-y-3">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
-                  {progressData.evaluadores.activos}/{progressData.evaluadores.total}
+                  {progressData.evaluadores.con_permisos || 0}/{progressData.evaluadores.total}
                 </div>
-                <div className="text-sm text-muted-foreground">Evaluadores Activos</div>
+                <div className="text-sm text-muted-foreground">Con Permisos Activos</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Últimos 7 días
+                  Pueden registrar notas
                 </div>
               </div>
               
@@ -798,15 +849,24 @@ function ProgresoEvaluacionClasificatoria() {
                         </div>
                         <div className="text-right">
                           <div className={`text-xs px-2 py-1 rounded-full ${
-                            evaluador.estado === 'activo' 
+                            evaluador.estado === 'con_permisos' 
                               ? 'bg-green-100 text-green-800' 
+                              : evaluador.estado === 'activo_sin_permisos'
+                              ? 'bg-yellow-100 text-yellow-800'
                               : 'bg-gray-100 text-gray-800'
                           }`}>
-                            {evaluador.estado === 'activo' ? 'Activo' : 'Inactivo'}
+                            {evaluador.estado === 'con_permisos' ? 'Con Permisos' : 
+                             evaluador.estado === 'activo_sin_permisos' ? 'Sin Permisos' : 'Inactivo'}
                           </div>
                           <div className="text-xs text-muted-foreground mt-1">
                             {evaluador.evaluaciones_completadas} evaluaciones
                           </div>
+                          {evaluador.start_date && (
+                            <div className="text-xs text-blue-600 mt-1">
+                              Permiso: {new Date(evaluador.start_date).toLocaleDateString()} 
+                              ({evaluador.duration_days} días)
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -817,6 +877,82 @@ function ProgresoEvaluacionClasificatoria() {
                   </div>
                 )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Métricas de Tiempo y Descalificaciones */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Métricas de Tiempo */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Timer className="h-5 w-5" />
+              Métricas de Tiempo
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-xl font-bold text-blue-600">
+                    {progressData.metricas_tiempo?.dias_promedio_evaluacion || 0}
+                  </div>
+                  <div className="text-xs text-blue-600">Días Promedio</div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="text-xl font-bold text-green-600">
+                    {progressData.metricas_tiempo?.tiempo_minimo || 0}
+                  </div>
+                  <div className="text-xs text-green-600">Tiempo Mínimo</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-xl font-bold text-orange-600">
+                    {progressData.metricas_tiempo?.tiempo_maximo || 0}
+                  </div>
+                  <div className="text-xs text-orange-600">Tiempo Máximo</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Estadísticas de Descalificaciones */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserX className="h-5 w-5" />
+              Descalificaciones
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <div className="text-xl font-bold text-red-600">
+                    {progressData.descalificaciones?.total_descalificados || 0}
+                  </div>
+                  <div className="text-xs text-red-600">Total Descalificados</div>
+                </div>
+                <div className="text-center p-3 bg-red-100 rounded-lg">
+                  <div className="text-xl font-bold text-red-700">
+                    {progressData.descalificaciones?.porcentaje_descalificados || 0}%
+                  </div>
+                  <div className="text-xs text-red-700">Porcentaje</div>
+                </div>
+              </div>
+              {progressData.descalificaciones?.estadisticas && progressData.descalificaciones.estadisticas.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Por Tipo:</h4>
+                  {progressData.descalificaciones.estadisticas.map((stat: any, index: number) => (
+                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <span className="text-sm capitalize">{stat.tipo}</span>
+                      <Badge variant="destructive">{stat.cantidad_por_tipo}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -836,24 +972,36 @@ function ProgresoEvaluacionClasificatoria() {
         <CardContent>
           <div className="space-y-3">
             {progressData.olimpistas_sin_evaluar.map((olimpista: any) => (
-              <div key={olimpista.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+              <div key={olimpista.id} className={`flex items-center justify-between p-3 border rounded-lg ${
+                olimpista.nivel_alerta === 'critico' ? 'bg-red-50 border-red-200' :
+                olimpista.nivel_alerta === 'advertencia' ? 'bg-orange-50 border-orange-200' :
+                'bg-muted/30'
+              }`}>
                 <div className="flex-1">
                   <div className="font-medium">{olimpista.nombre}</div>
                   <div className="text-sm text-muted-foreground">
                     {olimpista.area} - {olimpista.nivel}
                   </div>
+                  {olimpista.evaluador_nombre && (
+                    <div className="text-xs text-blue-600 mt-1">
+                      Evaluador: {olimpista.evaluador_nombre}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-muted-foreground">
+                  <div className={`text-sm font-semibold ${
+                    olimpista.nivel_alerta === 'critico' ? 'text-red-600' : 
+                    olimpista.nivel_alerta === 'advertencia' ? 'text-orange-600' : 'text-green-600'
+                  }`}>
                     {olimpista.dias_pendiente} días
                   </div>
-                  <div className={`text-xs ${
-                    olimpista.dias_pendiente > 5 ? 'text-red-600' : 
-                    olimpista.dias_pendiente > 3 ? 'text-yellow-600' : 'text-green-600'
-                  }`}>
-                    {olimpista.dias_pendiente > 5 ? 'Urgente' : 
-                     olimpista.dias_pendiente > 3 ? 'Prioritario' : 'Normal'}
-                  </div>
+                  <Badge variant={
+                    olimpista.nivel_alerta === 'critico' ? 'destructive' :
+                    olimpista.nivel_alerta === 'advertencia' ? 'secondary' : 'default'
+                  } className="text-xs">
+                    {olimpista.nivel_alerta === 'critico' ? 'Crítico' : 
+                     olimpista.nivel_alerta === 'advertencia' ? 'Advertencia' : 'Normal'}
+                  </Badge>
                 </div>
               </div>
             ))}
@@ -1187,7 +1335,7 @@ function CompetidoresPorAreaNivel() {
     
     try {
       if (SIMULATE) {
-        // Simular carga de datos
+       
         await new Promise(resolve => setTimeout(resolve, 1000))
         const filteredData = demoCompetidores.filter(c => {
           const departamentoLabel = getDepartamentoName(departamentoId)
@@ -1197,15 +1345,15 @@ function CompetidoresPorAreaNivel() {
         return
       }
       
-      // Obtener datos reales del backend - participantes con evaluaciones
+      
       const nivelParam = nivelId && nivelId !== 'all' ? parseInt(nivelId, 10) : undefined
       
-      // Verificar token antes de hacer la petición
+      
       const token = localStorage.getItem('auth_token')
       console.log('🔑 Token en localStorage:', token ? 'Presente' : 'Ausente')
       console.log('🔑 Token completo:', token)
       
-      // Obtener participantes con evaluaciones reales del backend
+      
       console.log('🔍 Llamando a la API con parámetros:', {
         area_id: 1,
         nivel_id: nivelParam,
@@ -1221,7 +1369,7 @@ function CompetidoresPorAreaNivel() {
       console.log('📡 Respuesta de la API:', response)
       
       if (response.success && response.data) {
-        // Mapear los datos para que coincidan con el formato esperado
+        
         const competidoresMapeados = response.data.participantes.map((participante: any) => ({
           id: participante.inscripcion_area_id,
           nombre_completo: participante.nombre_completo,
@@ -1248,7 +1396,7 @@ function CompetidoresPorAreaNivel() {
         console.log('Datos reales cargados:', response.data.estadisticas)
       } else {
         console.error('Error al obtener participantes con evaluaciones:', response.message)
-        // Fallback a datos demo filtrados
+        
         const filteredData = demoCompetidores.filter(c => {
           const departamentoLabel = getDepartamentoName(departamentoId)
           return c.departamento_nombre === departamentoLabel
@@ -1258,7 +1406,7 @@ function CompetidoresPorAreaNivel() {
     } catch (err: any) {
       console.error('Error cargando datos:', err)
       setError(err.message || "Error al cargar datos")
-      // Fallback a datos demo filtrados
+      
       const filteredData = demoCompetidores.filter(c => {
         const departamentoLabel = getDepartamentoName(departamentoId)
         return c.departamento_nombre === departamentoLabel
@@ -1273,7 +1421,7 @@ function CompetidoresPorAreaNivel() {
     console.log('🚀 CompetidoresPorAreaNivel - useEffect inicial ejecutándose')
     console.log('🚀 SIMULATE:', SIMULATE)
     
-    // Cargar departamento por defecto; en simulación llena datos demo
+    
     if (SIMULATE) {
       console.log('🎭 Modo simulación activado')
       setDepartamentoId('1') // Cochabamba por defecto
@@ -1637,7 +1785,7 @@ function renderRendimientoBadge(p: any) {
   return <Badge className="bg-rose-100 text-rose-800">Bajo</Badge>
 }
 function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; areaName: string }) {
-  const [fase, setFase] = useState<'clasificacion'|'premiacion'>('clasificacion')
+  const [fase, setFase] = useState<'clasificacion'|'final'>('clasificacion')
   const [numEval, setNumEval] = useState<string>('2')
   const [metodo, setMetodo] = useState<'simple'|'balanceado'>('simple')
   const [evitarIE, setEvitarIE] = useState(true)
@@ -1719,7 +1867,7 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
             <SelectTrigger><SelectValue placeholder="Fase" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="clasificacion">Clasificación</SelectItem>
-              <SelectItem value="premiacion">Premiación</SelectItem>
+              <SelectItem value="final">Final</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1832,7 +1980,7 @@ export default function CoordinatorDashboard() {
   const avatarSrc = toAbsolute(avatarUrl)
   const userName: string = user?.name || user?.nombre || ""
   const initials = userName ? userName.split(' ').map((p: string)=>p[0]).slice(0,2).join('').toUpperCase() : 'U'
-  const [activeTab, setActiveTab] = useState("overview")
+  const [activeTab, setActiveTab] = useState("progress")
   const [areaName, setAreaName] = useState<string>("Matemáticas")
   const [realEvaluators, setRealEvaluators] = useState<any[]>([])
   const [loadingEvaluators, setLoadingEvaluators] = useState<boolean>(false)
@@ -2240,29 +2388,16 @@ export default function CoordinatorDashboard() {
               <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground mb-2">Competidores de {myArea?.name || areaName}</h1>
               <p className="text-sm sm:text-base text-muted-foreground">Lista completa de competidores registrados en el área de {myArea?.name || areaName}, clasificados por nivel y estado de evaluación</p>
               <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
-                    <div>
-                      <span className="text-xs sm:text-sm font-medium text-green-800">
-                        Usted está registrado como <strong>Coordinador de Área</strong>
-                      </span>
-                      <p className="text-xs text-green-600 mt-1">
-                        Coordina el área de {myArea?.name || areaName} y gestiona evaluadores
-                      </p>
-                    </div>
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+                  <div>
+                    <span className="text-xs sm:text-sm font-medium text-green-800">
+                      Usted está registrado como <strong>Coordinador de Área</strong>
+                    </span>
+                    <p className="text-xs text-green-600 mt-1">
+                      Coordina el área de {myArea?.name || areaName} y gestiona evaluadores
+                    </p>
                   </div>
-                  <Button 
-                    size="sm" 
-                    className="bg-pink-500 hover:bg-pink-600 text-white"
-                    onClick={() => {
-                      // TODO: Implementar programación de evaluación
-                      alert('Función de programación de evaluación en desarrollo');
-                    }}
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Programar Evaluación
-                  </Button>
                 </div>
               </div>
             </div>
@@ -2273,14 +2408,7 @@ export default function CoordinatorDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
-            <TabsTrigger 
-              value="overview" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              <span className="hidden sm:inline">Resumen</span>
-              <span className="sm:hidden">Inicio</span>
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="progress" 
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
@@ -2316,19 +2444,6 @@ export default function CoordinatorDashboard() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-center py-12 sm:py-16">
-              <div className="text-center space-y-4">
-                <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Mensaje Técnico</h3>
-                  <p className="text-sm text-gray-600">
-                    Sistema operativo • Base de datos conectada • API funcionando correctamente
-                  </p>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
 
           {/* Progress Tab - Dashboard de Progreso de Evaluación Clasificatoria */}
           <TabsContent value="progress" className="space-y-4 sm:space-y-6">
@@ -2372,6 +2487,14 @@ export default function CoordinatorDashboard() {
                     >
                       <Users className="h-4 w-4" />
                       Ir a Asignación Aleatoria
+                    </Button>
+                    <Button
+                    onClick={() => window.open('/coordinador/tiempos-evaluadores', '_blank')}
+                    className="flex items-center gap-2 w-full sm:w-auto"
+                    size="lg"
+                    >
+                    <Clock className="h-4 w-4" />
+                    Gestionar Tiempos de Evaluación
                     </Button>
                     
                     <div className="text-xs text-muted-foreground">

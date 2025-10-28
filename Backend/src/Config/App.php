@@ -23,7 +23,7 @@ class App
                 $_ENV['DB_PORT'] = '5432';
                 $_ENV['DB_DATABASE'] = 'forwardsoft_olimpiadas';
                 $_ENV['DB_USERNAME'] = 'postgres';
-                $_ENV['DB_PASSWORD'] = 'AybSHSJ7fDKW1ym';
+                $_ENV['DB_PASSWORD'] = '';
                 $_ENV['JWT_SECRET'] = 'default-secret-key';
             }
         }

@@ -43,6 +43,11 @@ class InscripcionArea
         return $stmt->fetch();
     }
 
+    public function getById($id)
+    {
+        return $this->findById($id);
+    }
+
     public function findByOlimpistaAndAreaAndLevel($olimpistaId, $areaId, $nivelId)
     {
         $sql = "SELECT * FROM {$this->table} WHERE olimpista_id = ? AND area_competencia_id = ? AND nivel_competencia_id = ?";
