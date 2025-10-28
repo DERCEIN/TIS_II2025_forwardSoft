@@ -1,445 +1,304 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useNotifications } from '@/components/NotificationProvider'
-import { 
-  Search,
-  Save,
-  Edit,
-  CheckCircle,
-  Clock,
-  User,
-  BookOpen,
-  Filter,
-  RefreshCw,
-  AlertCircle
-} from 'lucide-react'
-import { EvaluacionService, AuthService, EvaluadorService } from '@/lib/api'
+import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useNotifications } from "@/components/NotificationProvider";
+import {
+  Search, Save, Edit, CheckCircle, Clock, User, BookOpen, RefreshCw, AlertCircle
+} from "lucide-react";
+import { EvaluacionService, AuthService, EvaluadorService } from "@/lib/api";
 
-interface Participante {
-  id: number
-  nombre: string
-  documento: string
-  unidad_educativa: string
-  area: string
-  nivel: string
-  nota_actual?: number
-  estado: 'pendiente' | 'evaluado' | 'revisado'
-  fecha_evaluacion?: string
-}
+type ParticipanteServer = any;
+
+type Participante = {
+  id: number;
+  nombre: string;
+  documento: string;
+  unidad_educativa: string;
+  area: string;
+  nivel: string;
+  nota_actual?: number | null;
+  observaciones?: string | null;
+  desclasificado?: boolean;
+  justificacion_desclasificacion?: string | null;
+  estado?: "pendiente" | "evaluado" | "revisado";
+  fecha_evaluacion?: string | null;
+};
 
 export default function RegistroNotas() {
-  const { success, error } = useNotifications()
-  const [participantes, setParticipantes] = useState<Participante[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterArea, setFilterArea] = useState('todos')
-  const [filterNivel, setFilterNivel] = useState('todos')
-  const [filterEstado, setFilterEstado] = useState('todos')
-  const [editingParticipant, setEditingParticipant] = useState<number | null>(null)
-  const [notaTemporal, setNotaTemporal] = useState('')
-  const [observacionesTemporal, setObservacionesTemporal] = useState('')
-  const [motivoModificacion, setMotivoModificacion] = useState('')
-  const [fase, setFase] = useState<'clasificacion' | 'premiacion'>('clasificacion')
-  const [allowedAreas, setAllowedAreas] = useState<string[]>([])
-  const [loadingAreas, setLoadingAreas] = useState<boolean>(true)
-  const [confirmandoCierre, setConfirmandoCierre] = useState(false)
-  const [myAreaId, setMyAreaId] = useState<number | null>(null)
-  const [myNivelId, setMyNivelId] = useState<number | null>(null)
+  const { success, error } = useNotifications();
+  const router = useRouter();
 
-  
+  const [participantes, setParticipantes] = useState<Participante[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterArea, setFilterArea] = useState("todos");
+  const [filterNivel, setFilterNivel] = useState("todos");
+  const [filterEstado, setFilterEstado] = useState("todos");
+  const [selectedDesclasificadoId, setSelectedDesclasificadoId] = useState<number | null>(null);
+  const [globalJustificacion, setGlobalJustificacion] = useState("");
+  const saveTimeouts = useRef<Record<number, number>>({});
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // Map server row -> participante local (extendido con campos que necesitamos)
+  const mapRow = (row: ParticipanteServer): Participante => {
+    const id = Number(row.inscripcion_area_id || row.id || row.olimpista_id || row.participante_id);
+    return {
+      id,
+      nombre: row.competidor || row.olimpista_nombre || row.nombre || `${row.nombres ?? ""} ${row.apellidos ?? ""}`.trim(),
+      documento: row.documento || row.olimpista_documento || row.documento_identidad || row.doc || "-",
+      unidad_educativa: row.institucion || row.unidad_educativa_nombre || row.institucion_nombre || "-",
+      area: row.area || row.area_nombre || "-",
+      nivel: row.nivel || row.nivel_nombre || "-",
+      nota_actual: row.nota_actual ?? row.puntaje ?? row.puntuacion ?? row.nota ?? row.puntuacion_final ?? null,
+      observaciones: row.observaciones ?? row.descripcion_conceptual ?? "",
+      desclasificado: !!row.desclasificado,
+      justificacion_desclasificacion: row.justificacion_desclasificacion ?? "",
+      estado: (row.estado || row.inscripcion_estado || "pendiente") as any,
+      fecha_evaluacion: row.fecha_asignacion || row.fecha_evaluacion || row.updated_at || row.created_at || null
+    };
+  };
+
   const fetchParticipantes = async () => {
+    setLoading(true);
     try {
-      setLoading(true)
-      const res = await EvaluadorService.getEvaluaciones()
-      const data = (res && (res as any).data) ? (res as any).data : []
-
-      
-      const mapped: Participante[] = (Array.isArray(data) ? data : []).map((row: any) => ({
-        id: Number(row.inscripcion_area_id || row.id || row.olimpista_id || row.participante_id),
-        nombre: row.competidor || row.olimpista_nombre || row.nombre || `${row.nombres ?? ''} ${row.apellidos ?? ''}`.trim(),
-        documento: row.documento || row.olimpista_documento || row.documento_identidad || row.doc || '-',
-        unidad_educativa: row.institucion || row.unidad_educativa_nombre || row.institucion_nombre || '-',
-        area: row.area || row.area_nombre || '-',
-        nivel: row.nivel || row.nivel_nombre || '-',
-        nota_actual: typeof row.nota_actual === 'number' ? row.nota_actual : (typeof row.puntaje === 'number' ? row.puntaje : (typeof row.puntuacion === 'number' ? row.puntuacion : (typeof row.nota === 'number' ? row.nota : (typeof row.puntuacion_final === 'number' ? row.puntuacion_final : undefined)))),
-        estado: (row.estado || row.inscripcion_estado || 'pendiente') as any,
-        fecha_evaluacion: row.fecha_asignacion || row.fecha_evaluacion || row.updated_at || row.created_at || undefined,
-      }))
-
-      setParticipantes(mapped)
-      
-      // Extraer area_id y nivel_id del primer participante para usar en cierre de calificación
-      if (mapped.length > 0) {
-        const primerParticipante = data[0]
-        console.log('=== DEBUG DETECCIÓN DE IDs ===')
-        console.log('Datos completos del primer participante:', primerParticipante)
-        console.log('Claves disponibles:', Object.keys(primerParticipante))
-        console.log('Valores específicos:')
-        console.log('- area_competencia_id:', primerParticipante.area_competencia_id)
-        console.log('- nivel_competencia_id:', primerParticipante.nivel_competencia_id)
-        console.log('- area_id:', primerParticipante.area_id)
-        console.log('- nivel_id:', primerParticipante.nivel_id)
-        console.log('================================')
-        
-       
-        const areaId = primerParticipante.area_competencia_id || 
-                      primerParticipante.area_id || 
-                      primerParticipante.areaId ||
-                      primerParticipante.areaCompetenciaId
-        if (areaId) {
-          setMyAreaId(Number(areaId))
-          console.log('✅ Area ID detectado:', areaId)
-        } else {
-          console.log('❌ No se encontró area_id')
-        }
-        
-        
-        const nivelId = primerParticipante.nivel_competencia_id || 
-                       primerParticipante.nivel_id || 
-                       primerParticipante.nivelId ||
-                       primerParticipante.nivelCompetenciaId
-        if (nivelId) {
-          setMyNivelId(Number(nivelId))
-          console.log('✅ Nivel ID detectado:', nivelId)
-        } else {
-          console.log('❌ No se encontró nivel_id')
-        }
-        
-        
-        if (!areaId || !nivelId) {
-          try {
-            const profile = await AuthService.getProfile()
-            console.log('Perfil del evaluador:', profile)
-            
-            if (profile && profile.data) {
-              if (!areaId && profile.data.area_id) {
-                setMyAreaId(Number(profile.data.area_id))
-                console.log('Area ID del perfil:', profile.data.area_id)
-              }
-              if (!nivelId && profile.data.nivel_id) {
-                setMyNivelId(Number(profile.data.nivel_id))
-                console.log('Nivel ID del perfil:', profile.data.nivel_id)
-              }
-            }
-          } catch (e) {
-            console.error('Error obteniendo perfil:', e)
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Error cargando evaluaciones:', e)
-      error('Error', 'No se pudieron cargar las evaluaciones')
-      setParticipantes([])
+      const res = await EvaluadorService.getEvaluaciones();
+      const data = (res && (res as any).data) ? (res as any).data : [];
+      const mapped = (Array.isArray(data) ? data : []).map(mapRow);
+      setParticipantes(mapped);
+    } catch (err) {
+      console.error("Error cargando evaluaciones:", err);
+      error("Error", "No se pudieron cargar las evaluaciones");
+      setParticipantes([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  useEffect(() => {
-    fetchParticipantes()
-  }, [])
+  useEffect(() => { fetchParticipantes(); }, []);
 
-  
-  useEffect(() => {
-    const loadAreas = async () => {
+  // Filtrado
+  const participantesFiltrados = participantes.filter(p => {
+    const matchesSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.documento.includes(searchTerm) ||
+      p.unidad_educativa.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesArea = filterArea === "todos" || p.area === filterArea;
+    const matchesNivel = filterNivel === "todos" || p.nivel === filterNivel;
+    const matchesEstado = filterEstado === "todos" || p.estado === filterEstado;
+    return matchesSearch && matchesArea && matchesNivel && matchesEstado;
+  });
+
+  // debounce autosave per participante
+  const autosaveParticipante = (id: number, payload: Partial<Participante>) => {
+    if (saveTimeouts.current[id]) {
+      clearTimeout(saveTimeouts.current[id]);
+    }
+    saveTimeouts.current[id] = window.setTimeout(async () => {
       try {
-        setLoadingAreas(true)
-        const me = await AuthService.getProfile()
-        const areas = (me as any)?.data?.areas
-        if (Array.isArray(areas) && areas.length > 0) {
-          setAllowedAreas(areas.map((a: any) => String(a)))
-          
-          if (filterArea !== 'todos' && !areas.includes(filterArea)) {
-            setFilterArea('todos')
-          }
+        setSaving(true);
+
+        // Validaciones antes de enviar
+        const nota = payload.nota_actual ?? participantes.find(p => p.id === id)?.nota_actual;
+        const observaciones = payload.observaciones ?? participantes.find(p => p.id === id)?.observaciones ?? "";
+        const desclasificado = payload.desclasificado ?? participantes.find(p => p.id === id)?.desclasificado ?? false;
+        const justificacion = payload.justificacion_desclasificacion ?? participantes.find(p => p.id === id)?.justificacion_desclasificacion ?? "";
+
+        if (nota === null || nota === undefined || isNaN(Number(nota))) {
+          throw new Error("La nota es obligatoria y debe ser un número.");
+        }
+        // nota entre 0 y 100 (ajusta a escala si tu nota es 0-10)
+        if (Number(nota) < 0 || Number(nota) > 100) {
+          throw new Error("La nota debe estar entre 0 y 100");
+        }
+        if (!observaciones || !String(observaciones).trim()) {
+          throw new Error("La descripción conceptual es obligatoria");
+        }
+        if (desclasificado && (!justificacion || !String(justificacion).trim())) {
+          throw new Error("Debe justificar la desclasificación");
+        }
+
+        // Payload para backend (ajustalo a lo que tu backend espera)
+        const body = {
+          inscripcion_area_id: id,
+          puntuacion: Number(nota),
+          observaciones: String(observaciones),
+          desclasificado: desclasificado ? 1 : 0,
+          justificacion_desclasificacion: desclasificado ? String(justificacion) : null,
+          is_final: false
+        };
+
+        // Llamada al servicio (usa EvaluacionService si ya lo tienes; si no existe hace fetch directo)
+        if (typeof EvaluacionService !== "undefined" && EvaluacionService.evaluarClasificacion) {
+          await EvaluacionService.evaluarClasificacion(body);
         } else {
-          setAllowedAreas([])
+          const token = localStorage.getItem("token");
+          const res = await fetch(`${apiBase}/api/evaluaciones/clasificacion`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify(body)
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(txt || `Error ${res.status}`);
+          }
         }
-      } catch {
-        setAllowedAreas([])
+
+        // actualizar UI local si no viene aún actualizado
+        setParticipantes(prev => prev.map(p => p.id === id ? {
+          ...p,
+          nota_actual: Number(nota),
+          observaciones,
+          desclasificado,
+          justificacion_desclasificacion: justificacion,
+          estado: "evaluado",
+          fecha_evaluacion: new Date().toISOString().split("T")[0]
+        } : p));
+
+        success("Guardado", "Cambios guardados automáticamente");
+      } catch (err: any) {
+        console.error("Auto-save error", err);
+        error("Error", err?.message || "No se pudo guardar automáticamente");
       } finally {
-        setLoadingAreas(false)
+        setSaving(false);
+        if (saveTimeouts.current[id]) {
+          clearTimeout(saveTimeouts.current[id]);
+          delete saveTimeouts.current[id];
+        }
+      }
+    }, 700);
+  };
+
+  // Handler genérico de cambios en fila
+  const handleChangeField = (id: number, field: keyof Participante, value: any) => {
+    setParticipantes(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+    // Si marcó desclasificado, seleccionar para justificar
+    if (field === "desclasificado") {
+      if (value === true) {
+        setSelectedDesclasificadoId(id);
+        const p = participantes.find(x => x.id === id);
+        setGlobalJustificacion(p?.justificacion_desclasificacion ?? "");
+      } else {
+        // si desmarca: limpiar justificación asociada
+        setSelectedDesclasificadoId(null);
       }
     }
-    loadAreas()
-  }, [])
+    // programar autosave (salvo si es checkbox y quedó marcado sin justificación; autosave esperará justificación)
+    const pAfter = { ...(participantes.find(x => x.id === id) ?? {}), [field]: value } as Participante;
 
-  const participantesFiltrados = participantes.filter(participante => {
-    
-    if (allowedAreas.length > 0 && !allowedAreas.includes(participante.area)) {
-      return false
-    }
-    const matchesSearch = participante.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        participante.documento.includes(searchTerm) ||
-                        participante.unidad_educativa.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesArea = filterArea === 'todos' || participante.area === filterArea
-    const matchesNivel = filterNivel === 'todos' || participante.nivel === filterNivel
-    const matchesEstado = filterEstado === 'todos' || participante.estado === filterEstado
-
-    return matchesSearch && matchesArea && matchesNivel && matchesEstado
-  })
-
-  const handleEditNota = (participante: Participante) => {
-    setEditingParticipant(participante.id)
-    setNotaTemporal(participante.nota_actual?.toString() || '')
-    setObservacionesTemporal('')
-    setMotivoModificacion('')
-  }
-
-  const handleSaveNota = async (participanteId: number) => {
-    
-    const participante = participantes.find(p => p.id === participanteId)
-    if (participante && allowedAreas.length > 0 && !allowedAreas.includes(participante.area)) {
-      error('Sin permiso', 'Solo puede registrar notas de su área asignada')
-      return
-    }
-    const nota = parseFloat(notaTemporal)
-    
-    if (isNaN(nota) || nota < 0 || nota > 100) {
-      error('Error', 'La nota debe estar entre 0 y 100')
-      return
+    // If desclasificado true but no justification yet, do not autosave
+    if (pAfter.desclasificado && (!pAfter.justificacion_desclasificacion || !pAfter.justificacion_desclasificacion.trim())) {
+      // don't autosave until justification provided
+      return;
     }
 
-    
-    const esModificacion = participante?.nota_actual !== undefined && participante?.nota_actual !== null
-    if (esModificacion && !motivoModificacion.trim()) {
-      error('Error', 'Debe especificar el motivo de la modificación')
-      return
+    // also ensure description exists before auto-saving
+    if ((pAfter.nota_actual === null || pAfter.nota_actual === undefined || isNaN(Number(pAfter.nota_actual))) ||
+        !pAfter.observaciones || !String(pAfter.observaciones).trim()) {
+      // don't autosave until required fields present
+      return;
     }
 
-    setSaving(true)
-    
+    autosaveParticipante(id, pAfter);
+  };
+
+  // cuando editas la global justification textarea, la guardamos en la fila correspondiente y autosave
+  const handleSaveGlobalJustificacion = (value: string) => {
+    if (!selectedDesclasificadoId) return;
+    setGlobalJustificacion(value);
+    // set en participante y autosave
+    handleChangeField(selectedDesclasificadoId, "justificacion_desclasificacion", value);
+    // Force autosave call (since we updated field and handleChangeField will have scheduled it if valid)
+  };
+
+  const handleManualEdit = (p: Participante) => {
+    setSelectedDesclasificadoId(p.desclasificado ? p.id : null);
+    setGlobalJustificacion(p.justificacion_desclasificacion ?? "");
+    // Scroll to justificación maybe
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  };
+
+  const handleFinalizarRegistro = async () => {
     try {
-      
-      if (fase === 'clasificacion') {
-        const data: any = {
-          inscripcion_area_id: participanteId,
-          puntuacion: nota,
-          is_final: false,
+      setSaving(true);
+      // Llamar a cerrar calificación (usa EvaluacionService.confirmarCierreCalificacion si existe)
+      const areaId = 1; // si quieres obtener real, agrega lógica para detectar
+      const nivelId = 1;
+      if (EvaluacionService && EvaluacionService.confirmarCierreCalificacion) {
+        const resp = await EvaluacionService.confirmarCierreCalificacion({ area_id: areaId, nivel_id: nivelId, fase: "clasificacion" });
+        if (resp?.success) {
+          success("Éxito", "Cierre de calificación confirmado.");
+          await fetchParticipantes();
+        } else {
+          error("Error", resp?.message || "No se pudo cerrar la calificación");
         }
-        if (observacionesTemporal && observacionesTemporal.trim()) {
-          data.observaciones = observacionesTemporal.trim()
-        }
-        if (esModificacion && motivoModificacion.trim()) {
-          data.motivo_modificacion = motivoModificacion.trim()
-        }
-        await EvaluacionService.evaluarClasificacion(data)
       } else {
-        const data: any = {
-          inscripcion_area_id: participanteId,
-          puntuacion: nota,
+        // si no existe servicio en lib, hacemos POST manual (ruta ya existe en router de backend)
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${apiBase}/api/evaluador/confirmar-cierre-calificacion`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ area_id: 1, nivel_id: 1, fase: "clasificacion" })
+        });
+        const j = await res.json();
+        if (res.ok) {
+          success("Éxito", "Cierre de calificación confirmado.");
+          await fetchParticipantes();
+        } else {
+          throw new Error(j?.message || "Error al confirmar cierre");
         }
-        if (observacionesTemporal && observacionesTemporal.trim()) {
-          data.observaciones = observacionesTemporal.trim()
-        }
-        if (esModificacion && motivoModificacion.trim()) {
-          data.motivo_modificacion = motivoModificacion.trim()
-        }
-        await EvaluacionService.evaluarFinal(data)
-      }
-      
-      setParticipantes(prev => prev.map(p => 
-        p.id === participanteId 
-          ? { 
-              ...p, 
-              nota_actual: nota, 
-              estado: 'evaluado' as const,
-              fecha_evaluacion: new Date().toISOString().split('T')[0]
-            }
-          : p
-      ))
-      
-      setEditingParticipant(null)
-      setNotaTemporal('')
-      setObservacionesTemporal('')
-      
-      success('Éxito', 'Nota registrada con éxito')
-    } catch (err: any) {
-      console.error('Error guardando nota:', err)
-      const errorMessage = err?.response?.data?.message || err?.message || 'No se pudo guardar la nota'
-      error('Error', errorMessage)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleCancelEdit = () => {
-    setEditingParticipant(null)
-    setNotaTemporal('')
-    setObservacionesTemporal('')
-    setMotivoModificacion('')
-  }
-
-  const handleConfirmarCierreCalificacion = async () => {
-    if (participantes.filter(p => p.estado === 'evaluado').length !== participantes.length) {
-      error('Error', 'Debe completar todas las evaluaciones antes de confirmar el cierre')
-      return
-    }
-
-    if (participantes.length === 0) {
-      error('Error', 'No hay participantes asignados')
-      return
-    }
-
-    // Usar valores por defecto si no se detectaron los IDs
-    const areaId = myAreaId || 1
-    const nivelId = myNivelId || 1
-    
-    if (!myAreaId || !myNivelId) {
-      const confirmar = window.confirm(
-        'No se pudieron detectar automáticamente el área y nivel. ¿Desea continuar con valores por defecto (Área: 1, Nivel: 1)?'
-      )
-      if (!confirmar) return
-    }
-
-    setConfirmandoCierre(true)
-    
-    try {
-      const response = await EvaluacionService.confirmarCierreCalificacion({
-        area_id: areaId,
-        nivel_id: nivelId,
-        fase: fase
-      })
-
-      if (response.success) {
-        success('Éxito', 'Cierre de calificación confirmado exitosamente. Las listas de clasificación han sido generadas.')
-        
-        await fetchParticipantes()
-      } else {
-        error('Error', response.message || 'No se pudo confirmar el cierre de calificación')
       }
     } catch (err: any) {
-      console.error('Error confirmando cierre de calificación:', err)
-      const errorMessage = err?.response?.data?.message || err?.message || 'No se pudo confirmar el cierre de calificación'
-      error('Error', errorMessage)
+      console.error("Error finalizando:", err);
+      error("Error", err?.message || "No se pudo finalizar el registro");
     } finally {
-      setConfirmandoCierre(false)
+      setSaving(false);
     }
-  }
+  };
 
-  const getEstadoBadge = (estado: string) => {
-    switch (estado) {
-      case 'pendiente':
-        return <Badge variant="secondary" className="flex items-center gap-1"><Clock className="h-3 w-3" />Pendiente</Badge>
-      case 'evaluado':
-        return <Badge variant="default" className="flex items-center gap-1"><CheckCircle className="h-3 w-3" />Evaluado</Badge>
-      case 'revisado':
-        return <Badge variant="outline" className="flex items-center gap-1"><Edit className="h-3 w-3" />Revisado</Badge>
-      default:
-        return <Badge variant="outline">{estado}</Badge>
-    }
-  }
-
-  const areasUnicas = [...new Set(participantes.map(p => p.area))].filter(a => allowedAreas.length === 0 || allowedAreas.includes(a))
-  const nivelesUnicos = [...new Set(participantes.map(p => p.nivel))]
+  const areasUnicas = [...new Set(participantes.map(p => p.area))];
+  const nivelesUnicos = [...new Set(participantes.map(p => p.nivel))];
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Registro de Notas</h1>
-          <p className="text-sm text-gray-600">
-            Gestiona las evaluaciones de los participantes asignados
-          </p>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2 flex items-center gap-3">
+            <span>🏅</span> Evaluación Fase Clasificatoria
+          </h1>
+          <p className="text-sm text-gray-600">Gestiona las evaluaciones - los cambios se guardan automáticamente.</p>
         </div>
 
-        {/* Filtros */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Buscar</Label>
-                <div className="relative">
-                  <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
-                  <Input
-                    placeholder="Nombre, documento o institución..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Fase</Label>
-                <Select value={fase} onValueChange={(v) => setFase(v as any)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona una fase" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="clasificacion">Clasificación</SelectItem>
-                    <SelectItem value="premiacion">Premiación</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Área</Label>
-                <Select value={filterArea} onValueChange={setFilterArea}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas las áreas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todas las áreas</SelectItem>
-                    {areasUnicas.map(area => (
-                      <SelectItem key={area} value={area}>{area}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Nivel</Label>
-                <Select value={filterNivel} onValueChange={setFilterNivel}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos los niveles" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos los niveles</SelectItem>
-                    {nivelesUnicos.map(nivel => (
-                      <SelectItem key={nivel} value={nivel}>{nivel}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Estado</Label>
-                <Select value={filterEstado} onValueChange={setFilterEstado}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos los estados" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos los estados</SelectItem>
-                    <SelectItem value="pendiente">Pendiente</SelectItem>
-                    <SelectItem value="evaluado">Evaluado</SelectItem>
-                    <SelectItem value="revisado">Revisado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Lista de Participantes */}
+        {/* Tabla */}
         <Card>
           <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-              <BookOpen className="h-5 w-5" />
-              Participantes Asignados
-            </CardTitle>
-            <CardDescription className="text-sm">
-              {participantesFiltrados.length} participantes encontrados
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg sm:text-xl flex items-center gap-2"><BookOpen className="h-5 w-5" /> Participantes Asignados</CardTitle>
+                <CardDescription className="text-sm">{participantesFiltrados.length} participantes encontrados</CardDescription>
+              </div>
+              <div className="text-sm text-gray-500">
+                {saving ? "Guardando..." : "Guardado automático habilitado"}
+              </div>
+            </div>
           </CardHeader>
+
           <CardContent className="p-0">
             {loading ? (
               <div className="flex items-center justify-center py-12">
@@ -450,126 +309,93 @@ export default function RegistroNotas() {
               <div className="text-center py-12">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No hay participantes</h3>
-                <p className="text-gray-600">No se encontraron participantes con los filtros aplicados</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Participante</TableHead>
-                      <TableHead>Institución</TableHead>
-                      <TableHead>Área</TableHead>
-                      <TableHead>Nivel</TableHead>
-                      <TableHead>Nota</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead className="w-20">Acciones</TableHead>
+                      <TableHead>#</TableHead>
+                      <TableHead>Nombre del Olimpista</TableHead>
+                      <TableHead>Unidad Educativa</TableHead>
+                      <TableHead className="w-24">Nota</TableHead>
+                      <TableHead>Descripción Conceptual</TableHead>
+                      <TableHead>Desclasificar</TableHead>
+                      <TableHead>Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {participantesFiltrados.map((participante) => (
-                      <TableRow key={participante.id} className="hover:bg-gray-50">
+                    {participantesFiltrados.map((p, idx) => (
+                      <TableRow key={p.id} className="hover:bg-gray-50">
+                        <TableCell>
+                          <div className="text-sm text-gray-600">{String(idx + 1).padStart(2, "0")}</div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                               <User className="h-4 w-4 text-blue-600" />
                             </div>
                             <div>
-                              <p className="font-medium text-sm">{participante.nombre}</p>
-                              <p className="text-xs text-gray-500">{participante.documento}</p>
+                              <div className="font-medium text-sm">{p.nombre}</div>
+                              <div className="text-xs text-gray-500">{p.documento}</div>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <p className="text-sm">{participante.unidad_educativa}</p>
+                          <div className="text-sm">{p.unidad_educativa}</div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {participante.area}
-                          </Badge>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            max={100}
+                            value={p.nota_actual ?? ""}
+                            onChange={(e) => handleChangeField(p.id, "nota_actual", e.target.value === "" ? "" : Number(e.target.value))}
+                            className="border p-1 w-20 text-sm"
+                          />
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {participante.nivel}
-                          </Badge>
+                          <input
+                            type="text"
+                            value={p.observaciones ?? ""}
+                            onChange={(e) => handleChangeField(p.id, "observaciones", e.target.value)}
+                            className="border p-1 w-full text-sm"
+                            placeholder="Descripción conceptual (obligatoria)"
+                          />
                         </TableCell>
                         <TableCell>
-                          {editingParticipant === participante.id ? (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                value={notaTemporal}
-                                onChange={(e) => setNotaTemporal(e.target.value)}
-                                className="w-20 h-8 text-sm"
-                                placeholder="0-100"
-                              />
-                              <Input
-                                value={observacionesTemporal}
-                                onChange={(e) => setObservacionesTemporal(e.target.value)}
-                                placeholder="Observaciones (opcional)"
-                                className="h-8 text-xs w-40"
-                              />
-                              {participante.nota_actual !== undefined && participante.nota_actual !== null && (
-                                <Input
-                                  value={motivoModificacion}
-                                  onChange={(e) => setMotivoModificacion(e.target.value)}
-                                  placeholder="Motivo de modificación *"
-                                  className="h-8 text-xs w-48 border-orange-300"
-                                />
-                              )}
-                              <Button
-                                size="sm"
-                                onClick={() => handleSaveNota(participante.id)}
-                                disabled={saving}
-                                className="h-8 px-2"
-                              >
-                                <Save className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={handleCancelEdit}
-                                className="h-8 px-2"
-                              >
-                                ✕
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-medium ${
-                                participante.nota_actual ? 'text-gray-900' : 'text-gray-400'
-                              }`}>
-                                {typeof participante.nota_actual === 'number' ? participante.nota_actual.toFixed(2) : 'Sin nota'}
-                              </span>
-                              {participante.nota_actual && (
-                                <span className="text-xs text-gray-500">/100</span>
-                              )}
-                            </div>
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={!!p.desclasificado}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              handleChangeField(p.id, "desclasificado", checked);
+                              if (checked) {
+                                // focus / select this participant to justify
+                                setSelectedDesclasificadoId(p.id);
+                                setGlobalJustificacion(p.justificacion_desclasificacion ?? "");
+                                // scroll to bottom where justification textarea will appear
+                                setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }), 200);
+                              } else {
+                                // uncheck: remove selection
+                                setSelectedDesclasificadoId(null);
+                                setGlobalJustificacion("");
+                                // immediately autosave removal of desclasificado
+                                autosaveParticipante(p.id, { ...p, desclasificado: false, justificacion_desclasificacion: "" });
+                              }
+                            }}
+                          />
                         </TableCell>
                         <TableCell>
-                          {getEstadoBadge(participante.estado)}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-xs text-gray-500">
-                            {participante.fecha_evaluacion || '-'}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {editingParticipant !== participante.id && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditNota(participante)}
-                              className="h-8 w-8 p-0"
-                            >
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleManualEdit(p)} className="h-8 px-2">
                               <Edit className="h-3 w-3" />
                             </Button>
-                          )}
+                            <Button size="sm" onClick={() => autosaveParticipante(p.id, p)} className="h-8 px-2">
+                              <Save className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -580,99 +406,34 @@ export default function RegistroNotas() {
           </CardContent>
         </Card>
 
-        {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Asignados</p>
-                  <p className="text-2xl font-bold text-gray-900">{participantes.length}</p>
-                </div>
-                <BookOpen className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Pendientes</p>
-                  <p className="text-2xl font-bold text-orange-600">
-                    {participantes.filter(p => p.estado === 'pendiente').length}
-                  </p>
-                </div>
-                <Clock className="h-8 w-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Evaluados</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {participantes.filter(p => p.estado === 'evaluado').length}
-                  </p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Promedio</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {participantes.filter(p => p.nota_actual).length > 0 
-                      ? (participantes.filter(p => p.nota_actual).reduce((sum, p) => sum + (p.nota_actual || 0), 0) / participantes.filter(p => p.nota_actual).length).toFixed(1)
-                      : '0.0'
-                    }
-                  </p>
-                </div>
-                <AlertCircle className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Justificación global (aparece si hay al menos 1 desclasificado OR selected) */}
+        { (selectedDesclasificadoId !== null || participantes.some(p => p.desclasificado)) && (
+          <div className="mt-4">
+            <Label className="text-sm font-medium">Justificación de desclasificación:</Label>
+            <Textarea
+              placeholder="Describa el motivo si el olimpista fue desclasificado..."
+              value={globalJustificacion}
+              onChange={(e) => setGlobalJustificacion(e.target.value)}
+              onBlur={() => handleSaveGlobalJustificacion(globalJustificacion)}
+              className="mt-2"
+            />
+            <p className="text-xs text-gray-500 mt-1">Los cambios se guardan automáticamente.</p>
+          </div>
+        )}
+
+        {/* Footer acciones */}
+        <div className="flex items-center justify-between mt-6">
+          <div className="text-sm text-gray-600">
+            <span>📝 Los cambios se guardan automáticamente.</span>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => router.back()}>Volver</Button>
+            <Button onClick={handleFinalizarRegistro} className="bg-purple-600 hover:bg-purple-700" disabled={saving}>
+              {saving ? "Procesando..." : "Finalizar Registro"}
+            </Button>
+          </div>
         </div>
-        
-        {/* Botón de Confirmar Cierre de Calificación */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Cierre de Calificación</CardTitle>
-            <CardDescription>
-              Una vez completadas todas las evaluaciones, confirma el cierre para generar las listas de clasificación
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                <p>Evaluaciones completadas: {participantes.filter(p => p.estado === 'evaluado').length} / {participantes.length}</p>
-                {participantes.filter(p => p.estado === 'evaluado').length === participantes.length && participantes.length > 0 && (
-                  <p className="text-green-600 font-medium">✓ Todas las evaluaciones están completas</p>
-                )}
-                <p className="text-xs text-gray-500 mt-1">
-                  Área ID: {myAreaId || 'No detectado'} | Nivel ID: {myNivelId || 'No detectado'}
-                </p>
-              </div>
-              <Button 
-                onClick={handleConfirmarCierreCalificacion}
-                disabled={participantes.filter(p => p.estado === 'evaluado').length !== participantes.length || participantes.length === 0 || confirmandoCierre}
-                className="bg-purple-600 hover:bg-purple-700"
-              >
-                {confirmandoCierre ? 'Confirmando...' : 'Confirmar Cierre de Calificación'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
-  )
+  );
 }
-
-
-

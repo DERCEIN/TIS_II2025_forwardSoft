@@ -136,4 +136,86 @@ class EvaluadorController
             Response::serverError('Error al obtener evaluaciones: ' . $e->getMessage());
         }
     }
+    public function evaluarClasificacion()
+    {
+        try {
+            $currentUser = \ForwardSoft\Utils\JWTManager::getCurrentUser();
+            $evaluadorId = $currentUser['id'] ?? null;
+
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            $inscripcionAreaId = $data['inscripcion_area_id'] ?? null;
+            $puntuacion = isset($data['puntuacion']) ? $data['puntuacion'] : null;
+            $observaciones = $data['observaciones'] ?? '';
+            $desclasificado = !empty($data['desclasificado']) ? 1 : 0;
+            $justificacion = $data['justificacion_desclasificacion'] ?? null;
+            $isFinal = !empty($data['is_final']) ? 1 : 0;
+
+            if (!$inscripcionAreaId || $puntuacion === null || $puntuacion === '') {
+                \ForwardSoft\Utils\Response::badRequest('inscripcion_area_id y puntuacion son obligatorios');
+                return;
+            }
+
+            if (trim((string)$observaciones) === '') {
+                \ForwardSoft\Utils\Response::badRequest('La descripción conceptual es obligatoria');
+                return;
+            }
+
+            if ($desclasificado && (trim((string)$justificacion) === '' || $justificacion === null)) {
+                \ForwardSoft\Utils\Response::badRequest('Debe proporcionar justificación al desclasificar');
+                return;
+            }
+
+            // Buscar si ya existe evaluación del evaluador para esa inscripcion_area
+            $sqlCheck = "SELECT id FROM evaluaciones_clasificacion WHERE inscripcion_area_id = :inscripcion AND evaluador_id = :evaluador";
+            $stmtCheck = $this->pdo->prepare($sqlCheck);
+            $stmtCheck->execute([
+                ':inscripcion' => $inscripcionAreaId,
+                ':evaluador' => $evaluadorId
+            ]);
+            $existing = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                // Update
+                $sqlUpdate = "UPDATE evaluaciones_clasificacion
+                            SET puntuacion = :puntuacion,
+                                observaciones = :observaciones,
+                                desclasificado = :desclasificado,
+                                justificacion_desclasificacion = :justificacion,
+                                fecha_evaluacion = NOW(),
+                                is_final = :is_final
+                            WHERE id = :id";
+                $stmt = $this->pdo->prepare($sqlUpdate);
+                $stmt->execute([
+                    ':puntuacion' => $puntuacion,
+                    ':observaciones' => $observaciones,
+                    ':desclasificado' => $desclasificado,
+                    ':justificacion' => $justificacion,
+                    ':id' => $existing['id'],
+                    ':is_final' => $isFinal
+                ]);
+            } else {
+                // Insert
+                $sqlInsert = "INSERT INTO evaluaciones_clasificacion
+                            (inscripcion_area_id, evaluador_id, puntuacion, observaciones, desclasificado, justificacion_desclasificacion, fecha_evaluacion, is_final)
+                            VALUES (:inscripcion, :evaluador, :puntuacion, :observaciones, :desclasificado, :justificacion, NOW(), :is_final)";
+                $stmt = $this->pdo->prepare($sqlInsert);
+                $stmt->execute([
+                    ':inscripcion' => $inscripcionAreaId,
+                    ':evaluador' => $evaluadorId,
+                    ':puntuacion' => $puntuacion,
+                    ':observaciones' => $observaciones,
+                    ':desclasificado' => $desclasificado,
+                    ':justificacion' => $justificacion,
+                    ':is_final' => $isFinal
+                ]);
+            }
+
+            \ForwardSoft\Utils\Response::success(null, 'Evaluación guardada correctamente');
+        } catch (\Exception $e) {
+            error_log('Error evaluarClasificacion: ' . $e->getMessage());
+            \ForwardSoft\Utils\Response::serverError('Error al guardar evaluación');
+        }
+    }
+
 }
