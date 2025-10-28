@@ -237,7 +237,7 @@ export default function EvaluatorDashboard() {
         console.log('Obteniendo estadísticas reales de evaluaciones...')
         
         
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/evaluador/estadisticas`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}/api/evaluador/estadisticas`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',

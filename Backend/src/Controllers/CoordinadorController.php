@@ -10,6 +10,7 @@ use ForwardSoft\Models\InscripcionArea;
 use ForwardSoft\Models\User;
 use ForwardSoft\Models\EvaluacionClasificacion;
 use ForwardSoft\Models\EvaluacionFinal;
+use ForwardSoft\Models\tiemposEvaluadores;
 use PDO;
 
 class CoordinadorController
@@ -1034,4 +1035,130 @@ class CoordinadorController
             Response::serverError('Error al obtener datos de progreso: ' . $e->getMessage());
         }
     }
+
+    public function getTiemposEvaluadoresPorArea() {
+    try {
+        $areaId = $_GET['area_id'] ?? null;
+
+        if (!$areaId || !is_numeric($areaId)) {
+            Response::validationError(['area_id' => 'El área es requerida y debe ser un número válido']);
+            return;
+        }
+
+        $sql = "
+            SELECT 
+    u.id,
+    u.name,
+    u.email,
+    u.role,
+    ea.area_competencia_id,
+    ac.nombre AS area_nombre,
+    pe.start_date,
+    pe.start_time,
+    pe.duration_days,
+    pe.status
+FROM evaluadores_areas AS ea
+JOIN users AS u ON u.id = ea.user_id
+JOIN areas_competencia AS ac ON ac.id = ea.area_competencia_id
+LEFT JOIN (
+    SELECT DISTINCT ON (evaluador_id)
+        evaluador_id,
+        start_date,
+        start_time,
+        duration_days,
+        status
+    FROM permisos_evaluadores
+    ORDER BY evaluador_id, created_at DESC
+) AS pe ON pe.evaluador_id = u.id
+WHERE ea.area_competencia_id = ?
+  AND ea.is_active = true
+  AND u.is_active = true
+ORDER BY u.name;
+
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([(int)$areaId]);
+        $evaluadores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        Response::success([
+            'evaluadores' => $evaluadores,
+            'total' => count($evaluadores),
+            'area_id' => (int)$areaId
+        ], 'Evaluadores del área obtenidos');
+
+    } catch (\Exception $e) {
+        error_log('Error obteniendo evaluadores por área: ' . $e->getMessage());
+        Response::serverError('Error al obtener evaluadores del área: ' . $e->getMessage());
+    }
+    
+}
+public function registrarTiemposEvaluadores()
+{
+    try {
+        
+        // Leer el body JSON
+        $input = json_decode(file_get_contents('php://input'), true);
+        error_log("BODY RECIBIDO: " . json_encode($input));
+
+        if (!$input) {
+            Response::validationError(['general' => 'Datos de entrada inválidos']);
+        }
+
+        // Si los datos vienen envueltos en 'tiempo', extraerlos
+        if (isset($input['tiempo'])) {
+            $input = $input['tiempo'];
+        }
+
+        // Verificar campos requeridos
+        $required = ['coordinador_id', 'evaluador_id', 'start_date', 'start_time','duration_days'];
+        foreach ($required as $field) {
+            if (empty($input[$field])) {
+                Response::validationError([$field => "El campo $field es obligatorio"]);
+            }
+        }
+
+        // Agregar status por defecto si no viene
+        if (!isset($input['status'])) {
+            $input['status'] = 'activo';
+        }
+
+        error_log("DATOS PROCESADOS: " . json_encode($input));
+
+        // Llamar al modelo
+        $model = new tiemposEvaluadores();
+        
+        error_log("🎯 Llamando a createTiempoEvaluador con datos: " . json_encode($input));
+        
+        try {
+            $insertId = $model->createTiempoEvaluador($input);
+            
+            error_log("✅ Insert ID obtenido: " . $insertId);
+            
+            if ($insertId) {
+                Response::success([
+                    'insert_id' => $insertId,
+                    'data' => $input
+                ], 'Tiempo de evaluación registrado exitosamente.');
+            } else {
+                error_log("❌ Insert ID es false o null");
+                Response::serverError('No se pudo registrar el tiempo de evaluación.');
+            }
+        } catch (\Exception $modelException) {
+            error_log("❌ Error en el modelo: " . $modelException->getMessage());
+            error_log("❌ Trace del modelo: " . $modelException->getTraceAsString());
+            throw $modelException;
+        }
+
+    } catch (\PDOException $e) {
+        error_log('Error PDO al registrar tiempo del evaluador: ' . $e->getMessage());
+        error_log('Trace: ' . $e->getTraceAsString());
+        Response::serverError('Error de base de datos: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        error_log('Error al registrar tiempo del evaluador: ' . $e->getMessage());
+        error_log('Trace: ' . $e->getTraceAsString());
+        Response::serverError('Error interno del servidor: ' . $e->getMessage());
+    }
+}
+
+
+
 } 

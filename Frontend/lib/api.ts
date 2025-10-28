@@ -1,4 +1,6 @@
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
+import { id } from "date-fns/locale"
+
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo').replace(/\/+$/, '')
 
 
 export interface ApiResponse<T = any> {
@@ -78,6 +80,11 @@ export class ApiService {
       if (!response.ok) {
         const message = (data && data.message) ? data.message : (text || 'Error en la petición')
         throw new Error(`${response.status}:${message}`)
+      }
+
+      // Log para debugging
+      if (endpoint.includes('tiempos-evaluadores')) {
+        console.log('📥 Respuesta del servidor:', data)
       }
 
       return data as ApiResponse<T>
@@ -693,6 +700,10 @@ export class CoordinadorService {
   static async getProgresoEvaluacion() {
     return ApiService.get('/api/coordinador/progreso-evaluacion')
   }
+
+  static async getAlertasCriticas() {
+    return ApiService.get('/api/coordinador/alertas-criticas')
+  }
 }
 
 export class CatalogoService {
@@ -708,5 +719,123 @@ export class EvaluadorService {
 
   static async getEvaluaciones() {
     return ApiService.get('/api/evaluador/evaluaciones')
+  }
+
+  static async getEstadisticas() {
+    return ApiService.get('/api/evaluador/estadisticas')
+  }
+
+  static async verificarPermisos() {
+    return ApiService.get('/api/evaluador/verificar-permisos')
+  }
+}
+
+export class ConfiguracionService {
+  static async getConfiguracion() {
+    return ApiService.get('/api/configuracion')
+  }
+
+  static async updateConfiguracionGeneral(data: any) {
+    return ApiService.put('/api/configuracion/general', data)
+  }
+}
+
+export class DescalificacionService {
+  static async getReglasPorArea(areaId: number) {
+    return ApiService.get(`/api/descalificacion/reglas?area_id=${areaId}`)
+  }
+
+  static async registrarDescalificacion(data: {
+    inscripcion_area_id: number
+    regla_descalificacion_id: number
+    motivo: string
+  }) {
+    return ApiService.post('/api/descalificacion/registrar', data)
+  }
+
+  static async getDescalificacionesPorArea(areaId: number, filtros?: {
+    tipo?: string
+    nivel_id?: number
+    departamento_id?: number
+  }) {
+    const params = new URLSearchParams({ area_id: areaId.toString() })
+    if (filtros?.tipo) params.append('tipo', filtros.tipo)
+    if (filtros?.nivel_id) params.append('nivel_id', filtros.nivel_id.toString())
+    if (filtros?.departamento_id) params.append('departamento_id', filtros.departamento_id.toString())
+    
+    return ApiService.get(`/api/descalificacion/area?${params.toString()}`)
+  }
+
+  static async revocarDescalificacion(id: number, motivoRevocacion?: string) {
+    return ApiService.post('/api/descalificacion/revocar', {
+      id,
+      motivo_revocacion: motivoRevocacion
+    })
+  }
+
+  static async verificarDescalificacionAutomatica(areaId: number, puntuacion: number) {
+    return ApiService.post('/api/descalificacion/verificar-automatica', {
+      area_id: areaId,
+      puntuacion
+    })
+  }
+
+  static async getEstadisticas(areaId: number) {
+    return ApiService.get(`/api/descalificacion/estadisticas?area_id=${areaId}`)
+  }
+}
+
+interface NuevoTiempoEvaluador {
+  coordinador_id: number
+  evaluador_id: number
+  start_date: string  // YYYY-MM-DD
+  start_time: string   // HH:mm
+  duration_days: number
+  status: string
+}
+
+
+
+export class CoordinadorAccionService {
+  static async getTiemposEvaluadoresPorArea(areaId: number) {
+    try {
+      if (!areaId || isNaN(areaId)) {
+        console.error("❌ ID de área inválido:", areaId)
+        return []
+      }
+      const res = await ApiService.get(`/api/coordinador/tiempos-evaluadores-por-area?area_id=${areaId}`)
+
+      if (!res.success || !res.data) {
+        console.warn("⚠️ No se encontraron datos de evaluadores para el área", areaId)
+        return []
+      }
+
+      const evaluadores = res.data.evaluadores || []
+
+      return evaluadores.map((e: any) => ({
+        id: e.id?.toString(),
+        name: e.name,
+        email: e.email,
+        area: e.area_nombre,
+        status: e.status || "sin-permiso",
+        levels: [],
+        startDate: e.start_date || null,
+        startTime: e.start_time || null,
+        durationDays: e.duration_days || null,
+      }))
+    } catch (error) {
+      console.error("❌ Error al obtener tiempos de evaluadores por área:", error)
+      return []
+    }
+  }
+
+  static async postTiemposEvaluadores( tiempo: NuevoTiempoEvaluador) {
+    return ApiService.post(`/api/coordinador/tiempos-evaluadores`, {tiempo})
+  }
+  static async putTiemposEvaluadores(tiempo: NuevoTiempoEvaluador) {
+    return ApiService.put(`/api/coordinador/tiempos-evaluadores/${tiempo}`)
+  }
+  static async deleteTiemposEvaluadores(tiempoId: number) {
+    return ApiService.delete(`/api/coordinador/tiempos-evaluadores/${tiempoId}`)
   }
 }
