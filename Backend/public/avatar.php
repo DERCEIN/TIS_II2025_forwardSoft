@@ -1,5 +1,5 @@
 <?php
-// Servir imágenes de avatar
+
 $filename = $_GET['file'] ?? '';
 
 
@@ -24,7 +24,7 @@ if (file_exists($filePath) && is_file($filePath)) {
     
     $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
     
-    // Configurar headers para archivos estáticos
+    
     header('Content-Type: ' . $mimeType);
     header('Content-Length: ' . filesize($filePath));
     header('Cache-Control: public, max-age=31536000'); // Cache por 1 año

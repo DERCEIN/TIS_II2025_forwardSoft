@@ -6,7 +6,7 @@ use ForwardSoft\Config\Database;
 use PDO;
 use PDOException;
 
-class ReglaDescalificacion
+class ReglaDesclasificacion
 {
     private $db;
 
@@ -20,8 +20,8 @@ class ReglaDescalificacion
     {
         try {
             $stmt = $this->db->prepare("
-                SELECT rd.*, ac.nombre as area_nombre
-                FROM reglas_descalificacion rd
+                SELECT DISTINCT rd.id, rd.area_competencia_id, rd.nombre_regla, rd.descripcion, rd.tipo, rd.activa, rd.created_at, rd.updated_at, ac.nombre as area_nombre
+                FROM reglas_desclasificacion rd
                 JOIN areas_competencia ac ON ac.id = rd.area_competencia_id
                 WHERE rd.area_competencia_id = ? AND rd.activa = true
                 ORDER BY rd.tipo, rd.nombre_regla
@@ -29,7 +29,7 @@ class ReglaDescalificacion
             $stmt->execute([$areaId]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            error_log("Error al obtener reglas de descalificación: " . $e->getMessage());
+            error_log("Error al obtener reglas de desclasificación: " . $e->getMessage());
             return [];
         }
     }
@@ -40,14 +40,14 @@ class ReglaDescalificacion
         try {
             $stmt = $this->db->prepare("
                 SELECT rd.*, ac.nombre as area_nombre
-                FROM reglas_descalificacion rd
+                FROM reglas_desclasificacion rd
                 JOIN areas_competencia ac ON ac.id = rd.area_competencia_id
                 WHERE rd.id = ?
             ");
             $stmt->execute([$id]);
             return $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            error_log("Error al obtener regla de descalificación: " . $e->getMessage());
+            error_log("Error al obtener regla de desclasificación: " . $e->getMessage());
             return null;
         }
     }
@@ -58,7 +58,7 @@ class ReglaDescalificacion
         try {
             $stmt = $this->db->prepare("
                 SELECT rd.*, ac.nombre as area_nombre
-                FROM reglas_descalificacion rd
+                FROM reglas_desclasificacion rd
                 JOIN areas_competencia ac ON ac.id = rd.area_competencia_id
                 WHERE rd.area_competencia_id = ? AND rd.tipo = ? AND rd.activa = true
                 ORDER BY rd.nombre_regla
@@ -76,7 +76,7 @@ class ReglaDescalificacion
     {
         try {
             $stmt = $this->db->prepare("
-                INSERT INTO reglas_descalificacion 
+                INSERT INTO reglas_desclasificacion 
                 (area_competencia_id, nombre_regla, descripcion, tipo, activa)
                 VALUES (?, ?, ?, ?, ?)
             ");
@@ -89,8 +89,8 @@ class ReglaDescalificacion
             ]);
             return $this->db->lastInsertId();
         } catch (PDOException $e) {
-            error_log("Error al crear regla de descalificación: " . $e->getMessage());
-            throw new \Exception("Error al crear regla de descalificación");
+            error_log("Error al crear regla de desclasificación: " . $e->getMessage());
+            throw new \Exception("Error al crear regla de desclasificación");
         }
     }
 
@@ -115,12 +115,12 @@ class ReglaDescalificacion
             $fields[] = "updated_at = CURRENT_TIMESTAMP";
             $values[] = $id;
             
-            $sql = "UPDATE reglas_descalificacion SET " . implode(', ', $fields) . " WHERE id = ?";
+            $sql = "UPDATE reglas_desclasificacion SET " . implode(', ', $fields) . " WHERE id = ?";
             $stmt = $this->db->prepare($sql);
             return $stmt->execute($values);
         } catch (PDOException $e) {
-            error_log("Error al actualizar regla de descalificación: " . $e->getMessage());
-            throw new \Exception("Error al actualizar regla de descalificación");
+            error_log("Error al actualizar regla de desclasificación: " . $e->getMessage());
+            throw new \Exception("Error al actualizar regla de desclasificación");
         }
     }
 
@@ -129,24 +129,24 @@ class ReglaDescalificacion
     {
         try {
             $stmt = $this->db->prepare("
-                UPDATE reglas_descalificacion 
+                UPDATE reglas_desclasificacion 
                 SET activa = false, updated_at = CURRENT_TIMESTAMP 
                 WHERE id = ?
             ");
             return $stmt->execute([$id]);
         } catch (PDOException $e) {
-            error_log("Error al desactivar regla de descalificación: " . $e->getMessage());
-            throw new \Exception("Error al desactivar regla de descalificación");
+            error_log("Error al desactivar regla de desclasificación: " . $e->getMessage());
+            throw new \Exception("Error al desactivar regla de desclasificación");
         }
     }
 
     
-    public function verificarDescalificacionPuntuacion($areaId, $puntuacion)
+    public function verificarDesclasificacionPuntuacion($areaId, $puntuacion)
     {
         try {
             $stmt = $this->db->prepare("
                 SELECT rd.*
-                FROM reglas_descalificacion rd
+                FROM reglas_desclasificacion rd
                 WHERE rd.area_competencia_id = ? 
                 AND rd.tipo = 'puntuacion' 
                 AND rd.activa = true
@@ -166,7 +166,7 @@ class ReglaDescalificacion
             
             return null;
         } catch (PDOException $e) {
-            error_log("Error al verificar descalificación por puntuación: " . $e->getMessage());
+            error_log("Error al verificar desclasificación por puntuación: " . $e->getMessage());
             return null;
         }
     }

@@ -2,22 +2,22 @@
 
 namespace ForwardSoft\Controllers;
 
-use ForwardSoft\Models\ReglaDescalificacion;
-use ForwardSoft\Models\Descalificacion;
+use ForwardSoft\Models\ReglaDesclasificacion;
+use ForwardSoft\Models\Desclasificacion;
 use ForwardSoft\Models\InscripcionArea;
 use ForwardSoft\Utils\Response;
 use ForwardSoft\Utils\JWTManager;
 
-class DescalificacionController
+class DesclasificacionController
 {
-    private $reglaDescalificacionModel;
-    private $descalificacionModel;
+    private $reglaDesclasificacionModel;
+    private $desclasificacionModel;
     private $inscripcionModel;
 
     public function __construct()
     {
-        $this->reglaDescalificacionModel = new ReglaDescalificacion();
-        $this->descalificacionModel = new Descalificacion();
+        $this->reglaDesclasificacionModel = new ReglaDesclasificacion();
+        $this->desclasificacionModel = new Desclasificacion();
         $this->inscripcionModel = new InscripcionArea();
     }
 
@@ -31,17 +31,17 @@ class DescalificacionController
                 return Response::validationError(['area_id' => 'El ID del área es requerido']);
             }
 
-            $reglas = $this->reglaDescalificacionModel->getByArea($areaId);
+            $reglas = $this->reglaDesclasificacionModel->getByArea($areaId);
             
-            return Response::success($reglas, 'Reglas de descalificación obtenidas exitosamente');
+            return Response::success($reglas, 'Reglas de desclasificación obtenidas exitosamente');
         } catch (\Exception $e) {
             error_log("Error en getReglasPorArea: " . $e->getMessage());
-            return Response::serverError('Error al obtener reglas de descalificación');
+            return Response::serverError('Error al obtener reglas de desclasificación');
         }
     }
 
    
-    public function registrarDescalificacion()
+    public function registrarDesclasificacion()
     {
         try {
             $user = JWTManager::getCurrentUser();
@@ -52,7 +52,7 @@ class DescalificacionController
             $input = json_decode(file_get_contents('php://input'), true);
             
            
-            $requiredFields = ['inscripcion_area_id', 'regla_descalificacion_id', 'motivo'];
+            $requiredFields = ['inscripcion_area_id', 'regla_desclasificacion_id', 'motivo'];
             foreach ($requiredFields as $field) {
                 if (!isset($input[$field]) || empty($input[$field])) {
                     return Response::validationError([$field => "El campo $field es requerido"]);
@@ -66,9 +66,9 @@ class DescalificacionController
             }
 
             
-            $regla = $this->reglaDescalificacionModel->getById($input['regla_descalificacion_id']);
+            $regla = $this->reglaDesclasificacionModel->getById($input['regla_desclasificacion_id']);
             if (!$regla) {
-                return Response::validationError(['regla_descalificacion_id' => 'La regla de descalificación no existe']);
+                return Response::validationError(['regla_desclasificacion_id' => 'La regla de desclasificación no existe']);
             }
 
             
@@ -78,28 +78,28 @@ class DescalificacionController
             
             $data = [
                 'inscripcion_area_id' => $input['inscripcion_area_id'],
-                'regla_descalificacion_id' => $input['regla_descalificacion_id'],
+                'regla_desclasificacion_id' => $input['regla_desclasificacion_id'],
                 'motivo' => $input['motivo'],
                 'evaluador_id' => $user['role'] === 'evaluador' ? $user['id'] : null,
                 'coordinador_id' => $user['role'] === 'coordinador' ? $user['id'] : null
             ];
 
-            $descalificacionId = $this->descalificacionModel->create($data);
+            $desclasificacionId = $this->desclasificacionModel->create($data);
             
             return Response::success([
-                'id' => $descalificacionId,
+                'id' => $desclasificacionId,
                 'inscripcion_area_id' => $input['inscripcion_area_id'],
                 'regla' => $regla['nombre_regla'],
                 'motivo' => $input['motivo']
             ], 'Descalificación registrada exitosamente');
         } catch (\Exception $e) {
             error_log("Error en registrarDescalificacion: " . $e->getMessage());
-            return Response::serverError('Error al registrar descalificación');
+            return Response::serverError('Error al registrar desclasificación');
         }
     }
 
     
-    public function getDescalificacionesPorArea()
+    public function getDesclasificacionesPorArea()
     {
         try {
             $areaId = $_GET['area_id'] ?? null;
@@ -119,17 +119,17 @@ class DescalificacionController
                 return $value !== null && $value !== '';
             });
 
-            $descalificaciones = $this->descalificacionModel->getByArea($areaId, $filtros);
+            $desclasificaciones = $this->desclasificacionModel->getByArea($areaId, $filtros);
             
-            return Response::success($descalificaciones, 'Descalificaciones obtenidas exitosamente');
+            return Response::success($desclasificaciones, 'Descalificaciones obtenidas exitosamente');
         } catch (\Exception $e) {
             error_log("Error en getDescalificacionesPorArea: " . $e->getMessage());
-            return Response::serverError('Error al obtener descalificaciones');
+            return Response::serverError('Error al obtener desclasificaciones');
         }
     }
 
    
-    public function revocarDescalificacion()
+    public function revocarDesclasificacion()
     {
         try {
             $user = JWTManager::getCurrentUser();
@@ -139,32 +139,32 @@ class DescalificacionController
 
             
             if (!in_array($user['role'], ['coordinador', 'admin'])) {
-                return Response::forbidden('No tienes permisos para revocar descalificaciones');
+                return Response::forbidden('No tienes permisos para revocar desclasificaciones');
             }
 
             $input = json_decode(file_get_contents('php://input'), true);
-            $descalificacionId = $input['id'] ?? null;
+            $desclasificacionId = $input['id'] ?? null;
             $motivoRevocacion = $input['motivo_revocacion'] ?? null;
 
-            if (!$descalificacionId) {
-                return Response::validationError(['id' => 'El ID de la descalificación es requerido']);
+            if (!$desclasificacionId) {
+                return Response::validationError(['id' => 'El ID de la desclasificación es requerido']);
             }
 
-            $resultado = $this->descalificacionModel->revocar($descalificacionId, $motivoRevocacion);
+            $resultado = $this->desclasificacionModel->revocar($desclasificacionId, $motivoRevocacion);
             
             if ($resultado) {
                 return Response::success(null, 'Descalificación revocada exitosamente');
             } else {
-                return Response::serverError('Error al revocar descalificación');
+                return Response::serverError('Error al revocar desclasificación');
             }
         } catch (\Exception $e) {
             error_log("Error en revocarDescalificacion: " . $e->getMessage());
-            return Response::serverError('Error al revocar descalificación');
+            return Response::serverError('Error al revocar desclasificación');
         }
     }
 
     
-    public function verificarDescalificacionAutomatica()
+    public function verificarDesclasificacionAutomatica()
     {
         try {
             $input = json_decode(file_get_contents('php://input'), true);
@@ -179,12 +179,12 @@ class DescalificacionController
                 ]);
             }
 
-            $reglaDescalificacion = $this->reglaDescalificacionModel->verificarDescalificacionPuntuacion($areaId, $puntuacion);
+            $reglaDesclasificacion = $this->reglaDesclasificacionModel->verificarDesclasificacionPuntuacion($areaId, $puntuacion);
             
-            if ($reglaDescalificacion) {
+            if ($reglaDesclasificacion) {
                 return Response::success([
                     'debe_descalificar' => true,
-                    'regla' => $reglaDescalificacion
+                    'regla' => $reglaDesclasificacion
                 ], 'El participante debe ser descalificado por puntuación');
             } else {
                 return Response::success([
@@ -193,7 +193,7 @@ class DescalificacionController
             }
         } catch (\Exception $e) {
             error_log("Error en verificarDescalificacionAutomatica: " . $e->getMessage());
-            return Response::serverError('Error al verificar descalificación automática');
+            return Response::serverError('Error al verificar desclasificación automática');
         }
     }
 
@@ -207,7 +207,7 @@ class DescalificacionController
                 return Response::validationError(['area_id' => 'El ID del área es requerido']);
             }
 
-            $estadisticas = $this->descalificacionModel->getEstadisticas($areaId);
+            $estadisticas = $this->desclasificacionModel->getEstadisticas($areaId);
             
             return Response::success($estadisticas, 'Estadísticas obtenidas exitosamente');
         } catch (\Exception $e) {

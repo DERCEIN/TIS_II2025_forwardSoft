@@ -14,7 +14,7 @@ class SimpleConfig
         'DB_PORT' => '5432',
         'DB_DATABASE' => 'forwardsoft_olimpiadas',
         'DB_USERNAME' => 'postgres',
-        'DB_PASSWORD' => 'AybSHSJ7fDKW1ym',
+        'DB_PASSWORD' => 'forwardsoft',
         'JWT_SECRET' => 'default-secret-key-change-in-production',
         'JWT_ALGORITHM' => 'HS256',
         'JWT_EXPIRATION' => '3600',

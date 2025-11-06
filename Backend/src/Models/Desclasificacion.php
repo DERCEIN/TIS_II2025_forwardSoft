@@ -6,7 +6,7 @@ use ForwardSoft\Config\Database;
 use PDO;
 use PDOException;
 
-class Descalificacion
+class Desclasificacion
 {
     private $db;
 
@@ -23,34 +23,34 @@ class Descalificacion
             
             
             $stmt = $this->db->prepare("
-                INSERT INTO descalificaciones 
-                (inscripcion_area_id, regla_descalificacion_id, motivo, evaluador_id, coordinador_id)
+                INSERT INTO desclasificaciones 
+                (inscripcion_area_id, regla_desclasificacion_id, motivo, evaluador_id, coordinador_id)
                 VALUES (?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $data['inscripcion_area_id'],
-                $data['regla_descalificacion_id'],
+                $data['regla_desclasificacion_id'],
                 $data['motivo'],
                 $data['evaluador_id'] ?? null,
                 $data['coordinador_id'] ?? null
             ]);
             
-            $descalificacionId = $this->db->lastInsertId();
+            $desclasificacionId = $this->db->lastInsertId();
             
             
             $stmt = $this->db->prepare("
                 UPDATE inscripciones_areas 
-                SET estado = 'descalificado'
+                SET estado = 'desclasificado'
                 WHERE id = ?
             ");
             $stmt->execute([$data['inscripcion_area_id']]);
             
             $this->db->commit();
-            return $descalificacionId;
+            return $desclasificacionId;
         } catch (PDOException $e) {
             $this->db->rollBack();
-            error_log("Error al registrar descalificación: " . $e->getMessage());
-            throw new \Exception("Error al registrar descalificación");
+            error_log("Error al registrar desclasificación: " . $e->getMessage());
+            throw new \Exception("Error al registrar desclasificación");
         }
     }
 
@@ -61,17 +61,17 @@ class Descalificacion
             $stmt = $this->db->prepare("
                 SELECT d.*, rd.nombre_regla, rd.descripcion as regla_descripcion, rd.tipo,
                        u1.name as evaluador_nombre, u2.name as coordinador_nombre
-                FROM descalificaciones d
-                JOIN reglas_descalificacion rd ON rd.id = d.regla_descalificacion_id
+                FROM desclasificaciones d
+                JOIN reglas_desclasificacion rd ON rd.id = d.regla_desclasificacion_id
                 LEFT JOIN users u1 ON u1.id = d.evaluador_id
                 LEFT JOIN users u2 ON u2.id = d.coordinador_id
                 WHERE d.inscripcion_area_id = ? AND d.estado = 'activa'
-                ORDER BY d.fecha_descalificacion DESC
+                ORDER BY d.fecha_desclasificacion DESC
             ");
             $stmt->execute([$inscripcionId]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            error_log("Error al obtener descalificaciones: " . $e->getMessage());
+            error_log("Error al obtener desclasificaciones: " . $e->getMessage());
             return [];
         }
     }
@@ -86,8 +86,8 @@ class Descalificacion
                        ac.nombre as area_nombre, nc.nombre as nivel_nombre,
                        ue.nombre as unidad_educativa, d2.nombre as departamento,
                        u1.name as evaluador_nombre, u2.name as coordinador_nombre
-                FROM descalificaciones d
-                JOIN reglas_descalificacion rd ON rd.id = d.regla_descalificacion_id
+                FROM desclasificaciones d
+                JOIN reglas_desclasificacion rd ON rd.id = d.regla_desclasificacion_id
                 JOIN inscripciones_areas ia ON ia.id = d.inscripcion_area_id
                 JOIN olimpistas o ON o.id = ia.olimpista_id
                 JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
@@ -116,13 +116,13 @@ class Descalificacion
                 $params[] = $filtros['departamento_id'];
             }
             
-            $sql .= " ORDER BY d.fecha_descalificacion DESC";
+            $sql .= " ORDER BY d.fecha_desclasificacion DESC";
             
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            error_log("Error al obtener descalificaciones por área: " . $e->getMessage());
+            error_log("Error al obtener desclasificaciones por área: " . $e->getMessage());
             return [];
         }
     }
@@ -135,7 +135,7 @@ class Descalificacion
             
             
             $stmt = $this->db->prepare("
-                UPDATE descalificaciones 
+                UPDATE desclasificaciones 
                 SET estado = 'revocada', updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ");
@@ -143,18 +143,18 @@ class Descalificacion
             
             
             $stmt = $this->db->prepare("
-                SELECT inscripcion_area_id FROM descalificaciones WHERE id = ?
+                SELECT inscripcion_area_id FROM desclasificaciones WHERE id = ?
             ");
             $stmt->execute([$id]);
-            $descalificacion = $stmt->fetch(PDO::FETCH_ASSOC);
+            $desclasificacion = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            if ($descalificacion) {
+            if ($desclasificacion) {
                 
                 $stmt = $this->db->prepare("
-                    SELECT COUNT(*) as count FROM descalificaciones 
+                    SELECT COUNT(*) as count FROM desclasificaciones 
                     WHERE inscripcion_area_id = ? AND estado = 'activa'
                 ");
-                $stmt->execute([$descalificacion['inscripcion_area_id']]);
+                $stmt->execute([$desclasificacion['inscripcion_area_id']]);
                 $count = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
                 
                
@@ -164,7 +164,7 @@ class Descalificacion
                         SET estado = 'evaluado'
                         WHERE id = ?
                     ");
-                    $stmt->execute([$descalificacion['inscripcion_area_id']]);
+                    $stmt->execute([$desclasificacion['inscripcion_area_id']]);
                 }
             }
             
@@ -172,24 +172,24 @@ class Descalificacion
             return true;
         } catch (PDOException $e) {
             $this->db->rollBack();
-            error_log("Error al revocar descalificación: " . $e->getMessage());
-            throw new \Exception("Error al revocar descalificación");
+            error_log("Error al revocar desclasificación: " . $e->getMessage());
+            throw new \Exception("Error al revocar desclasificación");
         }
     }
 
    
-    public function estaDescalificado($inscripcionId)
+    public function estaDesclasificado($inscripcionId)
     {
         try {
             $stmt = $this->db->prepare("
-                SELECT COUNT(*) as count FROM descalificaciones 
+                SELECT COUNT(*) as count FROM desclasificaciones 
                 WHERE inscripcion_area_id = ? AND estado = 'activa'
             ");
             $stmt->execute([$inscripcionId]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             return $result['count'] > 0;
         } catch (PDOException $e) {
-            error_log("Error al verificar descalificación: " . $e->getMessage());
+            error_log("Error al verificar desclasificación: " . $e->getMessage());
             return false;
         }
     }
@@ -204,8 +204,8 @@ class Descalificacion
                     COUNT(*) as total,
                     COUNT(CASE WHEN d.estado = 'activa' THEN 1 END) as activas,
                     COUNT(CASE WHEN d.estado = 'revocada' THEN 1 END) as revocadas
-                FROM descalificaciones d
-                JOIN reglas_descalificacion rd ON rd.id = d.regla_descalificacion_id
+                FROM desclasificaciones d
+                JOIN reglas_desclasificacion rd ON rd.id = d.regla_desclasificacion_id
                 JOIN inscripciones_areas ia ON ia.id = d.inscripcion_area_id
                 WHERE ia.area_competencia_id = ?
                 GROUP BY rd.tipo
@@ -214,7 +214,7 @@ class Descalificacion
             $stmt->execute([$areaId]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            error_log("Error al obtener estadísticas de descalificaciones: " . $e->getMessage());
+            error_log("Error al obtener estadísticas de desclasificaciones: " . $e->getMessage());
             return [];
         }
     }

@@ -60,7 +60,7 @@ class AuthController
             Response::unauthorized('Rol incorrecto para este usuario');
         }
 
-        // Generar token JWTManager
+        
         $tokenPayload = [
             'id' => $user['id'],
             'email' => $user['email'],
@@ -70,7 +70,7 @@ class AuthController
 
         $token = JWTManager::generateToken($tokenPayload);
 
-        // Actualizar último login
+       
         $this->userModel->updateLastLogin($user['id']);
 
         
@@ -102,12 +102,12 @@ class AuthController
             Response::validationError($errors);
         }
 
-        // Verificar si el email ya existe
+        
         if ($this->userModel->findByEmail($input['email'])) {
             Response::validationError(['email' => 'El email ya está registrado']);
         }
 
-        // Crear usuario
+        
         $userData = [
             'name' => trim($input['name']),
             'email' => trim($input['email']),
@@ -163,7 +163,7 @@ class AuthController
                 }
             }
         } catch (Exception $e) {
-            error_log("❌ Debug ME - Error al obtener usuario de BD: " . $e->getMessage());
+            error_log(" Debug ME - Error al obtener usuario de BD: " . $e->getMessage());
         }
 
         

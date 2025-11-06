@@ -14,9 +14,7 @@ class ConfiguracionOlimpiada
         $this->db = Database::getInstance();
     }
 
-    /**
-     * Obtener la configuración actual (solo debe haber una)
-     */
+    
     public function getConfiguracion()
     {
         $sql = "SELECT * FROM {$this->table} ORDER BY id DESC LIMIT 1";
@@ -24,9 +22,7 @@ class ConfiguracionOlimpiada
         return $stmt->fetch();
     }
 
-    /**
-     * Crear nueva configuración
-     */
+   
     public function create($data)
     {
         $sql = "

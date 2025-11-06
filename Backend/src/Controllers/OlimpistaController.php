@@ -9,6 +9,7 @@ use ForwardSoft\Models\InscripcionArea;
 use ForwardSoft\Models\TutorLegal;
 use ForwardSoft\Models\TutorAcademico;
 use ForwardSoft\Models\UnidadEducativa;
+use ForwardSoft\Models\ConfiguracionAreaEvaluacion;
 
 class OlimpistaController
 {
@@ -55,7 +56,7 @@ class OlimpistaController
             Response::notFound('Olimpista no encontrado');
         }
 
-        // Obtener detalles de inscripciones por área
+       
         $inscripcionesDetalle = $this->olimpistaModel->getInscripcionesDetalle($id);
         $olimpista['inscripciones_detalle'] = $inscripcionesDetalle;
 
@@ -75,13 +76,13 @@ class OlimpistaController
             Response::validationError($errors);
         }
 
-        // Verificar si el documento ya existe
+        
         if ($this->olimpistaModel->findByDocument($input['documento_identidad'])) {
             Response::validationError(['documento_identidad' => 'El documento de identidad ya está registrado']);
         }
 
         try {
-            // Crear tutor legal
+            
             $tutorLegalId = $this->tutorLegalModel->create([
                 'nombre_completo' => $input['tutor_legal']['nombre_completo'],
                 'documento_identidad' => $input['tutor_legal']['documento_identidad'],
@@ -90,7 +91,7 @@ class OlimpistaController
                 'direccion' => $input['tutor_legal']['direccion'] ?? null
             ]);
 
-            // Crear tutor académico si se proporciona
+            
             $tutorAcademicoId = null;
             if (isset($input['tutor_academico']) && !empty($input['tutor_academico']['nombre_completo'])) {
                 $tutorAcademicoId = $this->tutorAcademicoModel->create([
@@ -103,7 +104,7 @@ class OlimpistaController
                 ]);
             }
 
-            // Crear olimpista
+            
             $olimpistaId = $this->olimpistaModel->create([
                 'nombre_completo' => $input['nombre_completo'],
                 'documento_identidad' => $input['documento_identidad'],
@@ -116,7 +117,31 @@ class OlimpistaController
                 'email' => $input['email'] ?? null
             ]);
 
-            // Crear inscripciones por área
+            
+            if (isset($input['areas']) && is_array($input['areas']) && count($input['areas']) > 1) {
+                $areaIds = array_map(function($area) {
+                    return $area['area_competencia_id'];
+                }, $input['areas']);
+                
+                $configAreaModel = new ConfiguracionAreaEvaluacion();
+                $conflictos = $configAreaModel->validarChoquesHorarios($areaIds);
+                
+                if (!empty($conflictos)) {
+                    $mensajeConflicto = "Conflicto de horarios detectado:\n";
+                    foreach ($conflictos as $conflicto) {
+                        $mensajeConflicto .= "- {$conflicto['area1_nombre']} y {$conflicto['area2_nombre']} tienen horarios que se solapan.\n";
+                    }
+                    $mensajeConflicto .= "Por favor, ajuste los periodos de evaluación en la configuración de áreas.";
+                    
+                    Response::validationError([
+                        'conflictos_horarios' => $mensajeConflicto,
+                        'detalles' => $conflictos
+                    ]);
+                    return;
+                }
+            }
+
+            
             if (isset($input['areas']) && is_array($input['areas'])) {
                 foreach ($input['areas'] as $area) {
                     $this->inscripcionModel->create([

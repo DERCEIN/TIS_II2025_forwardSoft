@@ -1,5 +1,5 @@
--- Crear tabla para reglas de descalificación por área
-CREATE TABLE IF NOT EXISTS reglas_descalificacion (
+
+CREATE TABLE IF NOT EXISTS reglas_desclasificacion (
     id SERIAL PRIMARY KEY,
     area_competencia_id INTEGER NOT NULL,
     nombre_regla VARCHAR(255) NOT NULL,
@@ -8,16 +8,17 @@ CREATE TABLE IF NOT EXISTS reglas_descalificacion (
     activa BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL,
-    FOREIGN KEY (area_competencia_id) REFERENCES areas_competencia(id) ON DELETE CASCADE
+    FOREIGN KEY (area_competencia_id) REFERENCES areas_competencia(id) ON DELETE CASCADE,
+    UNIQUE(area_competencia_id, nombre_regla, tipo)
 );
 
 
-CREATE INDEX IF NOT EXISTS idx_reglas_descalificacion_area ON reglas_descalificacion(area_competencia_id);
-CREATE INDEX IF NOT EXISTS idx_reglas_descalificacion_tipo ON reglas_descalificacion(tipo);
-CREATE INDEX IF NOT EXISTS idx_reglas_descalificacion_activa ON reglas_descalificacion(activa);
+CREATE INDEX IF NOT EXISTS idx_reglas_desclasificacion_area ON reglas_desclasificacion(area_competencia_id);
+CREATE INDEX IF NOT EXISTS idx_reglas_desclasificacion_tipo ON reglas_desclasificacion(tipo);
+CREATE INDEX IF NOT EXISTS idx_reglas_desclasificacion_activa ON reglas_desclasificacion(activa);
 
--- Insertar reglas específicas para todas las áreas
-INSERT INTO reglas_descalificacion (area_competencia_id, nombre_regla, descripcion, tipo) VALUES
+
+INSERT INTO reglas_desclasificacion (area_competencia_id, nombre_regla, descripcion, tipo) VALUES
 -- Reglas para Informática
 ((SELECT id FROM areas_competencia WHERE nombre = 'Informática'), 
  'Uso de código ajeno', 
@@ -170,24 +171,24 @@ INSERT INTO reglas_descalificacion (area_competencia_id, nombre_regla, descripci
  'tecnico');
 
 
-CREATE TABLE IF NOT EXISTS descalificaciones (
+CREATE TABLE IF NOT EXISTS desclasificaciones (
     id SERIAL PRIMARY KEY,
     inscripcion_area_id INTEGER NOT NULL,
-    regla_descalificacion_id INTEGER NOT NULL,
+    regla_desclasificacion_id INTEGER NOT NULL,
     motivo TEXT NOT NULL,
-    fecha_descalificacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_desclasificacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     evaluador_id INTEGER,
     coordinador_id INTEGER,
     estado VARCHAR(20) DEFAULT 'activa' CHECK (estado IN ('activa', 'revocada')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL,
     FOREIGN KEY (inscripcion_area_id) REFERENCES inscripciones_areas(id) ON DELETE CASCADE,
-    FOREIGN KEY (regla_descalificacion_id) REFERENCES reglas_descalificacion(id) ON DELETE RESTRICT,
+    FOREIGN KEY (regla_desclasificacion_id) REFERENCES reglas_desclasificacion(id) ON DELETE RESTRICT,
     FOREIGN KEY (evaluador_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (coordinador_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_descalificaciones_inscripcion ON descalificaciones(inscripcion_area_id);
-CREATE INDEX IF NOT EXISTS idx_descalificaciones_regla ON descalificaciones(regla_descalificacion_id);
-CREATE INDEX IF NOT EXISTS idx_descalificaciones_fecha ON descalificaciones(fecha_descalificacion);
-CREATE INDEX IF NOT EXISTS idx_descalificaciones_estado ON descalificaciones(estado);
+CREATE INDEX IF NOT EXISTS idx_desclasificaciones_inscripcion ON desclasificaciones(inscripcion_area_id);
+CREATE INDEX IF NOT EXISTS idx_desclasificaciones_regla ON desclasificaciones(regla_desclasificacion_id);
+CREATE INDEX IF NOT EXISTS idx_desclasificaciones_fecha ON desclasificaciones(fecha_desclasificacion);
+CREATE INDEX IF NOT EXISTS idx_desclasificaciones_estado ON desclasificaciones(estado);

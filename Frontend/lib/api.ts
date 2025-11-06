@@ -51,6 +51,10 @@ export class ApiService {
     const url = `${this.baseURL}${endpoint}`
     const token = this.getToken()
 
+    console.log('🌐 API Request - URL:', url)
+    console.log('🌐 API Request - Method:', options.method || 'GET')
+    console.log('🌐 API Request - Has Token:', token ? 'Yes' : 'No')
+
     const defaultHeaders: HeadersInit = {
       'Content-Type': 'application/json',
     }
@@ -68,24 +72,40 @@ export class ApiService {
     }
 
     try {
+      console.log('🌐 API Request - Sending request...')
       const response = await fetch(url, config)
+      console.log('🌐 API Response - Status:', response.status, response.statusText)
+      
       const text = await response.text()
       let data: any = null
       try {
         data = text ? JSON.parse(text) : null
       } catch {
-        
+        console.error('🌐 API Response - Error parsing JSON:', text)
       }
 
       if (!response.ok) {
-        const message = (data && data.message) ? data.message : (text || 'Error en la petición')
+        let message = (data && data.message) ? data.message : (text || 'Error en la petición')
+        
+        // Si hay errores de validación (422), construir mensaje más detallado
+        if (response.status === 422 && data && data.errors) {
+          const errores = Object.entries(data.errors)
+            .map(([campo, mensajes]: [string, any]) => {
+              const msgs = Array.isArray(mensajes) ? mensajes : [mensajes]
+              return `${campo}: ${msgs.join(', ')}`
+            })
+            .join('; ')
+          message = errores || message
+        }
+        
+        console.error('🌐 API Response - Error:', message)
+        if (data && data.errors) {
+          console.error('🌐 API Response - Validation Errors:', data.errors)
+        }
         throw new Error(`${response.status}:${message}`)
       }
 
-      // Log para debugging
-      if (endpoint.includes('tiempos-evaluadores')) {
-        console.log('📥 Respuesta del servidor:', data)
-      }
+      console.log('🌐 API Response - Success:', data)
 
       // Asegurar que siempre retornamos un ApiResponse válido
       if (!data) {
@@ -98,7 +118,7 @@ export class ApiService {
 
       return data as ApiResponse<T>
     } catch (error) {
-      console.error('API Error:', error)
+      console.error('🌐 API Error - Exception:', error)
       throw error
     }
   }
@@ -573,6 +593,41 @@ export class AdminService {
   static async reenviarCredenciales(userId: number) {
     return ApiService.post(`/api/admin/users/${userId}/resend-credentials`)
   }
+
+  // Métodos para cierre de fase general
+  static async getDashboardCierreFase() {
+    return ApiService.get('/api/admin/cierre-fase/dashboard')
+  }
+
+  static async extenderFechaCierre(data: {
+    nueva_fecha: string
+    justificacion: string
+  }) {
+    return ApiService.post('/api/admin/cierre-fase/extender-fecha', data)
+  }
+
+  static async cerrarFaseGeneral(data: {
+    confirmado: boolean
+  }) {
+    return ApiService.post('/api/admin/cierre-fase/cerrar-general', data)
+  }
+
+  static async verificarCierreAutomatico() {
+    return ApiService.post('/api/admin/cierre-fase/verificar-automatico')
+  }
+
+  static async revertirCierreFase(data: {
+    confirmado: boolean
+    justificacion: string
+  }) {
+    return ApiService.post('/api/admin/cierre-fase/revertir', data)
+  }
+
+  static async generarReporteConsolidado() {
+    // El reporte se descarga directamente como CSV, no necesita procesamiento adicional
+    // Se maneja en el componente con fetch directo
+    return ApiService.get('/api/admin/cierre-fase/reporte-consolidado')
+  }
 }
 
 export class CoordinadorService {
@@ -719,6 +774,14 @@ export class CatalogoService {
   static async getNiveles() {
     return ApiService.get('/api/catalogo/niveles')
   }
+
+  static async areasCompetencia() {
+    return ApiService.get('/api/catalogo/areas-competencia')
+  }
+
+  static async areasCompetenciaConEstadisticas() {
+    return ApiService.get('/api/catalogo/areas-competencia-estadisticas')
+  }
 }
 
 export class EvaluadorService {
@@ -726,8 +789,14 @@ export class EvaluadorService {
     return ApiService.get('/api/evaluador/dashboard')
   }
 
-  static async getEvaluaciones() {
-    return ApiService.get('/api/evaluador/evaluaciones')
+  static async getEvaluaciones(fase?: 'clasificacion' | 'final') {
+    const params = new URLSearchParams()
+    if (fase) {
+      // En la BD se guarda como 'premiacion' pero conceptualmente es 'final'
+      params.append('fase', fase)
+    }
+    const queryString = params.toString()
+    return ApiService.get(`/api/evaluador/evaluaciones${queryString ? `?${queryString}` : ''}`)
   }
 
   static async getEstadisticas() {
@@ -747,22 +816,45 @@ export class ConfiguracionService {
   static async updateConfiguracionGeneral(data: any) {
     return ApiService.put('/api/configuracion/general', data)
   }
+
+  static async getConfiguracionesPorArea() {
+    return ApiService.get('/api/configuracion/areas')
+  }
+
+  static async getConfiguracionPorArea(areaId: number) {
+    return ApiService.get(`/api/configuracion/area?area_id=${areaId}`)
+  }
+
+  static async updateConfiguracionPorArea(data: {
+    area_competencia_id: number
+    tiempo_evaluacion_minutos: number
+    periodo_evaluacion_inicio: string
+    periodo_evaluacion_fin: string
+    periodo_publicacion_inicio: string
+    periodo_publicacion_fin: string
+  }) {
+    return ApiService.put('/api/configuracion/area', data)
+  }
+
+  static async validarChoquesHorarios(areaIds: number[]) {
+    return ApiService.post('/api/configuracion/validar-choques', { area_ids: areaIds })
+  }
 }
 
-export class DescalificacionService {
+export class DesclasificacionService {
   static async getReglasPorArea(areaId: number) {
-    return ApiService.get(`/api/descalificacion/reglas?area_id=${areaId}`)
+    return ApiService.get(`/api/desclasificacion/reglas?area_id=${areaId}`)
   }
 
-  static async registrarDescalificacion(data: {
+  static async registrarDesclasificacion(data: {
     inscripcion_area_id: number
-    regla_descalificacion_id: number
+    regla_desclasificacion_id: number
     motivo: string
   }) {
-    return ApiService.post('/api/descalificacion/registrar', data)
+    return ApiService.post('/api/desclasificacion/registrar', data)
   }
 
-  static async getDescalificacionesPorArea(areaId: number, filtros?: {
+  static async getDesclasificacionesPorArea(areaId: number, filtros?: {
     tipo?: string
     nivel_id?: number
     departamento_id?: number
@@ -772,25 +864,25 @@ export class DescalificacionService {
     if (filtros?.nivel_id) params.append('nivel_id', filtros.nivel_id.toString())
     if (filtros?.departamento_id) params.append('departamento_id', filtros.departamento_id.toString())
     
-    return ApiService.get(`/api/descalificacion/area?${params.toString()}`)
+    return ApiService.get(`/api/desclasificacion/area?${params.toString()}`)
   }
 
-  static async revocarDescalificacion(id: number, motivoRevocacion?: string) {
-    return ApiService.post('/api/descalificacion/revocar', {
+  static async revocarDesclasificacion(id: number, motivoRevocacion?: string) {
+    return ApiService.post('/api/desclasificacion/revocar', {
       id,
       motivo_revocacion: motivoRevocacion
     })
   }
 
-  static async verificarDescalificacionAutomatica(areaId: number, puntuacion: number) {
-    return ApiService.post('/api/descalificacion/verificar-automatica', {
+  static async verificarDesclasificacionAutomatica(areaId: number, puntuacion: number) {
+    return ApiService.post('/api/desclasificacion/verificar-automatica', {
       area_id: areaId,
       puntuacion
     })
   }
 
   static async getEstadisticas(areaId: number) {
-    return ApiService.get(`/api/descalificacion/estadisticas?area_id=${areaId}`)
+    return ApiService.get(`/api/desclasificacion/estadisticas?area_id=${areaId}`)
   }
 }
 

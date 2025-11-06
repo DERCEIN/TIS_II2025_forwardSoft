@@ -46,6 +46,7 @@ interface Olimpista {
   departamento: string
   fecha_registro: string
   estado: string
+  grado_escolaridad?: string
   // Campos de grupo
   es_grupo?: boolean
   nombre_grupo?: string
@@ -117,14 +118,14 @@ export default function OlimpistasPage() {
     return matchesSearch && matchesArea
   })
 
-  // Obtener áreas únicas (incluyendo múltiples áreas por participante)
+  
   const areas = [...new Set(
     olimpistas.flatMap(o => 
       o.areas_competencia ? o.areas_competencia.split(', ') : [o.area_competencia]
     ).filter(Boolean)
   )]
 
-  // Función para mostrar detalles del olimpista
+ 
   const handleViewDetails = async (olimpista: Olimpista) => {
     try {
       setLoading(true)
@@ -646,7 +647,12 @@ export default function OlimpistasPage() {
                             </Badge>
                             <Badge variant="secondary" className="text-sm px-3 py-1">
                               {inscripcion.nivel_nombre}
-                      </Badge>
+                            </Badge>
+                            {selectedOlimpista.grado_escolaridad && (
+                              <Badge variant="secondary" className="text-sm px-3 py-1 ml-2">
+                                {selectedOlimpista.grado_escolaridad}
+                              </Badge>
+                            )}
                     </div>
                           {inscripcion.es_grupo && (
                             <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200">

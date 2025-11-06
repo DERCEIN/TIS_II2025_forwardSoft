@@ -701,6 +701,85 @@ function ProgresoEvaluacionClasificatoria() {
     )
   }
 
+  // Agrupar niveles por Primaria y Secundaria
+  const nivelesAgrupados = (() => {
+    const grupos: Record<string, {
+      nivel_nombre: string,
+      evaluados: number,
+      pendientes: number,
+      desclasificados: number,
+      promedio_puntuacion: number,
+      porcentaje: number,
+      porcentaje_desclasificados: number
+    }> = {}
+
+    const source: any[] = Array.isArray(progressData.niveles) ? progressData.niveles : []
+
+    for (const n of source) {
+      const nombre: string = (n?.nivel_nombre || '').toString().toLowerCase()
+      
+      
+      let key: string | undefined = undefined
+      if (nombre.includes('primaria') || nombre.includes('primario')) {
+        key = 'Primaria'
+      } else if (nombre.includes('secundaria') || nombre.includes('secundario')) {
+        key = 'Secundaria'
+      }
+
+      
+      if (!key) continue
+
+     
+      if (!grupos[key]) {
+        grupos[key] = {
+          nivel_nombre: key,
+          evaluados: 0,
+          pendientes: 0,
+          desclasificados: 0,
+          promedio_puntuacion: 0,
+          porcentaje: 0,
+          porcentaje_desclasificados: 0,
+        }
+      }
+
+      
+      const evaluados = Number(n?.evaluados || 0)
+      const pendientes = Number(n?.pendientes || 0)
+      const desclasificados = Number(n?.desclasificados || 0)
+      
+      
+      const promedioActual = Number(n?.promedio_puntuacion || 0)
+      const totalEvaluadosPrev = grupos[key].evaluados
+      const totalEvaluadosNew = totalEvaluadosPrev + evaluados
+      
+      grupos[key].promedio_puntuacion = totalEvaluadosNew > 0
+        ? ((grupos[key].promedio_puntuacion * totalEvaluadosPrev) + (promedioActual * evaluados)) / totalEvaluadosNew
+        : grupos[key].promedio_puntuacion
+
+      grupos[key].evaluados += evaluados
+      grupos[key].pendientes += pendientes
+      grupos[key].desclasificados += desclasificados
+
+      
+      const total = grupos[key].evaluados + grupos[key].pendientes + grupos[key].desclasificados
+      grupos[key].porcentaje = total > 0 ? Math.round((grupos[key].evaluados / total) * 100) : 0
+      grupos[key].porcentaje_desclasificados = total > 0 ? Math.round((grupos[key].desclasificados / total) * 100) : 0
+    }
+
+    
+    const ordenados = Object.values(grupos).map(g => ({
+      ...g,
+      promedio_puntuacion: Math.round(g.promedio_puntuacion)
+    }))
+    
+    
+    return ordenados.sort((a, b) => {
+      if (a.nivel_nombre === 'Primaria') return -1
+      if (b.nivel_nombre === 'Primaria') return 1
+      return 0
+    })
+  })()
+
   return (
     <div className="space-y-6">
       {/* Header con actualización en tiempo real */}
@@ -729,8 +808,8 @@ function ProgresoEvaluacionClasificatoria() {
         </div>
       </div>
 
-      {/* Dashboard de Alertas */}
-      {progressData.alertas && progressData.alertas.total_alertas > 0 && (
+      {/* Dashboard de Alertas (deshabilitado) */}
+      {false && progressData.alertas && progressData.alertas.total_alertas > 0 && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-red-800">
@@ -775,7 +854,7 @@ function ProgresoEvaluacionClasificatoria() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {progressData.niveles.map((nivel: any, index: number) => (
+              {(nivelesAgrupados.length > 0 ? nivelesAgrupados : progressData.niveles).map((nivel: any, index: number) => (
                 <div key={index} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg">{nivel.nivel_nombre}</h3>
@@ -789,8 +868,8 @@ function ProgresoEvaluacionClasificatoria() {
                         <div className="text-xs text-orange-600">Pendientes</div>
                       </div>
                       <div className="text-center p-2 bg-red-50 rounded">
-                        <div className="font-semibold text-red-700">{nivel.descalificados || 0}</div>
-                        <div className="text-xs text-red-600">Descalificados</div>
+                        <div className="font-semibold text-red-700">{nivel.desclasificados || 0}</div>
+                        <div className="text-xs text-red-600">Desclasificados</div>
                       </div>
                       <div className="text-center p-2 bg-blue-50 rounded">
                         <div className="font-semibold text-blue-700">{nivel.promedio_puntuacion ? Math.round(nivel.promedio_puntuacion) : 0}</div>
@@ -800,7 +879,7 @@ function ProgresoEvaluacionClasificatoria() {
                     <div className="mt-3">
                       <div className="flex justify-between text-sm mb-1">
                         <span>Progreso: {nivel.porcentaje}%</span>
-                        <span>Descalificados: {nivel.porcentaje_descalificados || 0}%</span>
+                        <span>Desclasificados: {nivel.porcentaje_desclasificados || 0}%</span>
                       </div>
                       <Progress value={nivel.porcentaje} className="h-2" />
                     </div>
@@ -882,81 +961,83 @@ function ProgresoEvaluacionClasificatoria() {
         </Card>
       </div>
 
-      {/* Métricas de Tiempo y Descalificaciones */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Métricas de Tiempo */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Timer className="h-5 w-5" />
-              Métricas de Tiempo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <div className="text-xl font-bold text-blue-600">
-                    {progressData.metricas_tiempo?.dias_promedio_evaluacion || 0}
-                  </div>
-                  <div className="text-xs text-blue-600">Días Promedio</div>
-                </div>
-                <div className="text-center p-3 bg-green-50 rounded-lg">
-                  <div className="text-xl font-bold text-green-600">
-                    {progressData.metricas_tiempo?.tiempo_minimo || 0}
-                  </div>
-                  <div className="text-xs text-green-600">Tiempo Mínimo</div>
-                </div>
-                <div className="text-center p-3 bg-orange-50 rounded-lg">
-                  <div className="text-xl font-bold text-orange-600">
-                    {progressData.metricas_tiempo?.tiempo_maximo || 0}
-                  </div>
-                  <div className="text-xs text-orange-600">Tiempo Máximo</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Estadísticas de Descalificaciones */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserX className="h-5 w-5" />
-              Descalificaciones
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-red-50 rounded-lg">
-                  <div className="text-xl font-bold text-red-600">
-                    {progressData.descalificaciones?.total_descalificados || 0}
-                  </div>
-                  <div className="text-xs text-red-600">Total Descalificados</div>
-                </div>
-                <div className="text-center p-3 bg-red-100 rounded-lg">
-                  <div className="text-xl font-bold text-red-700">
-                    {progressData.descalificaciones?.porcentaje_descalificados || 0}%
-                  </div>
-                  <div className="text-xs text-red-700">Porcentaje</div>
-                </div>
-              </div>
-              {progressData.descalificaciones?.estadisticas && progressData.descalificaciones.estadisticas.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="font-medium text-sm">Por Tipo:</h4>
-                  {progressData.descalificaciones.estadisticas.map((stat: any, index: number) => (
-                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <span className="text-sm capitalize">{stat.tipo}</span>
-                      <Badge variant="destructive">{stat.cantidad_por_tipo}</Badge>
+      {/* Métricas de Tiempo y Descalificaciones (deshabilitado) */}
+      {false && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Métricas de Tiempo */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Timer className="h-5 w-5" />
+                Métricas de Tiempo
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-xl font-bold text-blue-600">
+                      {progressData.metricas_tiempo?.dias_promedio_evaluacion || 0}
                     </div>
-                  ))}
+                    <div className="text-xs text-blue-600">Días Promedio</div>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-xl font-bold text-green-600">
+                      {progressData.metricas_tiempo?.tiempo_minimo || 0}
+                    </div>
+                    <div className="text-xs text-green-600">Tiempo Mínimo</div>
+                  </div>
+                  <div className="text-center p-3 bg-orange-50 rounded-lg">
+                    <div className="text-xl font-bold text-orange-600">
+                      {progressData.metricas_tiempo?.tiempo_maximo || 0}
+                    </div>
+                    <div className="text-xs text-orange-600">Tiempo Máximo</div>
+                  </div>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Estadísticas de Desclasificaciones */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserX className="h-5 w-5" />
+                Desclasificaciones
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <div className="text-xl font-bold text-red-600">
+                      {progressData.desclasificaciones?.total_desclasificados || 0}
+                    </div>
+                    <div className="text-xs text-red-600">Total Desclasificados</div>
+                  </div>
+                  <div className="text-center p-3 bg-red-100 rounded-lg">
+                    <div className="text-xl font-bold text-red-700">
+                      {progressData.desclasificaciones?.porcentaje_desclasificados || 0}%
+                    </div>
+                    <div className="text-xs text-red-700">Porcentaje</div>
+                  </div>
+                </div>
+                {progressData.desclasificaciones?.estadisticas && progressData.desclasificaciones.estadisticas.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Por Tipo:</h4>
+                    {progressData.desclasificaciones.estadisticas.map((stat: any, index: number) => (
+                      <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <span className="text-sm capitalize">{stat.tipo}</span>
+                        <Badge variant="destructive">{stat.cantidad_por_tipo}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Lista de olimpistas sin evaluar */}
       <Card>
@@ -971,7 +1052,17 @@ function ProgresoEvaluacionClasificatoria() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {progressData.olimpistas_sin_evaluar.map((olimpista: any) => (
+            {(
+              (progressData.olimpistas_sin_evaluar || []).slice().sort((a: any, b: any) => {
+                const ga = (a.grado_escolaridad ?? '').toString()
+                const gb = (b.grado_escolaridad ?? '').toString()
+                // Intentar ordenar numéricamente si es posible; si no, por texto
+                const na = parseInt(ga, 10)
+                const nb = parseInt(gb, 10)
+                if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb
+                return ga.localeCompare(gb)
+              })
+            ).map((olimpista: any) => (
               <div key={olimpista.id} className={`flex items-center justify-between p-3 border rounded-lg ${
                 olimpista.nivel_alerta === 'critico' ? 'bg-red-50 border-red-200' :
                 olimpista.nivel_alerta === 'advertencia' ? 'bg-orange-50 border-orange-200' :
@@ -981,6 +1072,7 @@ function ProgresoEvaluacionClasificatoria() {
                   <div className="font-medium">{olimpista.nombre}</div>
                   <div className="text-sm text-muted-foreground">
                     {olimpista.area} - {olimpista.nivel}
+                    {olimpista.grado_escolaridad ? ` - ${olimpista.grado_escolaridad}` : ''}
                   </div>
                   {olimpista.evaluador_nombre && (
                     <div className="text-xs text-blue-600 mt-1">
@@ -1321,15 +1413,15 @@ function CompetidoresPorAreaNivel() {
   }
 
   const fetchData = async () => {
-    console.log('🎯 fetchData ejecutándose')
-    console.log('🎯 departamentoId:', departamentoId)
+    console.log(' fetchData ejecutándose')
+    console.log(' departamentoId:', departamentoId)
     
     if (!departamentoId) {
-      console.log('❌ No hay departamentoId, saliendo de fetchData')
+      console.log(' No hay departamentoId, saliendo de fetchData')
       return
     }
     
-    console.log('⏳ Iniciando carga de datos...')
+    console.log('Iniciando carga de datos...')
     setLoading(true)
     setError("")
     
@@ -1350,11 +1442,11 @@ function CompetidoresPorAreaNivel() {
       
       
       const token = localStorage.getItem('auth_token')
-      console.log('🔑 Token en localStorage:', token ? 'Presente' : 'Ausente')
-      console.log('🔑 Token completo:', token)
+      console.log(' Token en localStorage:', token ? 'Presente' : 'Ausente')
+      console.log(' Token completo:', token)
       
       
-      console.log('🔍 Llamando a la API con parámetros:', {
+      console.log(' Llamando a la API con parámetros:', {
         area_id: 1,
         nivel_id: nivelParam,
         fase: 'clasificacion'
@@ -1366,7 +1458,7 @@ function CompetidoresPorAreaNivel() {
         fase: 'clasificacion'
       })
       
-      console.log('📡 Respuesta de la API:', response)
+      console.log(' Respuesta de la API:', response)
       
       if (response.success && response.data) {
         
@@ -1379,14 +1471,14 @@ function CompetidoresPorAreaNivel() {
           area_nombre: participante.area_nombre,
           nivel_nombre: participante.nivel_nombre,
           puntuacion: participante.puntuacion || 0,
-          inscripcion_estado: participante.estado_evaluacion, // Usar estado real de evaluación
+          inscripcion_estado: participante.estado_evaluacion,
           observaciones: participante.observaciones,
           fecha_evaluacion: participante.fecha_evaluacion,
           evaluador_nombre: participante.evaluador_nombre,
           evaluador_email: participante.evaluador_email
         }))
         
-        // Filtrar por departamento si está seleccionado
+        
         const filteredData = competidoresMapeados.filter((c: any) => {
           const departamentoLabel = getDepartamentoName(departamentoId)
           return c.departamento_nombre === departamentoLabel
@@ -1418,33 +1510,33 @@ function CompetidoresPorAreaNivel() {
   }
 
   useEffect(() => {
-    console.log('🚀 CompetidoresPorAreaNivel - useEffect inicial ejecutándose')
-    console.log('🚀 SIMULATE:', SIMULATE)
+    console.log(' CompetidoresPorAreaNivel - useEffect inicial ejecutándose')
+    console.log(' SIMULATE:', SIMULATE)
     
     
     if (SIMULATE) {
-      console.log('🎭 Modo simulación activado')
+      console.log('Modo simulación activado')
       setDepartamentoId('1') // Cochabamba por defecto
       setCompetidores(demoCompetidores)
       return
     }
     
-    console.log('🌐 Modo real - obteniendo perfil del usuario')
+    console.log(' Modo real - obteniendo perfil del usuario')
     const init = async () => {
       try {
         const me = await AuthService.getProfile()
-        console.log('👤 Perfil obtenido:', me)
+        console.log(' Perfil obtenido:', me)
         const dId = (me as any)?.data?.departamento_id
-        console.log('🏢 Departamento ID del perfil:', dId)
+        console.log(' Departamento ID del perfil:', dId)
         if (dId) {
           setDepartamentoId(String(dId))
-          console.log('✅ Departamento establecido:', String(dId))
+          console.log(' Departamento establecido:', String(dId))
         } else {
-          console.log('⚠️ No se encontró departamento_id en el perfil, usando por defecto')
+          console.log(' No se encontró departamento_id en el perfil, usando por defecto')
           setDepartamentoId('1') // Usar Cochabamba por defecto
         }
       } catch (error) {
-        console.error('❌ Error obteniendo perfil:', error)
+        console.error(' Error obteniendo perfil:', error)
         setDepartamentoId('1') // Usar Cochabamba por defecto
       }
     }
@@ -1452,10 +1544,10 @@ function CompetidoresPorAreaNivel() {
   }, [])
 
   useEffect(() => {
-    console.log('🔄 CompetidoresPorAreaNivel - useEffect de dependencias ejecutándose')
-    console.log('🔄 SIMULATE:', SIMULATE)
-    console.log('🔄 departamentoId:', departamentoId)
-    console.log('🔄 nivelId:', nivelId)
+    console.log(' CompetidoresPorAreaNivel - useEffect de dependencias ejecutándose')
+    console.log(' SIMULATE:', SIMULATE)
+    console.log(' departamentoId:', departamentoId)
+    console.log(' nivelId:', nivelId)
     
     if (SIMULATE) {
       console.log('🎭 Modo simulación - saltando fetchData')
@@ -1463,10 +1555,10 @@ function CompetidoresPorAreaNivel() {
     }
     
     if (departamentoId) {
-      console.log('📡 Llamando a fetchData con departamentoId:', departamentoId)
+      console.log(' Llamando a fetchData con departamentoId:', departamentoId)
       fetchData()
     } else {
-      console.log('⚠️ No hay departamentoId, no se puede hacer fetchData')
+      console.log(' No hay departamentoId, no se puede hacer fetchData')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departamentoId, nivelId, sortBy, estado])

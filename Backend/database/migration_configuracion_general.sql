@@ -1,5 +1,4 @@
--- Migración para configuración general de la olimpiada con fases de clasificación y final
--- Esta tabla almacena la configuración de fechas y tiempos de evaluación
+
 
 CREATE TABLE IF NOT EXISTS configuracion_olimpiada (
     id SERIAL PRIMARY KEY,
@@ -7,17 +6,17 @@ CREATE TABLE IF NOT EXISTS configuracion_olimpiada (
     descripcion TEXT,
     estado BOOLEAN DEFAULT TRUE,
     
-    -- Fechas generales de la olimpiada
+    
     fecha_inicio DATE NOT NULL,
     fecha_fin DATE NOT NULL,
     
-    -- Configuración de la fase de clasificación
+    
     clasificacion_fecha_inicio TIMESTAMP,
     clasificacion_fecha_fin TIMESTAMP,
     clasificacion_puntuacion_minima DECIMAL(5,2) DEFAULT 51.00,
     clasificacion_puntuacion_maxima DECIMAL(5,2) DEFAULT 100.00,
     
-    -- Configuración de la fase final
+    
     final_fecha_inicio TIMESTAMP,
     final_fecha_fin TIMESTAMP,
     final_puntuacion_minima DECIMAL(5,2) DEFAULT 0.00,
@@ -63,7 +62,7 @@ INSERT INTO configuracion_olimpiada (
     120
 ) ON CONFLICT DO NOTHING;
 
--- Crear trigger para actualizar updated_at
+
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN

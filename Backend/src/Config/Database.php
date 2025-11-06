@@ -30,7 +30,7 @@ class Database
             $port = $_ENV['DB_PORT'] ?? '5432';
             $database = $_ENV['DB_DATABASE'] ?? 'forwardsoft_olimpiadas';
             $username = $_ENV['DB_USERNAME'] ?? 'postgres';
-            $password = $_ENV['DB_PASSWORD'] ?? 'AybSHSJ7fDKW1ym';
+            $password = $_ENV['DB_PASSWORD'] ?? 'forwardsoft';
 
             $dsn = "pgsql:host={$host};port={$port};dbname={$database}";
 

@@ -210,7 +210,8 @@ class EvaluacionClasificacion
                 FROM inscripciones_areas ia
                 LEFT JOIN olimpistas o ON ia.olimpista_id = o.id
                 LEFT JOIN {$this->table} ec ON ia.id = ec.inscripcion_area_id
-                WHERE ia.area_competencia_id = ? AND ia.estado = 'inscrito'";
+                WHERE ia.area_competencia_id = ? 
+                AND ia.estado NOT IN ('desclasificado', 'no_clasificado')";
         
         $params = [$areaId];
         

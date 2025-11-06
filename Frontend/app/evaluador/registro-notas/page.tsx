@@ -22,7 +22,7 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react'
-import { EvaluacionService, AuthService, EvaluadorService, ConfiguracionService, DescalificacionService } from '@/lib/api'
+import { EvaluacionService, AuthService, EvaluadorService, ConfiguracionService, DesclasificacionService } from '@/lib/api'
 
 interface Participante {
   id: number
@@ -32,7 +32,8 @@ interface Participante {
   area: string
   nivel: string
   nota_actual?: number
-  estado: 'pendiente' | 'evaluado' | 'revisado' | 'descalificado'
+  estado: 'pendiente' | 'evaluado' | 'revisado' | 'desclasificado' | 'clasificado' | 'no_clasificado'
+  inscripcion_estado?: string
   fecha_evaluacion?: string
 }
 
@@ -60,16 +61,17 @@ export default function RegistroNotas() {
   const [loadingPermisos, setLoadingPermisos] = useState<boolean>(true)
   const [puntuacionMinima, setPuntuacionMinima] = useState<number>(51) // Valor por defecto
   const [puntuacionMaxima, setPuntuacionMaxima] = useState<number>(100)
-  const [reglasDescalificacion, setReglasDescalificacion] = useState<any[]>([])
-  const [participanteDescalificando, setParticipanteDescalificando] = useState<number | null>(null)
+  const [reglasDesclasificacion, setReglasDesclasificacion] = useState<any[]>([])
+  const [participanteDesclasificando, setParticipanteDesclasificando] = useState<number | null>(null)
   const [reglaSeleccionada, setReglaSeleccionada] = useState<number | null>(null)
-  const [motivoDescalificacion, setMotivoDescalificacion] = useState('')
+  const [motivoDesclasificacion, setMotivoDesclasificacion] = useState('')
 
   
   const fetchParticipantes = async () => {
     try {
       setLoading(true)
-      const res = await EvaluadorService.getEvaluaciones()
+      // Pasar el parámetro fase al backend
+      const res = await EvaluadorService.getEvaluaciones(fase)
       const data = (res && (res as any).data) ? (res as any).data : []
       
       console.log('=== DATOS DEL BACKEND ===')
@@ -85,7 +87,33 @@ export default function RegistroNotas() {
       console.log('========================')
 
       
-      const mapped: Participante[] = (Array.isArray(data) ? data : []).map((row: any) => ({
+      const mapped: Participante[] = (Array.isArray(data) ? data : []).map((row: any) => {
+        // Priorizar estado desclasificado y no_clasificado si existe en inscripcion_estado o estado
+        const estadoDesclasificado = row.inscripcion_estado === 'desclasificado' || row.estado === 'desclasificado'
+        const estadoNoClasificado = row.inscripcion_estado === 'no_clasificado' || row.estado === 'no_clasificado'
+        
+        // También verificar si la puntuación es menor a 51 pero el estado no está actualizado
+        // Primero obtener la puntuación de la misma forma que se mapea nota_actual
+        const puntuacion = typeof row.nota_actual === 'number' ? row.nota_actual : 
+                          (typeof row.puntaje === 'number' ? row.puntaje : 
+                          (typeof row.puntuacion === 'number' ? row.puntuacion : 
+                          (typeof row.nota === 'number' ? row.nota : 
+                          (typeof row.puntuacion_final === 'number' ? row.puntuacion_final : undefined))))
+        const puntuacionMinima = 51
+        const deberiaSerNoClasificado = puntuacion !== undefined && puntuacion < puntuacionMinima && 
+                                        row.inscripcion_estado !== 'desclasificado' && 
+                                        row.estado !== 'desclasificado' &&
+                                        !estadoDesclasificado
+        
+        let estadoFinal = row.estado || row.inscripcion_estado || 'pendiente'
+        
+        if (estadoDesclasificado) {
+          estadoFinal = 'desclasificado'
+        } else if (estadoNoClasificado || deberiaSerNoClasificado) {
+          estadoFinal = 'no_clasificado'
+        }
+        
+        return {
         id: Number(row.inscripcion_area_id || row.id || row.olimpista_id || row.participante_id),
         nombre: row.competidor || row.olimpista_nombre || row.nombre || `${row.nombres ?? ''} ${row.apellidos ?? ''}`.trim(),
         documento: row.documento || row.olimpista_documento || row.documento_identidad || row.doc || '-',
@@ -93,13 +121,15 @@ export default function RegistroNotas() {
         area: row.area || row.area_nombre || '-',
         nivel: row.nivel || row.nivel_nombre || '-',
         nota_actual: typeof row.nota_actual === 'number' ? row.nota_actual : (typeof row.puntaje === 'number' ? row.puntaje : (typeof row.puntuacion === 'number' ? row.puntuacion : (typeof row.nota === 'number' ? row.nota : (typeof row.puntuacion_final === 'number' ? row.puntuacion_final : undefined)))),
-        estado: (row.estado || row.inscripcion_estado || 'pendiente') as any,
+          estado: estadoFinal as any,
+        inscripcion_estado: row.inscripcion_estado || row.estado || 'inscrito',
         fecha_evaluacion: row.fecha_asignacion || row.fecha_evaluacion || row.updated_at || row.created_at || undefined,
-      }))
+        }
+      })
 
       console.log('Total participantes mapeados:', mapped.length)
       console.log('Participantes:', mapped)
-      console.log('Participantes descalificados:', mapped.filter(p => p.estado === 'descalificado'))
+      console.log('Participantes desclasificados:', mapped.filter(p => p.estado === 'desclasificado'))
       setParticipantes(mapped)
       
       
@@ -122,9 +152,9 @@ export default function RegistroNotas() {
                       primerParticipante.areaCompetenciaId
         if (areaId) {
           setMyAreaId(Number(areaId))
-          console.log('✅ Area ID detectado:', areaId)
+          console.log(' Area ID detectado:', areaId)
         } else {
-          console.log('❌ No se encontró area_id')
+          console.log(' No se encontró area_id')
         }
         
         
@@ -134,9 +164,9 @@ export default function RegistroNotas() {
                        primerParticipante.nivelCompetenciaId
         if (nivelId) {
           setMyNivelId(Number(nivelId))
-          console.log('✅ Nivel ID detectado:', nivelId)
+          console.log(' Nivel ID detectado:', nivelId)
         } else {
-          console.log('❌ No se encontró nivel_id')
+          console.log(' No se encontró nivel_id')
         }
         
         
@@ -172,7 +202,7 @@ export default function RegistroNotas() {
   useEffect(() => {
     fetchParticipantes()
     verificarPermisosEvaluador()
-  }, [])
+  }, [fase]) // Recargar cuando cambie la fase
 
   
   useEffect(() => {
@@ -223,22 +253,6 @@ export default function RegistroNotas() {
       }
     }
     loadConfiguracion()
-
-    
-    const loadReglasDescalificacion = async () => {
-      try {
-        if (myAreaId) {
-          const reglas = await DescalificacionService.getReglasPorArea(myAreaId)
-          if (reglas.success && reglas.data) {
-            setReglasDescalificacion(reglas.data)
-            console.log('Reglas de desclasificación cargadas:', reglas.data)
-          }
-        }
-      } catch (error) {
-        console.error('Error cargando reglas de descalificación:', error)
-      }
-    }
-    loadReglasDescalificacion()
   }, [])
 
   
@@ -246,10 +260,14 @@ export default function RegistroNotas() {
     const loadReglasPorArea = async () => {
       try {
         if (myAreaId) {
-          const reglas = await DescalificacionService.getReglasPorArea(myAreaId)
+          const reglas = await DesclasificacionService.getReglasPorArea(myAreaId)
           if (reglas.success && reglas.data) {
-            setReglasDescalificacion(reglas.data)
-            console.log(`Reglas cargadas para área ID ${myAreaId}:`, reglas.data)
+            // Filtrar duplicados por ID para evitar reglas duplicadas
+            const reglasUnicas = reglas.data.filter((regla: any, index: number, self: any[]) => 
+              index === self.findIndex((r: any) => r.id === regla.id)
+            )
+            setReglasDesclasificacion(reglasUnicas)
+            console.log(`Reglas cargadas para área ID ${myAreaId}:`, reglasUnicas)
           }
         }
       } catch (error) {
@@ -260,7 +278,7 @@ export default function RegistroNotas() {
   }, [myAreaId])
 
   const participantesFiltrados = participantes.filter(participante => {
-    console.log('Filtrando participante:', participante.nombre, 'Area:', participante.area, 'Allowed areas:', allowedAreas)
+    console.log('Filtrando participante:', participante.nombre, 'Estado:', participante.estado, 'Inscripcion estado:', participante.inscripcion_estado)
     
     if (allowedAreas.length > 0 && !allowedAreas.includes(participante.area)) {
       console.log('Participante filtrado por allowedAreas:', participante.nombre)
@@ -272,7 +290,21 @@ export default function RegistroNotas() {
     
     const matchesArea = filterArea === 'todos' || participante.area === filterArea
     const matchesNivel = filterNivel === 'todos' || participante.nivel === filterNivel
-    const matchesEstado = filterEstado === 'todos' || participante.estado === filterEstado
+    
+    // Verificar estado: considerar tanto estado como inscripcion_estado para desclasificados y no_clasificados
+    const esDesclasificado = participante.estado === 'desclasificado' || participante.inscripcion_estado === 'desclasificado'
+    const esNoClasificado = participante.estado === 'no_clasificado' || participante.inscripcion_estado === 'no_clasificado'
+    
+    let matchesEstado = true
+    if (filterEstado !== 'todos') {
+      if (filterEstado === 'desclasificado') {
+        matchesEstado = esDesclasificado
+      } else if (filterEstado === 'no_clasificado') {
+        matchesEstado = esNoClasificado
+      } else {
+        matchesEstado = participante.estado === filterEstado
+      }
+    }
 
     return matchesSearch && matchesArea && matchesNivel && matchesEstado
   })
@@ -284,40 +316,40 @@ export default function RegistroNotas() {
     setMotivoModificacion('')
   }
 
-  const handleDescalificar = (participante: Participante) => {
-    setParticipanteDescalificando(participante.id)
+  const handleDesclasificar = (participante: Participante) => {
+    setParticipanteDesclasificando(participante.id)
     setReglaSeleccionada(null)
-    setMotivoDescalificacion('')
+    setMotivoDesclasificacion('')
   }
 
-  const handleCancelarDescalificacion = () => {
-    setParticipanteDescalificando(null)
+  const handleCancelarDesclasificacion = () => {
+    setParticipanteDesclasificando(null)
     setReglaSeleccionada(null)
-    setMotivoDescalificacion('')
+    setMotivoDesclasificacion('')
   }
 
-  const handleConfirmarDescalificacion = async (participanteId: number) => {
-    if (!reglaSeleccionada || !motivoDescalificacion.trim()) {
+  const handleConfirmarDesclasificacion = async (participanteId: number) => {
+    if (!reglaSeleccionada || !motivoDesclasificacion.trim()) {
       error('Error', 'Debe seleccionar una regla y escribir el motivo')
       return
     }
 
     try {
-      const response = await DescalificacionService.registrarDescalificacion({
+      const response = await DesclasificacionService.registrarDesclasificacion({
         inscripcion_area_id: participanteId,
-        regla_descalificacion_id: reglaSeleccionada,
-        motivo: motivoDescalificacion.trim()
+        regla_desclasificacion_id: reglaSeleccionada,
+        motivo: motivoDesclasificacion.trim()
       })
 
       if (response.success) {
-        success('Descalificación registrada', 'El participante ha sido descalificado exitosamente')
+        success('Desclasificación registrada', 'El participante ha sido desclasificado exitosamente')
         fetchParticipantes() // Recargar la lista
-        handleCancelarDescalificacion()
+        handleCancelarDesclasificacion()
       } else {
-        error('Error', response.message || 'Error al registrar la descalificación')
+        error('Error', response.message || 'Error al registrar la desclasificación')
       }
     } catch (err) {
-      error('Error', 'Error al registrar la descalificación')
+      error('Error', 'Error al registrar la desclasificación')
     }
   }
 
@@ -378,24 +410,24 @@ export default function RegistroNotas() {
     
     if (myAreaId && nota < puntuacionMinima) {
       try {
-        const verificacion = await DescalificacionService.verificarDescalificacionAutomatica(myAreaId, nota)
-        if (verificacion.success && verificacion.data.debe_descalificar) {
-          const confirmarDescalificacion = window.confirm(
-            `La puntuación ${nota} es menor al mínimo requerido (${puntuacionMinima} puntos). ¿Desea descalificar automáticamente al participante por esta razón?`
+        const verificacion = await DesclasificacionService.verificarDesclasificacionAutomatica(myAreaId, nota)
+        if (verificacion.success && verificacion.data.debe_desclasificar) {
+          const confirmarDesclasificacion = window.confirm(
+            `La puntuación ${nota} es menor al mínimo requerido (${puntuacionMinima} puntos). ¿Desea desclasificar automáticamente al participante por esta razón?`
           )
-          if (confirmarDescalificacion) {
+          if (confirmarDesclasificacion) {
            
-            const reglaPuntuacion = reglasDescalificacion.find(r => r.tipo === 'puntuacion')
+            const reglaPuntuacion = reglasDesclasificacion.find(r => r.tipo === 'puntuacion')
             if (reglaPuntuacion) {
               setReglaSeleccionada(reglaPuntuacion.id)
-              setMotivoDescalificacion(`Puntuación ${nota} menor al mínimo requerido de ${puntuacionMinima} puntos`)
-              await handleConfirmarDescalificacion(participanteId)
+              setMotivoDesclasificacion(`Puntuación ${nota} menor al mínimo requerido de ${puntuacionMinima} puntos`)
+              await handleConfirmarDesclasificacion(participanteId)
               return 
             }
           }
         }
       } catch (error) {
-        console.error('Error verificando descalificación automática:', error)
+        console.error('Error verificando desclasificación automática:', error)
       }
     }
 
@@ -424,6 +456,14 @@ export default function RegistroNotas() {
         }
         await EvaluacionService.evaluarClasificacion(data)
       } else {
+        // Verificar que el participante esté clasificado para la fase final
+        const participante = participantes.find(p => p.id === participanteId)
+        const estadoInscripcion = participante?.inscripcion_estado || participante?.estado
+        if (participante && estadoInscripcion !== 'clasificado' && estadoInscripcion !== 'evaluado') {
+          error('Error', 'Solo se pueden registrar notas finales para participantes clasificados')
+          return
+        }
+        
         const data: any = {
           inscripcion_area_id: participanteId,
           puntuacion: nota,
@@ -470,7 +510,13 @@ export default function RegistroNotas() {
   }
 
   const handleConfirmarCierreCalificacion = async () => {
-    if (participantes.filter(p => p.estado === 'evaluado').length !== participantes.length) {
+    // Excluir desclasificados del conteo de evaluaciones pendientes
+    const participantesEvaluables = participantes.filter(p => 
+      p.estado !== 'desclasificado' && p.inscripcion_estado !== 'desclasificado'
+    )
+    const participantesEvaluados = participantesEvaluables.filter(p => p.estado === 'evaluado')
+    
+    if (participantesEvaluados.length !== participantesEvaluables.length) {
       error('Error', 'Debe completar todas las evaluaciones antes de confirmar el cierre')
       return
     }
@@ -524,8 +570,8 @@ export default function RegistroNotas() {
         return <Badge variant="default" className="flex items-center gap-1"><CheckCircle className="h-3 w-3" />Evaluado</Badge>
       case 'revisado':
         return <Badge variant="outline" className="flex items-center gap-1"><Edit className="h-3 w-3" />Revisado</Badge>
-      case 'descalificado':
-        return <Badge variant="destructive" className="flex items-center gap-1"><AlertCircle className="h-3 w-3" />Descalificado</Badge>
+      case 'desclasificado':
+        return <Badge variant="destructive" className="flex items-center gap-1"><AlertCircle className="h-3 w-3" />Desclasificado</Badge>
       default:
         return <Badge variant="outline">{estado}</Badge>
     }
@@ -645,7 +691,8 @@ export default function RegistroNotas() {
                     <SelectItem value="pendiente">Pendiente</SelectItem>
                     <SelectItem value="evaluado">Evaluado</SelectItem>
                     <SelectItem value="revisado">Revisado</SelectItem>
-                    <SelectItem value="descalificado">Descalificado</SelectItem>
+                    <SelectItem value="no_clasificado">No Clasificado</SelectItem>
+                    <SelectItem value="desclasificado">Desclasificado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -777,7 +824,11 @@ export default function RegistroNotas() {
                             )}
                           </TableCell>
                           <TableCell>
-                            {getEstadoBadge(participante.estado)}
+                            {getEstadoBadge(
+                              participante.estado === 'desclasificado' || participante.inscripcion_estado === 'desclasificado' 
+                                ? 'desclasificado' 
+                                : participante.estado
+                            )}
                           </TableCell>
                           <TableCell>
                             <span className="text-xs text-gray-500">
@@ -785,7 +836,7 @@ export default function RegistroNotas() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            {editingParticipant !== participante.id && participanteDescalificando !== participante.id && (
+                            {editingParticipant !== participante.id && participanteDesclasificando !== participante.id && (
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
@@ -797,11 +848,11 @@ export default function RegistroNotas() {
                                 >
                                   <Edit className="h-3 w-3" />
                                 </Button>
-                                {participante.estado !== 'descalificado' && (
+                                {(participante.estado !== 'desclasificado' && participante.inscripcion_estado !== 'desclasificado') && (
                                   <Button
                                     size="sm"
                                     variant="destructive"
-                                    onClick={() => handleDescalificar(participante)}
+                                    onClick={() => handleDesclasificar(participante)}
                                     disabled={!tienePermisos}
                                     className="h-8 w-8 p-0"
                                     title={!tienePermisos ? "Sin permisos activos" : "Desclasificar participante"}
@@ -811,12 +862,12 @@ export default function RegistroNotas() {
                                 )}
                               </div>
                             )}
-                            {participanteDescalificando === participante.id && (
+                            {participanteDesclasificando === participante.id && (
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={handleCancelarDescalificacion}
+                                  onClick={handleCancelarDesclasificacion}
                                   className="h-8 px-2 text-xs"
                                 >
                                   ✕ Cancelar
@@ -826,8 +877,8 @@ export default function RegistroNotas() {
                           </TableCell>
                         </TableRow>
                         
-                        {/* Sección de Descalificación Expandible */}
-                        {participanteDescalificando === participante.id && (
+                        {/* Sección de Desclasificación Expandible */}
+                        {participanteDesclasificando === participante.id && (
                           <TableRow>
                             <TableCell colSpan={8} className="p-0">
                               <div className="bg-red-50 border-t border-red-200 p-4">
@@ -841,7 +892,7 @@ export default function RegistroNotas() {
                                     <div className="flex items-center gap-2">
                                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                                       <span className="text-sm font-medium text-blue-900">
-                                        Área: {participante.area} • {reglasDescalificacion.length} reglas disponibles
+                                        Área: {participante.area} • {reglasDesclasificacion.length} reglas disponibles
                                       </span>
                                     </div>
                                   </div>
@@ -870,13 +921,13 @@ export default function RegistroNotas() {
                                       </div>
                                     </div>
 
-                                    {/* Formulario de descalificación */}
+                                    {/* Formulario de desclasificación */}
                                     <div className="space-y-4">
                                       <div>
                                         <label className="block text-sm font-semibold text-gray-900 mb-2">
                                           Regla de Desclasificación *
                                         </label>
-                                        {reglasDescalificacion.length === 0 ? (
+                                        {reglasDesclasificacion.length === 0 ? (
                                           <div className="p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 text-sm">
                                             No hay reglas de desclasificación configuradas para esta área
                                           </div>
@@ -889,7 +940,7 @@ export default function RegistroNotas() {
                                               required
                                             >
                                               <option value="">Seleccionar regla...</option>
-                                              {reglasDescalificacion
+                                              {reglasDesclasificacion
                                                 .sort((a, b) => {
                                                   const tipoOrder = { 'fraude': 1, 'comportamiento': 2, 'tecnico': 3, 'puntuacion': 4 }
                                                   return (tipoOrder[a.tipo as keyof typeof tipoOrder] || 5) - (tipoOrder[b.tipo as keyof typeof tipoOrder] || 5)
@@ -901,10 +952,10 @@ export default function RegistroNotas() {
                                                 ))}
                                             </select>
                                             <div className="mt-2 text-xs text-gray-600">
-                                              {reglasDescalificacion.filter(r => r.tipo === 'fraude').length} fraude • 
-                                              {reglasDescalificacion.filter(r => r.tipo === 'comportamiento').length} comportamiento • 
-                                              {reglasDescalificacion.filter(r => r.tipo === 'tecnico').length} técnico • 
-                                              {reglasDescalificacion.filter(r => r.tipo === 'puntuacion').length} puntuación
+                                              {reglasDesclasificacion.filter(r => r.tipo === 'fraude').length} fraude • 
+                                              {reglasDesclasificacion.filter(r => r.tipo === 'comportamiento').length} comportamiento • 
+                                              {reglasDesclasificacion.filter(r => r.tipo === 'tecnico').length} técnico • 
+                                              {reglasDesclasificacion.filter(r => r.tipo === 'puntuacion').length} puntuación
                                             </div>
                                           </>
                                         )}
@@ -915,8 +966,8 @@ export default function RegistroNotas() {
                                           Motivo de Desclasificación *
                                         </label>
                                         <textarea
-                                          value={motivoDescalificacion}
-                                          onChange={(e) => setMotivoDescalificacion(e.target.value)}
+                                          value={motivoDesclasificacion}
+                                          onChange={(e) => setMotivoDesclasificacion(e.target.value)}
                                           placeholder="Describe específicamente qué regla se incumplió..."
                                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
                                           rows={3}
@@ -930,7 +981,7 @@ export default function RegistroNotas() {
                                             Descripción de la regla:
                                           </p>
                                           <p className="text-sm text-red-800">
-                                            {reglasDescalificacion.find(r => r.id === reglaSeleccionada)?.descripcion}
+                                            {reglasDesclasificacion.find(r => r.id === reglaSeleccionada)?.descripcion}
                                           </p>
                                         </div>
                                       )}
@@ -938,15 +989,15 @@ export default function RegistroNotas() {
                                       <div className="flex gap-3">
                                         <Button
                                           variant="outline"
-                                          onClick={handleCancelarDescalificacion}
+                                          onClick={handleCancelarDesclasificacion}
                                           className="flex-1"
                                         >
                                           Cancelar
                                         </Button>
                                         <Button
                                           variant="destructive"
-                                          onClick={() => handleConfirmarDescalificacion(participante.id)}
-                                          disabled={!reglaSeleccionada || !motivoDescalificacion.trim()}
+                                          onClick={() => handleConfirmarDesclasificacion(participante.id)}
+                                          disabled={!reglaSeleccionada || !motivoDesclasificacion.trim()}
                                           className="flex-1"
                                         >
                                           <AlertCircle className="h-4 w-4 mr-2" />
@@ -1040,17 +1091,39 @@ export default function RegistroNotas() {
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-600">
-                <p>Evaluaciones completadas: {participantes.filter(p => p.estado === 'evaluado').length} / {participantes.length}</p>
-                {participantes.filter(p => p.estado === 'evaluado').length === participantes.length && participantes.length > 0 && (
+                {(() => {
+                  const participantesEvaluables = participantes.filter(p => 
+                    p.estado !== 'desclasificado' && p.inscripcion_estado !== 'desclasificado'
+                  )
+                  const participantesEvaluados = participantesEvaluables.filter(p => p.estado === 'evaluado')
+                  const participantesDesclasificados = participantes.filter(p => 
+                    p.estado === 'desclasificado' || p.inscripcion_estado === 'desclasificado'
+                  )
+                  return (
+                    <>
+                      <p>Evaluaciones completadas: {participantesEvaluados.length} / {participantesEvaluables.length}</p>
+                      {participantesDesclasificados.length > 0 && (
+                        <p className="text-xs text-gray-500">({participantesDesclasificados.length} desclasificado{participantesDesclasificados.length !== 1 ? 's' : ''} excluido{participantesDesclasificados.length !== 1 ? 's' : ''})</p>
+                      )}
+                      {participantesEvaluados.length === participantesEvaluables.length && participantesEvaluables.length > 0 && (
                   <p className="text-green-600 font-medium">✓ Todas las evaluaciones están completas</p>
                 )}
+                    </>
+                  )
+                })()}
                 <p className="text-xs text-gray-500 mt-1">
                   Área ID: {myAreaId || 'No detectado'} | Nivel ID: {myNivelId || 'No detectado'}
                 </p>
               </div>
               <Button 
                 onClick={handleConfirmarCierreCalificacion}
-                disabled={participantes.filter(p => p.estado === 'evaluado').length !== participantes.length || participantes.length === 0 || confirmandoCierre || !tienePermisos}
+                disabled={(() => {
+                  const participantesEvaluables = participantes.filter(p => 
+                    p.estado !== 'desclasificado' && p.inscripcion_estado !== 'desclasificado'
+                  )
+                  const participantesEvaluados = participantesEvaluables.filter(p => p.estado === 'evaluado')
+                  return participantesEvaluados.length !== participantesEvaluables.length || participantes.length === 0 || confirmandoCierre || !tienePermisos
+                })()}
                 className="bg-purple-600 hover:bg-purple-700"
                 title={!tienePermisos ? "Sin permisos activos" : ""}
               >

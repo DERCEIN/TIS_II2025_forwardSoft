@@ -8,10 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CoordinadorService, AuthService } from "@/lib/api"
 import {
   Trophy,
@@ -92,17 +91,18 @@ export default function AsignacionEvaluadoresPage() {
   const [nivelId, setNivelId] = useState<string>("")
   const [rondaId, setRondaId] = useState<string>("")
   const [numEvaluadores, setNumEvaluadores] = useState<string>("2")
-  const [metodo, setMetodo] = useState<"simple" | "balanceado">("simple")
-  const [evitarMismaInstitucion, setEvitarMismaInstitucion] = useState(true)
-  const [evitarMismaArea, setEvitarMismaArea] = useState(true)
+  const [cuotaPorEvaluador, setCuotaPorEvaluador] = useState<string>("30")
   
   // Resultados
   const [resultados, setResultados] = useState<AsignacionResult[]>([])
   const [estadisticas, setEstadisticas] = useState<any>(null)
   const [generando, setGenerando] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [mensajeSinAsignaciones, setMensajeSinAsignaciones] = useState<string | null>(null)
+  const [mostrarModalExcluidos, setMostrarModalExcluidos] = useState(false)
+  const [datosExcluidos, setDatosExcluidos] = useState<any>(null)
 
-  // Cargar catálogos
+ 
   const cargarCatalogos = async () => {
     setLoading(true)
     setError("")
@@ -143,17 +143,19 @@ export default function AsignacionEvaluadoresPage() {
       setGenerando(true)
     }
     setError("")
+    setMensajeSinAsignaciones(null)
 
     try {
       const params = {
         area_id: parseInt(areaId),
-        nivel_id: nivelId, // Enviar directamente 'primaria' o 'secundaria'
+        nivel_id: nivelId, 
         ronda_id: rondaId ? parseInt(rondaId) : undefined,
         fase: "clasificacion" as const,
         num_evaluadores: parseInt(numEvaluadores),
-        metodo,
-        evitar_misma_institucion: evitarMismaInstitucion,
-        evitar_misma_area: evitarMismaArea,
+        cuota_por_evaluador: parseInt(cuotaPorEvaluador),
+        metodo: "simple" as const, 
+        evitar_misma_institucion: true, 
+        evitar_misma_area: true, 
         confirmar
       }
       
@@ -168,28 +170,63 @@ export default function AsignacionEvaluadoresPage() {
         console.log('Items:', response.data.items)
         console.log('Estadísticas:', response.data.estadisticas)
         
-        setResultados(response.data.items || [])
+        const items = response.data.items || []
+        const mensaje = response.data.mensaje || null
+        
+        setResultados(items)
         setEstadisticas(response.data.estadisticas || null)
         
-        console.log('Resultados establecidos:', response.data.items || [])
+        // Verificar si hay inscripciones o evaluadores excluidos
+        const stats = response.data.estadisticas || {}
+        const inscExcluidas = stats.inscripciones_excluidas
+        const evalExcluidos = stats.evaluadores_excluidos
         
-        if (confirmar) {
+        if (inscExcluidas || evalExcluidos) {
+          const hayExcluidos = 
+            (inscExcluidas?.con_asignacion > 0) || 
+            (evalExcluidos?.con_asignacion > 0)
+          
+          if (hayExcluidos) {
+            setDatosExcluidos({
+              inscripciones: inscExcluidas,
+              evaluadores: evalExcluidos
+            })
+            setMostrarModalExcluidos(true)
+          }
+        }
+        
+        
+        if (items.length === 0 && mensaje) {
+          setMensajeSinAsignaciones(mensaje)
+        } else {
+          setMensajeSinAsignaciones(null)
+        }
+        
+        console.log('Resultados establecidos:', items)
+        
+        if (confirmar && items.length > 0) {
           alert("Asignación guardada exitosamente")
+        } else if (confirmar && items.length === 0) {
+          alert(mensaje || "No se pudieron asignar evaluadores")
         }
       } else {
         console.error('Error en la respuesta:', response)
-        setError(response.message || "Error en la respuesta del servidor")
+        const mensajeError = response.message || "Error en la respuesta del servidor"
+        setError(mensajeError)
+        setMensajeSinAsignaciones(mensajeError)
       }
     } catch (err: any) {
       console.error('Error al generar asignación:', err)
-      setError(err.message || "Error al generar asignación")
+      const mensajeError = err.message || "Error al generar asignación"
+      setError(mensajeError)
+      setMensajeSinAsignaciones(mensajeError)
     } finally {
       setGenerando(false)
       setGuardando(false)
     }
   }
 
-  // Exportar resultados
+  
   const exportarAsignaciones = async () => {
     if (!areaId) return
     
@@ -321,7 +358,7 @@ export default function AsignacionEvaluadoresPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    El sistema asignará automáticamente 1 evaluador por cada nivel específico (1ro, 2do, 3ro, 4to, 5to, 6to)
+                    El sistema asignará automáticamente evaluadores por grado de escolaridad. Si un grado supera la cuota establecida, se asignarán evaluadores adicionales automáticamente.
                   </p>
                 </div>
 
@@ -334,60 +371,21 @@ export default function AsignacionEvaluadoresPage() {
                 <CardDescription>Define cómo se realizará la asignación</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Número de evaluadores */}
+                {/* Cuota máxima por evaluador */}
                 <div className="space-y-2">
-                  <Label htmlFor="numEvaluadores">Número de evaluadores por competidor</Label>
+                  <Label htmlFor="cuotaPorEvaluador">Cuota máxima de olimpistas por evaluador</Label>
                   <Input
-                    id="numEvaluadores"
+                    id="cuotaPorEvaluador"
                     type="number"
                     min="1"
-                    max="5"
-                    value={numEvaluadores}
-                    onChange={(e) => setNumEvaluadores(e.target.value)}
-                    placeholder="2"
+                    max="200"
+                    value={cuotaPorEvaluador}
+                    onChange={(e) => setCuotaPorEvaluador(e.target.value)}
+                    placeholder="30"
                   />
-                </div>
-
-                {/* Método de asignación */}
-                <div className="space-y-3">
-                  <Label>Método de asignación</Label>
-                  <RadioGroup value={metodo} onValueChange={(value: "simple" | "balanceado") => setMetodo(value)}>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="simple" id="simple" />
-                      <Label htmlFor="simple">Aleatorio simple</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="balanceado" id="balanceado" />
-                      <Label htmlFor="balanceado">Balanceado por área</Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-
-                {/* Restricciones */}
-                <div className="space-y-3">
-                  <Label>Restricciones</Label>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="evitarInstitucion"
-                        checked={evitarMismaInstitucion}
-                        onCheckedChange={(checked) => setEvitarMismaInstitucion(checked as boolean)}
-                      />
-                      <Label htmlFor="evitarInstitucion" className="text-sm">
-                        Evitar evaluador de la misma institución
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="evitarArea"
-                        checked={evitarMismaArea}
-                        onCheckedChange={(checked) => setEvitarMismaArea(checked as boolean)}
-                      />
-                      <Label htmlFor="evitarArea" className="text-sm">
-                        Evitar evaluador de la misma área
-                      </Label>
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Si un grado supera esta cantidad, se asignarán evaluadores adicionales automáticamente
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -462,18 +460,42 @@ export default function AsignacionEvaluadoresPage() {
                       <div className="text-sm text-muted-foreground">Inscripciones</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">{estadisticas.total_evaluadores}</div>
-                      <div className="text-sm text-muted-foreground">Evaluadores</div>
+                      <div className="text-2xl font-bold text-green-600">{estadisticas.total_evaluadores_utilizados || estadisticas.total_evaluadores}</div>
+                      <div className="text-sm text-muted-foreground">Evaluadores utilizados</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">{estadisticas.evaluadores_por_inscripcion}</div>
-                      <div className="text-sm text-muted-foreground">Por inscripción</div>
+                      <div className="text-2xl font-bold text-purple-600">{estadisticas.cuota_por_evaluador || '-'}</div>
+                      <div className="text-sm text-muted-foreground">Cuota por evaluador</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-600">{estadisticas.metodo}</div>
-                      <div className="text-sm text-muted-foreground">Método</div>
+                      <div className="text-2xl font-bold text-orange-600">{estadisticas.grados_asignados}</div>
+                      <div className="text-sm text-muted-foreground">Grados asignados</div>
                     </div>
                   </div>
+                  {estadisticas.distribucion_grados && estadisticas.distribucion_grados.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-semibold mb-2">Distribución por grado:</h4>
+                      <div className="space-y-2">
+                        {estadisticas.distribucion_grados.map((grado: any, idx: number) => (
+                          <div key={idx} className="text-xs border-l-2 border-primary pl-2">
+                            <div className="font-medium">{grado.grado_nombre}</div>
+                            <div className="text-muted-foreground">
+                              {grado.total_inscripciones} inscripciones - {grado.total_evaluadores} evaluador(es)
+                              {grado.evaluadores && grado.evaluadores.length > 0 && (
+                                <div className="mt-1 pl-2">
+                                  {grado.evaluadores.map((evaluador: any, eIdx: number) => (
+                                    <div key={eIdx} className="text-muted-foreground">
+                                      • {evaluador.evaluador_nombre}: {evaluador.inscripciones_asignadas} inscripciones
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -523,6 +545,36 @@ export default function AsignacionEvaluadoresPage() {
                   </div>
                 </CardContent>
               </Card>
+            ) : mensajeSinAsignaciones ? (
+              <Card>
+                <CardContent className="py-16">
+                  <div className="text-center max-w-md mx-auto">
+                    <div className="w-24 h-24 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <AlertCircle className="h-12 w-12 text-amber-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-foreground mb-3">
+                      No se asignaron evaluadores
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      {mensajeSinAsignaciones}
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                      <div className="flex items-start gap-3">
+                        <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-left">
+                          <p className="text-sm font-medium text-blue-900 mb-1">Posibles causas:</p>
+                          <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                            <li>Todas las inscripciones ya tienen evaluador asignado</li>
+                            <li>Todos los evaluadores ya tienen asignaciones previas</li>
+                            <li>No hay evaluadores disponibles para esta área</li>
+                            <li>No hay inscripciones disponibles para el nivel seleccionado</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ) : (
               <Card>
                 <CardContent className="py-12">
@@ -541,6 +593,66 @@ export default function AsignacionEvaluadoresPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal de información sobre excluidos */}
+      <Dialog open={mostrarModalExcluidos} onOpenChange={setMostrarModalExcluidos}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5 text-blue-600" />
+              Información sobre asignaciones
+            </DialogTitle>
+            <DialogDescription>
+              Se excluyeron algunas inscripciones y evaluadores que ya tienen asignaciones previas
+            </DialogDescription>
+          </DialogHeader>
+          
+          {datosExcluidos && (
+            <div className="space-y-4 mt-4">
+              {/* Inscripciones excluidas */}
+              {datosExcluidos.inscripciones && datosExcluidos.inscripciones.con_asignacion > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-amber-900 mb-2">Inscripciones excluidas</h4>
+                      <div className="space-y-1 text-sm text-amber-800">
+                        <p>Total de inscripciones: <span className="font-medium">{datosExcluidos.inscripciones.total}</span></p>
+                        <p>Ya tienen evaluador asignado: <span className="font-medium text-amber-900">{datosExcluidos.inscripciones.con_asignacion}</span></p>
+                        <p className="text-green-700">Disponibles para asignar: <span className="font-medium">{datosExcluidos.inscripciones.disponibles}</span></p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Evaluadores excluidos */}
+              {datosExcluidos.evaluadores && datosExcluidos.evaluadores.con_asignacion > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <UserCheck className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-blue-900 mb-2">Evaluadores excluidos</h4>
+                      <div className="space-y-1 text-sm text-blue-800">
+                        <p>Total de evaluadores: <span className="font-medium">{datosExcluidos.evaluadores.total}</span></p>
+                        <p>Ya tienen asignaciones previas: <span className="font-medium text-blue-900">{datosExcluidos.evaluadores.con_asignacion}</span></p>
+                        <p className="text-green-700">Disponibles para asignar: <span className="font-medium">{datosExcluidos.evaluadores.disponibles}</span></p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
+                <p className="text-sm text-green-800">
+                  <CheckCircle className="h-4 w-4 inline mr-2" />
+                  Se asignaron evaluadores solo a las inscripciones y evaluadores disponibles
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

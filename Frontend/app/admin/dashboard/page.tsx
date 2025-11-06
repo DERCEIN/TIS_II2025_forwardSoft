@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
   Trophy,
   Users,
@@ -26,12 +27,21 @@ import {
   TrendingUp,
   Clock,
   CheckCircle,
+  BookOpen,
+  Calendar,
+  AlertCircle,
+  CheckCircle2,
+  Save,
+  RefreshCw,
 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import Link from "next/link"
-import { AdminService, ApiService, OlimpistaService } from "@/lib/api"
+import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService } from "@/lib/api"
 
 // Importar la URL base para logs
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -49,6 +59,12 @@ export default function AdminDashboard() {
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [areas, setAreas] = useState<any[]>([])
   const [loadingAreas, setLoadingAreas] = useState(false)
+  const [configuracionesAreas, setConfiguracionesAreas] = useState<Record<number, any>>({})
+  const [configGeneral, setConfigGeneral] = useState<any>(null)
+  const [isSavingArea, setIsSavingArea] = useState(false)
+  const [selectedArea, setSelectedArea] = useState<any>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [tempConfig, setTempConfig] = useState<any>({})
   const [currentPage, setCurrentPage] = useState(1)
   const [usersPerPage] = useState(10)
   const router = useRouter()
@@ -167,19 +183,40 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener áreas de competencia
+  // Función para obtener áreas de competencia y sus configuraciones
   const fetchAreas = async () => {
     setLoadingAreas(true)
     try {
-      console.log('Obteniendo áreas de competencia...')
-      const response = await ApiService.get('/api/areas-competencia')
-      console.log('Respuesta áreas:', response)
-      if (response.success && response.data) {
-        setAreas(response.data)
-        console.log('Áreas cargadas:', response.data)
+      console.log('Obteniendo áreas de competencia con estadísticas...')
+      
+      // Cargar áreas con estadísticas reales
+      const areasRes = await CatalogoService.areasCompetenciaConEstadisticas()
+      if (areasRes.success && areasRes.data) {
+        setAreas(areasRes.data || [])
+        console.log('Áreas con estadísticas cargadas:', areasRes.data)
       } else {
-        console.error('Error al obtener áreas:', response.message)
-        setAreas([])
+        // Fallback: cargar áreas básicas si falla el endpoint de estadísticas
+        const areasBasicasRes = await CatalogoService.areasCompetencia()
+        if (areasBasicasRes.success && areasBasicasRes.data) {
+          setAreas(areasBasicasRes.data || [])
+          console.log('Áreas básicas cargadas (fallback):', areasBasicasRes.data)
+        }
+      }
+      
+      // Cargar configuración general para obtener tiempo por defecto
+      const configRes = await ConfiguracionService.getConfiguracion()
+      if (configRes.success && configRes.data) {
+        setConfigGeneral(configRes.data)
+      }
+      
+      // Cargar configuraciones por área
+      const configAreasRes = await ConfiguracionService.getConfiguracionesPorArea()
+      if (configAreasRes.success && configAreasRes.data) {
+        const configMap: Record<number, any> = {}
+        configAreasRes.data.forEach((config: any) => {
+          configMap[config.area_competencia_id] = config
+        })
+        setConfiguracionesAreas(configMap)
       }
     } catch (error: any) {
       console.error('Error al obtener áreas:', error)
@@ -526,6 +563,15 @@ export default function AdminDashboard() {
 
             {/* Desktop Navigation */}
             <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="hidden lg:flex"
+                onClick={() => router.push('/admin/cierre-fase')}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                <span className="hidden lg:inline">Cerrar Fase</span>
+              </Button>
               <Button variant="outline" size="sm" className="hidden lg:flex">
                 <Bell className="h-4 w-4 mr-2" />
                 Notificaciones
@@ -660,12 +706,378 @@ export default function AdminDashboard() {
             </div>
           </TabsContent>
 
-          {/* Areas Tab */}
+          {/* Areas Tab - Configuración de Tiempos y Periodos */}
           <TabsContent value="areas" className="space-y-4 sm:space-y-6">
-            <div className="text-center py-8 sm:py-12 px-4">
-              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-2">CRUD de áreas de competencia con configuración de niveles y capacidades</p>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">Áreas de Competencia</h2>
+                <p className="text-muted-foreground">Gestiona las áreas y su capacidad</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm">
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filtrar
+                </Button>
+                <Button size="sm" className="bg-slate-700 hover:bg-slate-800 text-white">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nueva Área
+                </Button>
+              </div>
             </div>
+            
+            {loadingAreas ? (
+              <div className="text-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                <p className="text-sm text-muted-foreground">Cargando áreas...</p>
+              </div>
+            ) : areas.length === 0 ? (
+              <div className="text-center py-12">
+                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No hay áreas disponibles</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {areas.map((area) => {
+                  const configArea = configuracionesAreas[area.id] || {}
+                  const tieneConfiguracion = configArea.periodo_evaluacion_inicio && 
+                                             configArea.periodo_evaluacion_fin &&
+                                             configArea.periodo_publicacion_inicio && 
+                                             configArea.periodo_publicacion_fin
+                  
+                  // Datos reales desde el backend
+                  const participantes = parseInt(area.participantes_count) || 0
+                  const evaluadores = parseInt(area.evaluadores_count) || 0
+                  const capacidad = parseInt(area.capacidad) || 300
+                  const porcentaje = Math.min((participantes / capacidad) * 100, 100)
+                  const estaLlena = participantes >= capacidad
+                  
+                  return (
+                    <Card key={area.id} className="hover:shadow-md transition-shadow border-slate-200">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-4">
+                              <h3 className="text-xl font-semibold text-slate-800">{area.nombre}</h3>
+                              <Badge 
+                                variant="outline" 
+                                className={estaLlena 
+                                  ? "bg-slate-100 text-slate-600 border-slate-300" 
+                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                                }
+                              >
+                                {estaLlena ? "Lleno" : "Activo"}
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-3 gap-6 mb-4">
+                              <div>
+                                <p className="text-sm text-slate-500 mb-1">Participantes</p>
+                                <p className="text-lg font-semibold text-slate-800">{participantes}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-slate-500 mb-1">Evaluadores</p>
+                                <p className="text-lg font-semibold text-slate-800">{evaluadores}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-slate-500 mb-1">Capacidad</p>
+                                <p className="text-lg font-semibold text-slate-800">{capacidad}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-500">Capacidad: {capacidad}</span>
+                                <span className="font-medium text-slate-700">{Math.round(porcentaje)}%</span>
+                              </div>
+                              <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden">
+                                <div 
+                                  className="absolute inset-y-0 left-0 bg-blue-600 rounded-full transition-all"
+                                  style={{ width: `${porcentaje}%` }}
+                                />
+                                <div 
+                                  className="absolute inset-y-0 right-0 bg-slate-300 rounded-full transition-all"
+                                  style={{ width: `${100 - porcentaje}%`, left: `${porcentaje}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="ml-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedArea(area)
+                                setTempConfig(configArea || {
+                                  area_competencia_id: area.id,
+                                  tiempo_evaluacion_minutos: configGeneral?.tiempo_evaluacion || 120,
+                                  periodo_evaluacion_inicio: '',
+                                  periodo_evaluacion_fin: '',
+                                  periodo_publicacion_inicio: '',
+                                  periodo_publicacion_fin: '',
+                                })
+                                setIsModalOpen(true)
+                              }}
+                              className="h-8 w-8 p-0 text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                            >
+                              <MoreHorizontal className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Modal de Configuración */}
+            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader className="pb-3">
+                  <DialogTitle className="flex items-center gap-2 text-lg">
+                    <BookOpen className="h-4 w-4" />
+                    Configuración: {selectedArea?.nombre}
+                  </DialogTitle>
+                  <DialogDescription className="text-sm">
+                    Configura tiempos de evaluación y periodos de evaluación/publicación para esta área
+                  </DialogDescription>
+                </DialogHeader>
+                
+                {selectedArea && (
+                  <div className="space-y-4 py-2">
+                    {/* Tiempo de Evaluación */}
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="h-4 w-4 text-slate-600" />
+                        <Label className="text-sm font-semibold text-slate-800">Tiempo de Evaluación</Label>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="tiempo-modal" className="text-xs text-slate-600">
+                            Duración (minutos)
+                          </Label>
+                          <Input
+                            id="tiempo-modal"
+                            type="number"
+                            min="1"
+                            placeholder="120"
+                            value={tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120}
+                            onChange={(e) => {
+                              setTempConfig((prev: any) => ({
+                                ...prev,
+                                tiempo_evaluacion_minutos: parseInt(e.target.value) || 120
+                              }))
+                            }}
+                            className="bg-white border-slate-200 h-9 text-sm"
+                          />
+                          <p className="text-xs text-slate-500">
+                            Tiempo máximo que un evaluador puede usar para evaluar
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Periodo de Evaluación */}
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar className="h-4 w-4 text-slate-600" />
+                        <Label className="text-sm font-semibold text-slate-800">Periodo de Evaluación</Label>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-2">
+                        Define cuándo los evaluadores pueden realizar las evaluaciones para esta área
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="eval-inicio-modal" className="text-xs font-medium text-slate-600">
+                            Fecha y Hora de Inicio
+                          </Label>
+                          <Input
+                            id="eval-inicio-modal"
+                            type="datetime-local"
+                            value={tempConfig.periodo_evaluacion_inicio ? 
+                              new Date(tempConfig.periodo_evaluacion_inicio).toISOString().slice(0, 16) : ''}
+                            onChange={(e) => {
+                              setTempConfig((prev: any) => ({
+                                ...prev,
+                                periodo_evaluacion_inicio: e.target.value
+                              }))
+                            }}
+                            className="bg-white border-slate-200 h-8 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="eval-fin-modal" className="text-xs font-medium text-slate-600">
+                            Fecha y Hora de Fin
+                          </Label>
+                          <Input
+                            id="eval-fin-modal"
+                            type="datetime-local"
+                            value={tempConfig.periodo_evaluacion_fin ? 
+                              new Date(tempConfig.periodo_evaluacion_fin).toISOString().slice(0, 16) : ''}
+                            onChange={(e) => {
+                              setTempConfig((prev: any) => ({
+                                ...prev,
+                                periodo_evaluacion_fin: e.target.value
+                              }))
+                            }}
+                            className="bg-white border-slate-200 h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Periodo de Publicación */}
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="h-4 w-4 text-slate-600" />
+                        <Label className="text-sm font-semibold text-slate-800">Periodo de Publicación</Label>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-2">
+                        Define cuándo se publicarán los resultados de esta área. Debe comenzar después del periodo de evaluación.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="pub-inicio-modal" className="text-xs font-medium text-slate-600">
+                            Fecha y Hora de Inicio
+                          </Label>
+                          <Input
+                            id="pub-inicio-modal"
+                            type="datetime-local"
+                            value={tempConfig.periodo_publicacion_inicio ? 
+                              new Date(tempConfig.periodo_publicacion_inicio).toISOString().slice(0, 16) : ''}
+                            onChange={(e) => {
+                              setTempConfig((prev: any) => ({
+                                ...prev,
+                                periodo_publicacion_inicio: e.target.value
+                              }))
+                            }}
+                            className="bg-white border-slate-200 h-8 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="pub-fin-modal" className="text-xs font-medium text-slate-600">
+                            Fecha y Hora de Fin
+                          </Label>
+                          <Input
+                            id="pub-fin-modal"
+                            type="datetime-local"
+                            value={tempConfig.periodo_publicacion_fin ? 
+                              new Date(tempConfig.periodo_publicacion_fin).toISOString().slice(0, 16) : ''}
+                            onChange={(e) => {
+                              setTempConfig((prev: any) => ({
+                                ...prev,
+                                periodo_publicacion_fin: e.target.value
+                              }))
+                            }}
+                            className="bg-white border-slate-200 h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Información adicional */}
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-3 w-3 text-slate-500 mt-0.5 shrink-0" />
+                        <div className="text-xs text-slate-600">
+                          <p className="font-medium mb-1 text-slate-700">Importante:</p>
+                          <ul className="list-disc list-inside space-y-0.5 text-xs text-slate-600">
+                            <li>El periodo de evaluación debe terminar antes del periodo de publicación</li>
+                            <li>Los coordinadores solo podrán asignar permisos dentro del periodo de evaluación configurado</li>
+                            <li>Si un participante está inscrito en múltiples áreas, se validará que no haya choques de horarios</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsModalOpen(false)}
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        setIsSavingArea(true)
+                        
+                        
+                        if (!tempConfig.periodo_evaluacion_inicio || 
+                            !tempConfig.periodo_evaluacion_fin || 
+                            !tempConfig.periodo_publicacion_inicio || 
+                            !tempConfig.periodo_publicacion_fin) {
+                          toast({
+                            title: "Error de validación",
+                            description: "Por favor complete todos los periodos (evaluación y publicación) antes de guardar.",
+                            variant: "destructive",
+                          })
+                          setIsSavingArea(false)
+                          return
+                        }
+                        
+                       
+                        const convertirFecha = (fechaLocal: string) => {
+                          if (!fechaLocal) return ''
+                          return fechaLocal.replace('T', ' ') + ':00'
+                        }
+                        
+                        await ConfiguracionService.updateConfiguracionPorArea({
+                          area_competencia_id: selectedArea.id,
+                          tiempo_evaluacion_minutos: tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120,
+                          periodo_evaluacion_inicio: convertirFecha(tempConfig.periodo_evaluacion_inicio),
+                          periodo_evaluacion_fin: convertirFecha(tempConfig.periodo_evaluacion_fin),
+                          periodo_publicacion_inicio: convertirFecha(tempConfig.periodo_publicacion_inicio),
+                          periodo_publicacion_fin: convertirFecha(tempConfig.periodo_publicacion_fin),
+                        })
+                        
+                        // Recargar configuraciones después de guardar
+                        const configAreasRes = await ConfiguracionService.getConfiguracionesPorArea()
+                        if (configAreasRes.success && configAreasRes.data) {
+                          const configMap: Record<number, any> = {}
+                          configAreasRes.data.forEach((config: any) => {
+                            configMap[config.area_competencia_id] = config
+                          })
+                          setConfiguracionesAreas(configMap)
+                        }
+                        
+                        toast({
+                          title: "✓ Configuración guardada",
+                          description: `La configuración para ${selectedArea.nombre} se ha guardado exitosamente.`,
+                        })
+                        
+                        setIsModalOpen(false)
+                      } catch (error: any) {
+                        console.error("Error al guardar configuración:", error)
+                        
+                        let mensajeError = "No se pudo guardar la configuración"
+                        if (error.message) {
+                          const match = error.message.match(/^\d+:(.+)$/)
+                          mensajeError = match ? match[1] : error.message
+                        }
+                        
+                        toast({
+                          title: "Error de validación",
+                          description: mensajeError,
+                          variant: "destructive",
+                        })
+                      } finally {
+                        setIsSavingArea(false)
+                      }
+                    }}
+                    disabled={isSavingArea}
+                    className="bg-slate-700 hover:bg-slate-800 text-white"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isSavingArea ? "Guardando..." : "Guardar Configuración"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Participants Tab */}
@@ -860,7 +1272,7 @@ export default function AdminDashboard() {
                           >
                             <option value="">Seleccionar rol</option>
                             <option value="coordinator">Coordinador de Área</option>
-                            <option value="evaluator">Evaluador</option>
+                            <option value="evaluador">Evaluador</option>
                           </select>
                         </div>
                         <div>

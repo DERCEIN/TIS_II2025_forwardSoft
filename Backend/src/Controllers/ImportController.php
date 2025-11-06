@@ -37,7 +37,7 @@ class ImportController
 
     public function importOlimpistas()
     {
-        // Verificar que se haya subido un archivo
+        
         if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
             Response::validationError(['csv_file' => 'Debe seleccionar un archivo CSV válido']);
         }
@@ -45,13 +45,13 @@ class ImportController
         $file = $_FILES['csv_file'];
         $filePath = $file['tmp_name'];
 
-        // Validar tipo de archivo
+        
         $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if ($fileExtension !== 'csv') {
             Response::validationError(['csv_file' => 'El archivo debe ser de tipo CSV']);
         }
 
-        // Validar tamaño del archivo (máximo 5MB)
+        
         if ($file['size'] > 5 * 1024 * 1024) {
             Response::validationError(['csv_file' => 'El archivo no puede ser mayor a 5MB']);
         }
@@ -59,7 +59,7 @@ class ImportController
         try {
             $results = $this->processCsvFile($filePath);
             
-            // Respuesta manual sin usar Response::success()
+           
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
                 'success' => true,
@@ -100,34 +100,34 @@ class ImportController
             throw new \Exception('No se pudo abrir el archivo CSV');
         }
 
-        // Leer encabezados
+        
         $headers = fgetcsv($handle, 0, ',', '"', '\\');
         if (!$headers) {
             fclose($handle);
             throw new \Exception('El archivo CSV está vacío');
         }
         
-        // Limpiar encabezados (quitar espacios, BOM y caracteres especiales)
+        
         $headers = array_map(function($header) {
-            // Quitar BOM y caracteres invisibles
+            
             $header = trim($header);
             $header = preg_replace('/[\x00-\x1F\x7F]/', '', $header); // Quitar caracteres de control
             $header = trim($header);
             return $header;
         }, $headers);
         
-        // Filtrar encabezados vacíos
+       
         $headers = array_filter($headers, function($header) {
             return !empty(trim($header));
         });
         
-        // Reindexar el array
+        
         $headers = array_values($headers);
         
-        // Debug: mostrar encabezados leídos
+       
         error_log("Encabezados leídos: " . implode(', ', $headers));
         
-        // Validar encabezados requeridos
+        
         $requiredHeaders = [
             'nombre',
             'apellido',
@@ -141,16 +141,16 @@ class ImportController
             'nivel_competencia'
         ];
         
-        // Crear mapeo de encabezados del CSV a nombres estándar
+        
         $headerMapping = [];
         foreach ($requiredHeaders as $required) {
             foreach ($headers as $index => $header) {
-                // Comparación exacta
+               
                 if (trim($header) === trim($required)) {
                     $headerMapping[$required] = $index;
                     break;
                 }
-                // Comparación flexible para errores tipográficos
+               
                 $headerClean = strtolower(preg_replace('/[^a-z]/', '', $header));
                 $requiredClean = strtolower(preg_replace('/[^a-z]/', '', $required));
                 if ($headerClean === $requiredClean) {
@@ -160,7 +160,7 @@ class ImportController
             }
         }
         
-        // Mapeo adicional para campos opcionales con typos comunes
+        
         $optionalFields = ['telefono', 'email', 'fecha_nacimiento', 'tutor_academico_nombre', 'tutor_academico_telefono', 'tutor_academico_email', 'es_grupo', 'nombre_grupo'];
         foreach ($optionalFields as $field) {
             if (!isset($headerMapping[$field])) {
@@ -168,12 +168,12 @@ class ImportController
                     $headerClean = strtolower(preg_replace('/[^a-z]/', '', $header));
                     $fieldClean = strtolower(preg_replace('/[^a-z]/', '', $field));
                     
-                    // Manejar typos específicos
+                   
                     if ($field === 'telefono' && ($headerClean === 'teleefono' || $headerClean === 'telefono')) {
                         $headerMapping[$field] = $index;
                         break;
                     }
-                    // Comparación general flexible
+                   
                     if ($headerClean === $fieldClean) {
                         $headerMapping[$field] = $index;
                         break;
@@ -184,7 +184,7 @@ class ImportController
         
         error_log("Mapeo de encabezados: " . print_r($headerMapping, true));
 
-        // Verificar cada encabezado requerido individualmente
+       
         $missingHeaders = [];
         foreach ($requiredHeaders as $required) {
             $found = false;
@@ -194,7 +194,7 @@ class ImportController
                     $found = true;
                     break;
                 }
-                // Comparación flexible para errores tipográficos comunes
+               
                 $headerClean = strtolower(preg_replace('/[^a-z]/', '', $header));
                 $requiredClean = strtolower(preg_replace('/[^a-z]/', '', $required));
                 if ($headerClean === $requiredClean) {
@@ -215,7 +215,7 @@ class ImportController
             throw new \Exception('Faltan encabezados requeridos: ' . implode(', ', $missingHeaders));
         }
 
-        $rowNumber = 1; // Empezar en 1 porque ya leímos los headers
+        $rowNumber = 1; 
 
         while (($data = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
             $rowNumber++;
@@ -239,13 +239,13 @@ class ImportController
 
     private function processCsvRow($data, $headers, $rowNumber, &$results, $headerMapping)
     {
-        // Crear array asociativo usando el mapeo
+       
         $rowData = [];
         foreach ($headerMapping as $standardName => $csvIndex) {
             $rowData[$standardName] = isset($data[$csvIndex]) ? $data[$csvIndex] : '';
         }
 
-        // Validar datos requeridos
+        
         $this->validateCsvRow($rowData, $rowNumber);
 
         // Buscar o crear unidad educativa
@@ -281,16 +281,25 @@ class ImportController
             $tutorAcademicoId = $this->findOrCreateTutorAcademico($rowData, $unidadId);
         }
 
-        // Crear olimpista con estructura unificada (con FK para integridad)
+        // Normalizar fecha de nacimiento (admite DD/MM/YYYY o YYYY-MM-DD)
+        $fechaNacimiento = !empty($rowData['fecha_nacimiento']) ? $this->normalizeDate($rowData['fecha_nacimiento']) : null;
+
+        // Validar/normalizar grado de escolaridad
+        $gradoNormalizado = $this->normalizeGrade($rowData['grado_escolaridad'] ?? '');
+        if (!$gradoNormalizado) {
+            throw new \Exception('Grado de escolaridad inválido o no reconocido: ' . ($rowData['grado_escolaridad'] ?? '')); 
+        }
+
+        
         $email = !empty($rowData['email']) ? trim($rowData['email']) : 'sin_email_' . trim($rowData['documento_identidad']) . '@temporal.com';
         $olimpistaId = $this->olimpistaModel->create([
             'nombre' => trim($rowData['nombre']),
             'apellido' => trim($rowData['apellido']),
             'documento_identidad' => trim($rowData['documento_identidad']),
-            'fecha_nacimiento' => !empty($rowData['fecha_nacimiento']) ? trim($rowData['fecha_nacimiento']) : null,
+            'fecha_nacimiento' => $fechaNacimiento,
             'telefono' => !empty($rowData['telefono']) ? trim($rowData['telefono']) : null,
             'email' => $email,
-            'grado_escolaridad' => trim($rowData['grado_escolaridad']),
+            'grado_escolaridad' => $gradoNormalizado,
             'unidad_educativa' => trim($rowData['unidad_educativa']),
             'departamento' => trim($rowData['departamento']),
             'area_competencia' => trim($rowData['area_competencia']),
@@ -309,10 +318,15 @@ class ImportController
             'migrado_desde_temp' => true
         ]);
 
-        // Crear inscripción
+        
+        if (!$olimpistaId) {
+            throw new \Exception('No se pudo crear el olimpista en la base de datos');
+        }
+
+        
         $esGrupoValue = trim($rowData['es_grupo'] ?? '');
         $esGrupo = !empty($esGrupoValue) && strtolower($esGrupoValue) === 'si';
-        $this->inscripcionModel->create([
+        $inscripcionId = $this->inscripcionModel->create([
             'olimpista_id' => $olimpistaId,
             'area_competencia_id' => $areaId,
             'nivel_competencia_id' => $nivelId,
@@ -320,6 +334,60 @@ class ImportController
             'nombre_grupo' => !empty($rowData['nombre_grupo']) ? trim($rowData['nombre_grupo']) : null,
             'integrantes_grupo' => null
         ]);
+
+        if (!$inscripcionId) {
+            throw new \Exception('No se pudo crear la inscripción del olimpista');
+        }
+    }
+
+    
+    private function normalizeDate($value)
+    {
+        $v = trim((string)$value);
+        if ($v === '') return null;
+
+        
+        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $v, $m)) {
+            return sprintf('%04d-%02d-%02d', (int)$m[3], (int)$m[2], (int)$m[1]);
+        }
+        
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m)) {
+            return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
+        }
+       
+        $ts = strtotime($v);
+        if ($ts !== false) {
+            return date('Y-m-d', $ts);
+        }
+        return null;
+    }
+
+    private function normalizeGrade($value)
+    {
+        $v = trim((string)$value);
+        if ($v === '') return null;
+        $base = mb_strtolower($v, 'UTF-8');
+       
+        $base = preg_replace('/\s+/', ' ', $base);
+
+        
+        $map = [
+            '6to de secundaria' => '6to de Secundaria',
+            'secundaria 6to' => '6to de Secundaria',
+            'sexto de secundaria' => '6to de Secundaria',
+            '6to secundaria' => '6to de Secundaria',
+            '5to de secundaria' => '5to de Secundaria',
+            'primaria 6to' => '6to de Primaria',
+            '6to de primaria' => '6to de Primaria',
+        ];
+
+        if (isset($map[$base])) return $map[$base];
+
+        
+        if (preg_match('/(primaria|secundaria)/i', $v)) {
+            return $v; 
+        }
+        return null;
     }
 
     private function validateCsvRow($rowData, $rowNumber)
@@ -343,12 +411,12 @@ class ImportController
             }
         }
 
-        // Validar formato de documento (solo números y letras)
+       
         if (!preg_match('/^[A-Za-z0-9]+$/', trim($rowData['documento_identidad']))) {
             throw new \Exception("Fila {$rowNumber}: El documento de identidad debe contener solo números y letras");
         }
 
-        // Validar email si se proporciona
+       
         if (!empty($rowData['email']) && !filter_var($rowData['email'], FILTER_VALIDATE_EMAIL)) {
             throw new \Exception("Fila {$rowNumber}: El email tiene un formato inválido");
         }
@@ -469,7 +537,7 @@ class ImportController
             // Crear nueva inscripción
             $esGrupoValue = trim($rowData['es_grupo'] ?? '');
             $esGrupo = !empty($esGrupoValue) && strtolower($esGrupoValue) === 'si';
-            $this->inscripcionModel->create([
+            $inscripcionId = $this->inscripcionModel->create([
                 'olimpista_id' => $olimpistaId,
                 'area_competencia_id' => $areaId,
                 'nivel_competencia_id' => $nivelId,
@@ -477,8 +545,12 @@ class ImportController
                 'nombre_grupo' => !empty($rowData['nombre_grupo']) ? trim($rowData['nombre_grupo']) : null,
                 'integrantes_grupo' => null
             ]);
+
+            if (!$inscripcionId) {
+                throw new \Exception('No se pudo crear la inscripción del olimpista existente');
+            }
         } else {
-            // Si ya existe la inscripción, solo actualizar datos del grupo si es necesario
+            
             $esGrupoValue = trim($rowData['es_grupo'] ?? '');
             $esGrupo = !empty($esGrupoValue) && strtolower($esGrupoValue) === 'si';
             
@@ -493,7 +565,7 @@ class ImportController
 
     public function downloadTemplate()
     {
-        // Limpiar cualquier output previo
+        
         while (ob_get_level()) {
             ob_end_clean();
         }

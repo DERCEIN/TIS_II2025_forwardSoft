@@ -11,6 +11,9 @@ use ForwardSoft\Models\EvaluacionFinal;
 use ForwardSoft\Models\InscripcionArea;
 use ForwardSoft\Models\ResultadoFinal;
 use ForwardSoft\Models\ConfiguracionMedallero;
+use ForwardSoft\Models\ConfiguracionAreaEvaluacion;
+use ForwardSoft\Models\ConfiguracionOlimpiada;
+use ForwardSoft\Models\NoClasificado;
 
 class EvaluacionController
 {
@@ -62,18 +65,18 @@ class EvaluacionController
         $currentUser = JWTManager::getCurrentUser();
         
         try {
-            // Verificar que el evaluador puede evaluar esta inscripción
+            
             if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'])) {
                 Response::forbidden('No tienes permisos para evaluar esta inscripción');
             }
 
-            // Verificar si ya existe una evaluación
+            
             $existingEval = $this->evalClasificacionModel->findByInscripcionAndEvaluador(
                 $input['inscripcion_area_id'], 
                 $currentUser['id']
             );
             
-            // Validar límite de modificaciones
+            
             if ($existingEval && $existingEval['modificaciones_count'] >= 1) {
                 Response::validationError(['general' => 'No se puede modificar la nota más de una vez']);
             }
@@ -103,31 +106,77 @@ class EvaluacionController
                 'is_final' => $isFinal
             ];
             
-            // Solo agregar observaciones si no está vacía
+            
             if (!empty($input['observaciones']) && trim($input['observaciones']) !== '') {
                 $evaluacionData['observaciones'] = trim($input['observaciones']);
             }
 
             if ($existingEval) {
-                // Actualizar evaluación existente
+                
                 $this->evalClasificacionModel->update($existingEval['id'], $evaluacionData);
                 $evaluacionId = $existingEval['id'];
             } else {
-                // Crear nueva evaluación
+                
                 $evaluacionId = $this->evalClasificacionModel->create($evaluacionData);
             }
 
            
-            if ($isFinal) {
-                $this->inscripcionModel->update($input['inscripcion_area_id'], [
-                    'estado' => 'evaluado',
-                    'updated_at' => date('Y-m-d H:i:s')
-                ]);
+            
+            $puntuacion = (float)$input['puntuacion'];
+            $estadoInscripcion = 'evaluado';
+            
+            
+            $configModel = new ConfiguracionOlimpiada();
+            $config = $configModel->getConfiguracion();
+            $puntuacionMinima = 51.0; 
+            if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+            }
+            
+           
+            if ($puntuacion < $puntuacionMinima) {
+                $noClasificadoModel = new NoClasificado();
+                try {
+                    $noClasificadoModel->create([
+                        'inscripcion_area_id' => (int)$input['inscripcion_area_id'],
+                        'puntuacion' => $puntuacion,
+                        'puntuacion_minima_requerida' => $puntuacionMinima,
+                        'motivo' => "Puntuación {$puntuacion} menor a la mínima requerida de {$puntuacionMinima} puntos",
+                        'evaluador_id' => (int)$currentUser['id'],
+                        'fase' => 'clasificacion'
+                    ]);
+                    $estadoInscripcion = 'no_clasificado';
+                } catch (\Exception $e) {
+                    error_log("Error al registrar no clasificado: " . $e->getMessage());
+                    
+                    $estadoInscripcion = 'no_clasificado';
+                }
+            } else {
+                
+                $noClasificadoModel = new NoClasificado();
+                if ($noClasificadoModel->estaNoClasificado((int)$input['inscripcion_area_id'], 'clasificacion')) {
+                    try {
+                        $noClasificadoModel->eliminar((int)$input['inscripcion_area_id'], 'clasificacion');
+                    } catch (\Exception $e) {
+                        error_log("Error al eliminar registro de no clasificado: " . $e->getMessage());
+                    }
+                }
+            }
+            
+            
+            $updateData = ['estado' => $estadoInscripcion];
+            
+            try {
+                $this->inscripcionModel->update($input['inscripcion_area_id'], $updateData);
+            } catch (\Exception $e) {
+                
+                error_log("Error actualizando inscripción (intentando sin updated_at): " . $e->getMessage());
+                $this->inscripcionModel->update($input['inscripcion_area_id'], ['estado' => $estadoInscripcion]);
             }
 
             $evaluacion = $this->evalClasificacionModel->findById($evaluacionId);
             
-            // Registrar en log de auditoría
+            
             $datosNuevos = [
                 'puntuacion' => (float)$input['puntuacion'],
                 'observaciones' => $input['observaciones'] ?? null,
@@ -152,11 +201,11 @@ class EvaluacionController
                 $datosAnteriores
             );
             
-            // Registrar en log específico de cambios de notas (solo si es una modificación)
+            
             if ($existingEval) {
                 error_log("Registrando cambio de nota - Evaluacion ID: $evaluacionId");
                 
-                // Obtener datos del olimpista y área para el log
+                
                 $sql = "SELECT o.id as olimpista_id, o.nombre_completo as olimpista_nombre, 
                                ac.id as area_id, ac.nombre as area_nombre,
                                nc.id as nivel_id, nc.nombre as nivel_nombre
@@ -228,18 +277,18 @@ class EvaluacionController
         $currentUser = JWTManager::getCurrentUser();
         
         try {
-            // Verificar que el evaluador puede evaluar esta inscripción
+            
             if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'])) {
                 Response::forbidden('No tienes permisos para evaluar esta inscripción');
             }
 
-            // Verificar que la inscripción esté clasificada
+            
             $inscripcion = $this->inscripcionModel->findById($input['inscripcion_area_id']);
             if (!$inscripcion || $inscripcion['estado'] !== 'clasificado') {
                 Response::validationError(['inscripcion_area_id' => 'La inscripción debe estar clasificada para la evaluación final']);
             }
 
-            // Verificar si ya existe una evaluación final
+            
             $existingEval = $this->evalFinalModel->findByInscripcionAndEvaluador(
                 $input['inscripcion_area_id'], 
                 $currentUser['id']
@@ -254,11 +303,11 @@ class EvaluacionController
             ];
 
             if ($existingEval) {
-                // Actualizar evaluación existente
+                
                 $this->evalFinalModel->update($existingEval['id'], $evaluacionData);
                 $evaluacionId = $existingEval['id'];
             } else {
-                // Crear nueva evaluación
+                
                 $evaluacionId = $this->evalFinalModel->create($evaluacionData);
             }
 
@@ -308,7 +357,7 @@ class EvaluacionController
     {
         $currentUser = JWTManager::getCurrentUser();
         
-        // Verificar permisos de responsable académico
+        
         if (!$this->isResponsableAcademico($currentUser['id'], $areaId)) {
             Response::forbidden('No tienes permisos para calcular clasificados');
         }
@@ -316,12 +365,19 @@ class EvaluacionController
         try {
             $clasificados = $this->evalClasificacionModel->calcularClasificados($areaId, $nivelId);
             
-            // Actualizar estados de las inscripciones
+            
+            
             foreach ($clasificados as $clasificado) {
-                $this->inscripcionModel->update($clasificado['inscripcion_area_id'], [
-                    'estado' => 'clasificado',
-                    'updated_at' => date('Y-m-d H:i:s')
-                ]);
+                $inscripcionId = $clasificado['inscripcion_area_id'];
+                $inscripcion = $this->inscripcionModel->getById($inscripcionId);
+                
+                
+                if ($inscripcion && !in_array($inscripcion['estado'], ['desclasificado', 'no_clasificado'])) {
+                    $this->inscripcionModel->update($inscripcionId, [
+                        'estado' => 'clasificado',
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ]);
+                }
             }
             
             Response::success($clasificados, 'Clasificados calculados exitosamente');
@@ -336,18 +392,18 @@ class EvaluacionController
     {
         $currentUser = JWTManager::getCurrentUser();
         
-        // Verificar permisos de responsable académico
+       
         if (!$this->isResponsableAcademico($currentUser['id'], $areaId)) {
             Response::forbidden('No tienes permisos para calcular premiados');
         }
 
         try {
-            // Obtener configuración del medallero
+            
             $medalleroConfig = $this->medalleroModel->getByAreaAndLevel($areaId, $nivelId);
             
             $premiados = $this->evalFinalModel->calcularPremiados($areaId, $nivelId, $medalleroConfig);
             
-            // Guardar resultados finales
+            
             foreach ($premiados as $index => $premiado) {
                 $this->resultadoModel->create([
                     'inscripcion_area_id' => $premiado['inscripcion_area_id'],
@@ -357,7 +413,7 @@ class EvaluacionController
                     'puntuacion_final' => $premiado['puntuacion_final']
                 ]);
 
-                // Actualizar estado de la inscripción
+                
                 $this->inscripcionModel->update($premiado['inscripcion_area_id'], [
                     'estado' => 'premiado',
                     'updated_at' => date('Y-m-d H:i:s')
@@ -409,13 +465,51 @@ class EvaluacionController
 
     private function canEvaluate($evaluadorId, $inscripcionId)
     {
-       
+        
         $inscripcion = $this->inscripcionModel->findById($inscripcionId);
         if (!$inscripcion) {
             return false;
         }
 
         
+        $sql = "SELECT id, start_date, start_time, duration_days, status,
+                       (start_date + (duration_days || ' days')::interval) AS end_datetime
+                FROM permisos_evaluadores
+                WHERE evaluador_id = :evaluadorId AND status = 'activo'
+                ORDER BY start_date DESC, start_time DESC
+                LIMIT 1";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':evaluadorId', $evaluadorId, \PDO::PARAM_INT);
+        $stmt->execute();
+        $permiso = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$permiso) {
+            return false; // No tiene permiso activo
+        }
+        
+        
+        $now = new \DateTime();
+        $startPermiso = new \DateTime($permiso['start_date'] . ' ' . $permiso['start_time']);
+        $endPermiso = new \DateTime($permiso['end_datetime']);
+        
+        if ($now < $startPermiso || $now > $endPermiso) {
+            return false; // Fuera del periodo asignado por el coordinador
+        }
+
+        // 3. Verificar que está dentro del periodo configurado para el área
+        $configAreaModel = new ConfiguracionAreaEvaluacion();
+        $configArea = $configAreaModel->getByAreaId($inscripcion['area_competencia_id']);
+        
+        if ($configArea) {
+            $periodoInicio = new \DateTime($configArea['periodo_evaluacion_inicio']);
+            $periodoFin = new \DateTime($configArea['periodo_evaluacion_fin']);
+            
+            if ($now < $periodoInicio || $now > $periodoFin) {
+                return false; 
+            }
+        }
+
         return true;
     }
 
@@ -425,9 +519,7 @@ class EvaluacionController
         return true; 
     }
 
-    /**
-     * Confirmar cierre de calificación por parte del evaluador
-     */
+    
     public function confirmarCierreCalificacion()
     {
         try {
@@ -443,7 +535,7 @@ class EvaluacionController
             
             $currentUser = JWTManager::getCurrentUser();
             
-            // Verificar que el evaluador tenga evaluaciones completas en esta área y nivel
+            
             $sql = "SELECT COUNT(*) as total_evaluaciones,
                            COUNT(CASE WHEN ec.puntuacion IS NOT NULL THEN 1 END) as evaluaciones_completas
                     FROM asignaciones_evaluacion aa
@@ -464,11 +556,11 @@ class EvaluacionController
                 Response::validationError(['general' => "Tienes {$pendientes} evaluaciones pendientes por completar"]);
             }
             
-            // Llamar al método del coordinador para generar las listas
+            
             $coordinadorController = new CoordinadorController();
             $listas = $coordinadorController->generarListasClasificacion($areaId, $nivelId, $fase);
             
-            // Registrar en log de auditoría
+            
             AuditService::logCierreCalificacion(
                 $currentUser['id'],
                 $currentUser['nombre'] ?? $currentUser['email'],

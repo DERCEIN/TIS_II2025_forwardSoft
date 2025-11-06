@@ -76,8 +76,11 @@ class InscripcionArea
         $fields = [];
         $values = [];
         
+        // Verificar qué columnas existen en la tabla
+        $columns = $this->getTableColumns();
+        
         foreach ($data as $key => $value) {
-            if ($key !== 'id') {
+            if ($key !== 'id' && in_array($key, $columns)) {
                 $fields[] = "{$key} = ?";
                 $values[] = $value;
             }
@@ -97,6 +100,28 @@ class InscripcionArea
             error_log("Error al actualizar inscripción: " . $e->getMessage());
             return false;
         }
+    }
+    
+    private function getTableColumns()
+    {
+        static $columns = null;
+        
+        if ($columns === null) {
+            try {
+                $sql = "SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = ?";
+                $stmt = $this->db->query($sql, [$this->table]);
+                $columns = array_column($stmt->fetchAll(), 'column_name');
+            } catch (\Exception $e) {
+                error_log("Error obteniendo columnas de tabla: " . $e->getMessage());
+                // Si falla, retornar columnas comunes
+                $columns = ['id', 'estado', 'created_at', 'updated_at'];
+            }
+        }
+        
+        return $columns;
     }
 
     public function getTotalCount()

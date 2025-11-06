@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS inscripciones_areas (
     es_grupo BOOLEAN DEFAULT FALSE,
     nombre_grupo VARCHAR(255) NULL, -- Para participaciones grupales
     integrantes_grupo TEXT NULL, -- JSON con datos de integrantes adicionales
-    estado VARCHAR(20) CHECK (estado IN ('inscrito', 'evaluado', 'clasificado', 'premiado', 'descalificado')) DEFAULT 'inscrito',
+    estado VARCHAR(20) CHECK (estado IN ('inscrito', 'evaluado', 'clasificado', 'premiado', 'desclasificado', 'no_clasificado')) DEFAULT 'inscrito',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL,
     FOREIGN KEY (olimpista_id) REFERENCES olimpistas(id) ON DELETE CASCADE,
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS asignaciones_evaluacion (
     id SERIAL PRIMARY KEY,
     inscripcion_area_id INTEGER NOT NULL,
     evaluador_id INTEGER NOT NULL,
-    fase VARCHAR(20) CHECK (fase IN ('clasificacion', 'premiacion')) NOT NULL,
+    fase VARCHAR(20) CHECK (fase IN ('clasificacion', 'final')) NOT NULL,
     fecha_asignacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     creado_por INTEGER NULL,
     FOREIGN KEY (inscripcion_area_id) REFERENCES inscripciones_areas(id) ON DELETE CASCADE,
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS evaluaciones_clasificacion (
     FOREIGN KEY (evaluador_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 
--- Tabla de evaluaciones finales (segunda fase - premiación)
+-- Tabla de evaluaciones finales (segunda fase - final)
 CREATE TABLE IF NOT EXISTS evaluaciones_finales (
     id SERIAL PRIMARY KEY,
     inscripcion_area_id INTEGER NOT NULL,

@@ -153,7 +153,7 @@ class Olimpista
     public function getAllWithFilters($filters = [])
     {
         try {
-            // Primero verificar si la tabla olimpistas existe
+           
             $checkTable = "SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
@@ -165,7 +165,7 @@ class Olimpista
                 return [];
             }
             
-            // Consulta que incluye las inscripciones por área con detalles de grupos
+           
             $sql = "SELECT 
                         o.*,
                         COALESCE(tl.nombre_completo, '') as tutor_legal_nombre,

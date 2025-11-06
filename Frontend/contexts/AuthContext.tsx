@@ -67,18 +67,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        console.log('🔍 AuthContext - Inicializando autenticación...')
+        console.log(' AuthContext - Inicializando autenticación...')
         const token = ApiService.getToken()
-        console.log('🔍 AuthContext - Token encontrado:', token ? 'Sí' : 'No')
+        console.log(' AuthContext - Token encontrado:', token ? 'Sí' : 'No')
         
         if (token) {
           ApiService.setToken(token)
-          console.log('🔍 AuthContext - Llamando a getProfile...')
+          console.log(' AuthContext - Llamando a getProfile...')
           const response = await AuthService.getProfile()
-          console.log('🔍 AuthContext - Respuesta del perfil:', response)
+          console.log(' AuthContext - Respuesta del perfil:', response)
           
           if (response.success && response.data) {
-            console.log('🔍 AuthContext - Usuario autenticado:', response.data)
+            console.log(' AuthContext - Usuario autenticado:', response.data)
             setState(prev => ({
               ...prev,
               user: response.data,
@@ -87,7 +87,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               isLoading: false,
             }))
           } else {
-            console.log('❌ AuthContext - Token inválido, limpiando...')
+            console.log(' AuthContext - Token inválido, limpiando...')
             // Token inválido, limpiar
             ApiService.setToken(null)
             setState(prev => ({
@@ -96,14 +96,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }))
           }
         } else {
-          console.log('❌ AuthContext - No hay token, usuario no autenticado')
+          console.log(' AuthContext - No hay token, usuario no autenticado')
           setState(prev => ({
             ...prev,
             isLoading: false,
           }))
         }
       } catch (error) {
-        console.error('❌ AuthContext - Error al inicializar autenticación:', error)
+        console.error(' AuthContext - Error al inicializar autenticación:', error)
         ApiService.setToken(null)
         setState(prev => ({
           ...prev,
@@ -120,10 +120,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
+      console.log(' Login - Iniciando petición de login...')
+      console.log(' Login - Email:', email)
+      console.log(' Login - Role:', role)
+      
       const response = await AuthService.login(email, password, role)
+      
+      console.log(' Login - Respuesta recibida:', response)
       
       if (response.success) {
         const { user, token } = response.data
+        console.log(' Login - Login exitoso. Usuario:', user)
+        console.log(' Login - Token recibido:', token ? 'Sí' : 'No')
         
         // Guardar token
         ApiService.setToken(token)
@@ -136,10 +144,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isLoading: false,
           error: null,
         }))
+        
+        console.log(' Login - Estado actualizado correctamente')
       } else {
+        console.error('❌ Login - Error en respuesta:', response.message)
         throw new Error(response.message || 'Error al iniciar sesión')
       }
     } catch (error: any) {
+      console.error('❌ Login - Error capturado:', error)
+      console.error('❌ Login - Mensaje de error:', error.message)
       setState(prev => ({
         ...prev,
         isLoading: false,

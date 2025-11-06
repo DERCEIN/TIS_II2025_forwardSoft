@@ -51,10 +51,12 @@ export default function ImportarOlimpistasPage() {
   // Función para limpiar la tabla
   const limpiarTabla = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/olimpistas/clear`, {
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}/api/olimpistas/clear`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
       })
       
