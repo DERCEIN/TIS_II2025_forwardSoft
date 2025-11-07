@@ -217,7 +217,78 @@ class Mailer
     }
 }
 
+public function enviarMensajeEvaluadorTerminado($nombre, $correo, $idArea)
+{
+    try {
+        // 1️⃣ Obtener información del evaluador y del coordinador
+        $coordinador = $this->obtenerCoordinadorPorArea($idArea);
+        $nombreArea = $this->encontrarAreaPorID($idArea);
 
+        // 2️⃣ Configurar el correo
+        $this->mail->clearAddresses();
+        $this->mail->setFrom('forwardsoft.official@gmail.com', 'Sistema Olimpiada Oh - SanSi');
+        $this->mail->addAddress($coordinador['email'], $coordinador['nombre']);
+        $this->mail->isHTML(true);
+        $this->mail->Subject = "Evaluador ha completado sus evaluaciones - Área: $nombreArea";
+
+        // 3️⃣ Contenido del mensaje
+        $mensaje = "
+            <p>Estimado(a) <b>{$coordinador['nombre']}</b>,</p>
+            <p>Le informamos que el evaluador <b>$nombre</b> ha completado todas sus evaluaciones asignadas en el área de <b>{$nombreArea}</b>.</p>
+            <p>Por favor, revise y valide los resultados correspondientes.</p>
+            <br>
+            <p>Si tiene alguna queja puede comunicarse con el evaluador directamente a su correo: <b>$correo</b></p>
+            <p>Atentamente,</p>
+            <p><b>Sistema Olimpiada Oh! - SanSi</b></p>
+        ";
+
+        // 4️⃣ Plantilla HTML elegante
+        $this->mail->Body = '
+        <html>
+        <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
+          <div style="max-width:600px; margin:auto; background:#fff; border-radius:8px; box-shadow:0 0 8px rgba(0,0,0,0.1); overflow:hidden;">
+            <div style="background-color:#004aad; color:#fff; text-align:center; padding:15px;">
+              <h2>Evaluador ha finalizado sus evaluaciones</h2>
+            </div>
+            <div style="padding:20px; color:#333;">
+              ' . $mensaje . '
+            </div>
+            <div style="background-color:#f4f4f4; text-align:center; padding:10px; font-size:12px; color:#666;">
+              © ' . date('Y') . ' Olimpiada Oh! - SanSi. Todos los derechos reservados.
+            </div>
+          </div>
+        </body>
+        </html>';
+
+        $this->mail->AltBody = strip_tags($mensaje);
+
+        // 5️⃣ Enviar
+        $this->mail->send();
+        error_log("Correo enviado al coordinador {$coordinador['email']} sobre el evaluador $nombre");
+        return true;
+
+    } catch (\Exception $e) {
+        error_log("Error al enviar mensaje de evaluador terminado: " . $e->getMessage());
+        return false;
+    }
+}
+
+
+public function obtenerCoordinadorPorArea($areaId)
+{
+    $query = "
+        SELECT u.name AS nombre, u.email
+        FROM users u
+        JOIN responsables_academicos ra ON u.id = ra.user_id
+        WHERE ra.area_competencia_id = :areaId
+        LIMIT 1
+    ";
+    $stmt = $this->pdo->prepare($query);
+    $stmt->bindParam(':areaId', $areaId);
+    $stmt->execute();
+
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
 public function obtenerEvaluadoresPorArea($areaId)
 {
     $query = "
