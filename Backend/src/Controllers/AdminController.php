@@ -13,7 +13,7 @@ use ForwardSoft\Models\InscripcionArea;
 use PDO;
 use PDOException;
 use Exception;
-
+use ForwardSoft\Utils\Mailer;
 class AdminController
 {
     private $userModel;
@@ -138,10 +138,39 @@ class AdminController
             $newUser = $this->userModel->findById($userId);
             $currentAdmin = JWTManager::getCurrentUser();
             
-           
-            $emailService = new EmailService();
-            $emailEnviado = $emailService->enviarCredenciales($newUser, $passwordTemporal, $currentAdmin);
+            $mailer = new Mailer();
+            $areaID=$input['area_id'];
+            $areaName=$this->encontrarAreaPorID($areaID);
+            $nombre = htmlspecialchars($input['name']);
+            $correo = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
+            $contrasena = htmlspecialchars($passwordTemporal);
+            $roleCreado = htmlspecialchars($input['role'] ?? 'evaluador');
+            $contenido = "
+                <p>Hola <strong>" . htmlspecialchars($nombre) . "</strong>,</p>
+                <p>Se ha creado tu cuenta en el sistema <strong>Olimpiada Oh! SanSi</strong>.</p>
+                <p>Tu rol asignado es: <strong>" . htmlspecialchars($roleCreado) . "</strong></p>
+                <p>Área de competencia asignada: <strong>" . htmlspecialchars($areaName) . "</strong></p>
+                <p>
+                    <strong>Correo:</strong> " . htmlspecialchars($correo) . "<br>
+                    <strong>Contraseña temporal:</strong> " . htmlspecialchars($contrasena) . "
+                </p>
+                <p>Por favor, cambia tu contraseña al iniciar sesión.</p>
+                <p><em>No olvides tu nueva contraseña, ya que no podrás recuperarla.</em></p>
+                <p>
+                    <a href='http://localhost:3000/login' 
+                        style='background-color:#004aad;
+                            color:#ffffff;
+                            padding:10px 15px;
+                            text-decoration:none;
+                            border-radius:5px;
+                            font-weight:bold;'>
+                        Iniciar sesión
+                    </a>
+                </p>
+                ";
             
+            $emailEnviado= $mailer->enviar($correo, "Credenciales de acceso", $contenido);
+
             if ($emailEnviado) {
                 unset($newUser['password']);
                 Response::success([
@@ -163,7 +192,18 @@ class AdminController
             Response::serverError('Error al crear el usuario');
         }
     }
-
+    public function encontrarAreaPorID($areaId): mixed
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT nombre FROM areas_competencia WHERE id = ?");
+            $stmt->execute([$areaId]);
+            $area = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $area ? $area['nombre'] : null;
+        } catch (Exception $e) {
+            error_log("Error al encontrar área por ID: " . $e->getMessage());
+            return null;
+        }
+    }
     private function validateUserCreation($input)
     {
         $errors = [];
