@@ -18,7 +18,6 @@ import {
   Download,
   Plus,
   Search,
-  Filter,
   MoreHorizontal,
   Bell,
   LogOut,
@@ -41,7 +40,7 @@ import Link from "next/link"
 import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService } from "@/lib/api"
 
 // Importar la URL base para logs
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -708,21 +707,9 @@ export default function AdminDashboard() {
 
           {/* Areas Tab - Configuración de Tiempos y Periodos */}
           <TabsContent value="areas" className="space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold mb-1">Áreas de Competencia</h2>
-                <p className="text-muted-foreground">Gestiona las áreas y su capacidad</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filtrar
-                </Button>
-                <Button size="sm" className="bg-slate-700 hover:bg-slate-800 text-white">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nueva Área
-                </Button>
-              </div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Áreas de Competencia</h2>
+              <p className="text-muted-foreground">Gestiona las áreas y su capacidad</p>
             </div>
             
             {loadingAreas ? (
@@ -1006,7 +993,7 @@ export default function AdminDashboard() {
                       try {
                         setIsSavingArea(true)
                         
-                        
+                        // Validar que todos los campos requeridos estén llenos
                         if (!tempConfig.periodo_evaluacion_inicio || 
                             !tempConfig.periodo_evaluacion_fin || 
                             !tempConfig.periodo_publicacion_inicio || 
@@ -1020,7 +1007,7 @@ export default function AdminDashboard() {
                           return
                         }
                         
-                       
+                        // Convertir formato datetime-local a TIMESTAMP para PostgreSQL
                         const convertirFecha = (fechaLocal: string) => {
                           if (!fechaLocal) return ''
                           return fechaLocal.replace('T', ' ') + ':00'

@@ -6,20 +6,30 @@ use ForwardSoft\Utils\Response;
 use ForwardSoft\Utils\JWTManager;
 use ForwardSoft\Utils\AuditService;
 use ForwardSoft\Utils\LogCambiosNotas;
+use ForwardSoft\Utils\Mailer;
 use ForwardSoft\Models\InscripcionArea;
 use ForwardSoft\Models\User;
-use ForwardSoft\Models\EvaluacionClasificacion;
 use ForwardSoft\Models\EvaluacionFinal;
+use ForwardSoft\Models\EvaluacionClasificacion;
 use ForwardSoft\Models\tiemposEvaluadores;
+use ForwardSoft\Models\ConfiguracionOlimpiada;
+use ForwardSoft\Models\NoClasificado;
 use PDO;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 
 class CoordinadorController
 {
     private $pdo;
+    private $evalClasificacionModel;
 
     public function __construct()
     {
         $this->pdo = \ForwardSoft\Config\Database::getInstance()->getConnection();
+        $this->evalClasificacionModel = new EvaluacionClasificacion();
     }
     public function dashboard()
     {
@@ -131,7 +141,7 @@ class CoordinadorController
         $rondaId = isset($input['ronda_id']) ? (int)$input['ronda_id'] : null;
         $fase = $input['fase'] ?? 'clasificacion';
         $numEval = max(1, min(5, (int)($input['num_evaluadores'] ?? 2)));
-        $cuotaPorEvaluador = max(1, (int)($input['cuota_por_evaluador'] ?? 30)); // Cuota máxima de olimpistas por evaluador
+        $cuotaPorEvaluador = max(1, (int)($input['cuota_por_evaluador'] ?? 30)); 
         $metodo = $input['metodo'] ?? 'simple';
         $evitarMismaIE = (bool)($input['evitar_misma_institucion'] ?? true);
         $evitarMismaArea = (bool)($input['evitar_misma_area'] ?? true);
@@ -169,8 +179,18 @@ class CoordinadorController
         
         $filtroEstado = '';
         if ($fase === 'final') {
-            // Para fase final, solo incluir clasificados y excluir no_clasificados y desclasificados
-            $filtroEstado = " AND ia.estado = 'clasificado'";
+            
+            $filtroEstado = " AND ia.estado = 'clasificado' 
+                              AND EXISTS (
+                                  SELECT 1 
+                                  FROM evaluaciones_clasificacion ec 
+                                  WHERE ec.inscripcion_area_id = ia.id
+                              )
+                              AND (
+                                  SELECT AVG(ec2.puntuacion)
+                                  FROM evaluaciones_clasificacion ec2
+                                  WHERE ec2.inscripcion_area_id = ia.id
+                              ) >= 51";
         } else {
             
             $filtroEstado = " AND ia.estado NOT IN ('desclasificado', 'no_clasificado')";
@@ -187,16 +207,81 @@ class CoordinadorController
         $totalInscripciones = $stmtTotalIns->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
         
         
+        
+        $faseLiteral = $fase === 'final' ? 'final' : 'clasificacion';
+        
+       
+        $sqlVerificarFasesBD = "SELECT 
+                                    ia.id as inscripcion_id,
+                                    o.nombre_completo,
+                                    ae.fase,
+                                    ae.evaluador_id,
+                                    u.name as evaluador_nombre
+                                FROM inscripciones_areas ia
+                                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                                JOIN olimpistas o ON o.id = ia.olimpista_id
+                                JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id
+                                JOIN users u ON u.id = ae.evaluador_id
+                                WHERE ia.area_competencia_id = :areaId" . $whereNivel . $filtroEstado . "
+                                ORDER BY ia.id, ae.fase";
+        $stmtVerificarBD = $this->pdo->prepare($sqlVerificarFasesBD);
+        $stmtVerificarBD->bindValue(':areaId', $areaId, PDO::PARAM_INT);
+        $stmtVerificarBD->execute();
+        $asignacionesBD = $stmtVerificarBD->fetchAll(PDO::FETCH_ASSOC);
+        error_log("=== VERIFICACIÓN DIRECTA DE ASIGNACIONES EN BD ===");
+        error_log("Total asignaciones encontradas: " . count($asignacionesBD));
+        foreach ($asignacionesBD as $asig) {
+            error_log("  - Inscripción ID: {$asig['inscripcion_id']}, Nombre: {$asig['nombre_completo']}, FASE: {$asig['fase']}, Evaluador: {$asig['evaluador_nombre']}");
+        }
+        
         $sqlConAsignacion = "SELECT COUNT(*) as total
                             FROM inscripciones_areas ia
                             JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
-                            JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id AND ae.fase = :fase
+                            JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id AND ae.fase = '" . $faseLiteral . "'
                             WHERE ia.area_competencia_id = :areaId" . $whereNivel . $filtroEstado;
+        error_log("DEBUG - Verificando asignaciones para fase: '$fase' (literal: '$faseLiteral')");
+        error_log("DEBUG - SQL Con Asignación: " . $sqlConAsignacion);
         $stmtConAsignacion = $this->pdo->prepare($sqlConAsignacion);
         $stmtConAsignacion->bindValue(':areaId', $areaId, PDO::PARAM_INT);
-        $stmtConAsignacion->bindValue(':fase', $fase);
         $stmtConAsignacion->execute();
         $inscripcionesConAsignacion = $stmtConAsignacion->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
+        error_log("DEBUG - Resultado del conteo para fase '$faseLiteral': " . $inscripcionesConAsignacion);
+        
+       
+        if ($fase === 'final') {
+            $sqlAsignacionesClasificacion = "SELECT COUNT(*) as total
+                                            FROM inscripciones_areas ia
+                                            JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                                            JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id AND ae.fase = 'clasificacion'
+                                            WHERE ia.area_competencia_id = :areaId" . $whereNivel . $filtroEstado;
+            $stmtClasif = $this->pdo->prepare($sqlAsignacionesClasificacion);
+            $stmtClasif->bindValue(':areaId', $areaId, PDO::PARAM_INT);
+            $stmtClasif->execute();
+            $conAsignacionClasif = $stmtClasif->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
+            
+           
+            $sqlVerificarFases = "SELECT 
+                                    ia.id as inscripcion_id,
+                                    o.nombre_completo,
+                                    ae.fase,
+                                    ae.evaluador_id,
+                                    u.name as evaluador_nombre
+                                  FROM inscripciones_areas ia
+                                  JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                                  JOIN olimpistas o ON o.id = ia.olimpista_id
+                                  JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id
+                                  JOIN users u ON u.id = ae.evaluador_id
+                                  WHERE ia.area_competencia_id = :areaId" . $whereNivel . $filtroEstado . "
+                                  ORDER BY ia.id, ae.fase";
+            $stmtVerificar = $this->pdo->prepare($sqlVerificarFases);
+            $stmtVerificar->bindValue(':areaId', $areaId, PDO::PARAM_INT);
+            $stmtVerificar->execute();
+            $asignacionesDetalle = $stmtVerificar->fetchAll(PDO::FETCH_ASSOC);
+            
+            error_log("DEBUG FASE FINAL - Inscripciones con asignación de fase CLASIFICATORIA: " . $conAsignacionClasif);
+            error_log("DEBUG FASE FINAL - Inscripciones con asignación de fase FINAL: " . $inscripcionesConAsignacion);
+            error_log("DEBUG FASE FINAL - Detalle de asignaciones encontradas: " . json_encode($asignacionesDetalle));
+        }
         
         
         $sqlIns = "SELECT ia.id as inscripcion_area_id, o.nombre_completo, ue.id as unidad_id, ue.nombre as unidad_nombre, 
@@ -206,24 +291,52 @@ class CoordinadorController
                    JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
                    JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
                    JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
-                   LEFT JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id AND ae.fase = :fase
+                   LEFT JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id AND ae.fase = '" . $faseLiteral . "'
                    WHERE ia.area_competencia_id = :areaId 
                    AND ae.id IS NULL" . $whereNivel . $filtroEstado;
         $stmt = $this->pdo->prepare($sqlIns);
         $stmt->bindValue(':areaId', $areaId, PDO::PARAM_INT);
-        $stmt->bindValue(':fase', $fase);
         $stmt->execute();
         $inscripciones = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         
         error_log("=== CONSULTA DE INSCRIPCIONES ===");
         error_log("SQL: " . $sqlIns);
+        error_log("SQL Con Asignación: " . $sqlConAsignacion);
         error_log("Área ID: $areaId");
         error_log("Nivel ID: $nivelId");
         error_log("Fase: $fase");
         error_log("WHERE nivel: $whereNivel");
+        error_log("Filtro estado aplicado: " . ($fase === 'final' ? 'Fase final - Clasificados con puntuación >= 51' : 'Fase clasificatoria'));
         error_log("Total de inscripciones (sin filtrar por asignaciones): " . $totalInscripciones);
-        error_log("Inscripciones con evaluador asignado: " . $inscripcionesConAsignacion);
-        error_log("Inscripciones encontradas (sin asignaciones previas): " . count($inscripciones));
+        error_log("Inscripciones con evaluador asignado para fase '$fase': " . $inscripcionesConAsignacion);
+        error_log("Inscripciones encontradas (sin asignaciones previas para fase '$fase'): " . count($inscripciones));
+        
+       
+        if ($fase === 'final') {
+            $sqlInfoPuntuaciones = "
+                SELECT 
+                    COUNT(*) as total_clasificados,
+                    COUNT(CASE WHEN EXISTS (
+                        SELECT 1 FROM evaluaciones_clasificacion ec 
+                        WHERE ec.inscripcion_area_id = ia.id
+                        AND (SELECT AVG(ec2.puntuacion) FROM evaluaciones_clasificacion ec2 WHERE ec2.inscripcion_area_id = ia.id) >= 51
+                    ) THEN 1 END) as con_puntuacion_51,
+                    COUNT(CASE WHEN EXISTS (
+                        SELECT 1 FROM asignaciones_evaluacion ae 
+                        WHERE ae.inscripcion_area_id = ia.id AND ae.fase = 'final'
+                    ) THEN 1 END) as con_asignacion_final
+                FROM inscripciones_areas ia
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                WHERE ia.area_competencia_id = :areaId 
+                AND ia.estado = 'clasificado'" . $whereNivel;
+            $stmtInfo = $this->pdo->prepare($sqlInfoPuntuaciones);
+            $stmtInfo->bindValue(':areaId', $areaId, PDO::PARAM_INT);
+            $stmtInfo->execute();
+            $infoPuntuaciones = $stmtInfo->fetch(PDO::FETCH_ASSOC);
+            error_log("INFO FASE FINAL - Total clasificados: " . ($infoPuntuaciones['total_clasificados'] ?? 0));
+            error_log("INFO FASE FINAL - Con puntuación >= 51: " . ($infoPuntuaciones['con_puntuacion_51'] ?? 0));
+            error_log("INFO FASE FINAL - Con asignación final: " . ($infoPuntuaciones['con_asignacion_final'] ?? 0));
+        }
         
         
 
@@ -332,9 +445,17 @@ class CoordinadorController
             $mensaje = 'Sin datos suficientes para asignar';
             if (empty($inscripciones)) {
                 if ($totalInscripciones == 0) {
-                    $mensaje = 'No hay inscripciones registradas para esta área y nivel';
+                    if ($fase === 'final') {
+                        $mensaje = 'No hay inscripciones clasificadas con puntuación promedio >= 51 para esta área y nivel';
+                    } else {
+                        $mensaje = 'No hay inscripciones registradas para esta área y nivel';
+                    }
                 } elseif ($inscripcionesConAsignacion == $totalInscripciones) {
-                    $mensaje = 'Todas las inscripciones (' . $totalInscripciones . ') ya tienen evaluador asignado para esta fase';
+                    if ($fase === 'final') {
+                        $mensaje = 'Todas las inscripciones clasificadas con puntuación >= 51 (' . $totalInscripciones . ') ya tienen evaluador asignado para la fase final';
+                    } else {
+                        $mensaje = 'Todas las inscripciones (' . $totalInscripciones . ') ya tienen evaluador asignado para esta fase';
+                    }
                 } else {
                     $mensaje = 'No hay inscripciones disponibles sin evaluador asignado para esta fase. Total: ' . $totalInscripciones . ', Con asignación: ' . $inscripcionesConAsignacion;
                 }
@@ -369,8 +490,8 @@ class CoordinadorController
        
         $inscripcionesPorGrado = [];
         foreach ($inscripciones as $ins) {
-            $gradoId = $ins['nivel_id']; // Este es el nivel_competencia_id específico del grado
-            $gradoNombre = $ins['nivel_nombre']; // Nombre del grado (ej: "Primaria 1ro")
+            $gradoId = $ins['nivel_id'];
+            $gradoNombre = $ins['nivel_nombre']; 
             
             if (!isset($inscripcionesPorGrado[$gradoId])) {
                 $inscripcionesPorGrado[$gradoId] = [
@@ -411,14 +532,13 @@ class CoordinadorController
                 $evaluadorAsignado = null;
                 
                 if (!empty($evaluadoresDisponibles)) {
-                    // Tomar el primer evaluador disponible
+                   
                     $evaluadorAsignado = array_shift($evaluadoresDisponibles);
                     $evaluadoresParaGrado[] = $evaluadorAsignado;
                     $conteoAsignacionesEvaluadores[$evaluadorAsignado['id']] = ($conteoAsignacionesEvaluadores[$evaluadorAsignado['id']] ?? 0) + 1;
                     error_log("  - Evaluador asignado: {$evaluadorAsignado['name']} (ID: {$evaluadorAsignado['id']})");
                 } else {
-                    // Si no hay más evaluadores disponibles, reutilizar uno existente de forma balanceada
-                    // Buscar el evaluador con menos asignaciones en este proceso
+                   
                     $evaluadorMenosCargado = $evaluadores[0];
                     $minAsignaciones = $conteoAsignacionesEvaluadores[$evaluadores[0]['id']] ?? 0;
                     
@@ -814,49 +934,102 @@ class CoordinadorController
     public function generarListasClasificacion($areaId, $nivelId, $fase)
     {
         try {
+           
+            $porcentajeClasificados = 0.6; 
+            $puntuacionMinima = 51.00;
             
-            $sql = "SELECT ia.id, o.nombre_completo, ec.puntuacion, ec.observaciones
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración de olimpiada: ' . $e->getMessage());
+            }
+            
+           
+            $sql = "
+                SELECT 
+                    ia.id, 
+                    o.nombre_completo, 
+                    AVG(ec.puntuacion) as puntuacion_promedio,
+                    COUNT(ec.id) as total_evaluaciones,
+                    STRING_AGG(DISTINCT ec.observaciones, '; ') as observaciones
                     FROM inscripciones_areas ia
                     JOIN olimpistas o ON o.id = ia.olimpista_id
                     JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
-                    WHERE ia.area_competencia_id = ? AND ia.nivel_competencia_id = ?
-                    ORDER BY ec.puntuacion DESC";
+                WHERE ia.area_competencia_id = ? 
+                AND ia.nivel_competencia_id = ?
+                AND ia.estado NOT IN ('desclasificado', 'no_clasificado')
+                GROUP BY ia.id, o.nombre_completo
+                HAVING AVG(ec.puntuacion) >= ?
+                ORDER BY puntuacion_promedio DESC
+            ";
             
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$areaId, $nivelId]);
-            $evaluaciones = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute([$areaId, $nivelId, $puntuacionMinima]);
+            $participantesElegibles = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            $total = count($evaluaciones);
-            $clasificados = [];
-            $noClasificados = [];
-            $descalificados = [];
+            $totalElegibles = count($participantesElegibles);
+            $limiteClasificados = (int)($totalElegibles * $porcentajeClasificados);
             
+            $clasificados = array_slice($participantesElegibles, 0, $limiteClasificados);
+            $noClasificados = array_slice($participantesElegibles, $limiteClasificados);
             
-            $porcentajeClasificados = 0.6; 
-            $puntuacionMinima = 50; 
+           
+            $sqlNoMinima = "
+                SELECT 
+                    ia.id, 
+                    o.nombre_completo, 
+                    AVG(ec.puntuacion) as puntuacion_promedio,
+                    COUNT(ec.id) as total_evaluaciones,
+                    STRING_AGG(DISTINCT ec.observaciones, '; ') as observaciones
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ? 
+                AND ia.nivel_competencia_id = ?
+                AND ia.estado NOT IN ('desclasificado', 'no_clasificado')
+                GROUP BY ia.id, o.nombre_completo
+                HAVING AVG(ec.puntuacion) < ?
+                ORDER BY puntuacion_promedio DESC
+            ";
             
-            $limiteClasificados = (int)($total * $porcentajeClasificados);
-            
-            foreach ($evaluaciones as $index => $eval) {
-                $puntuacion = (float)$eval['puntuacion'];
-                
-                if ($puntuacion < $puntuacionMinima) {
-                    $descalificados[] = $eval;
-                } elseif ($index < $limiteClasificados) {
-                    $clasificados[] = $eval;
-                } else {
-                    $noClasificados[] = $eval;
-                }
-            }
+            $stmtNoMinima = $this->pdo->prepare($sqlNoMinima);
+            $stmtNoMinima->execute([$areaId, $nivelId, $puntuacionMinima]);
+            $descalificados = $stmtNoMinima->fetchAll(PDO::FETCH_ASSOC);
             
             return [
-                'clasificados' => $clasificados,
-                'no_clasificados' => $noClasificados,
-                'descalificados' => $descalificados,
-                'total' => $total,
+                'clasificados' => array_map(function($p) {
+                    return [
+                        'id' => $p['id'],
+                        'nombre_completo' => $p['nombre_completo'],
+                        'puntuacion' => round((float)$p['puntuacion_promedio'], 2),
+                        'observaciones' => $p['observaciones']
+                    ];
+                }, $clasificados),
+                'no_clasificados' => array_map(function($p) {
+                    return [
+                        'id' => $p['id'],
+                        'nombre_completo' => $p['nombre_completo'],
+                        'puntuacion' => round((float)$p['puntuacion_promedio'], 2),
+                        'observaciones' => $p['observaciones']
+                    ];
+                }, $noClasificados),
+                'descalificados' => array_map(function($p) {
+                    return [
+                        'id' => $p['id'],
+                        'nombre_completo' => $p['nombre_completo'],
+                        'puntuacion' => round((float)$p['puntuacion_promedio'], 2),
+                        'observaciones' => $p['observaciones']
+                    ];
+                }, $descalificados),
+                'total' => $totalElegibles + count($descalificados),
                 'criterios' => [
-                    'porcentaje_clasificados' => $porcentajeClasificados,
-                    'puntuacion_minima' => $puntuacionMinima
+                    'puntuacion_minima' => $puntuacionMinima,
+                    'nota' => 'Todos los participantes con puntuación >= ' . $puntuacionMinima . ' puntos son clasificados'
                 ]
             ];
             
@@ -975,7 +1148,6 @@ class CoordinadorController
                 Response::validationError(['general' => 'Se requieren area_id y nivel_id']);
             }
             
-            // Obtener todas las evaluaciones con información completa
             $sql = "SELECT ia.id as inscripcion_area_id,
                            o.nombre_completo,
                            o.documento_identidad,
@@ -1158,43 +1330,67 @@ class CoordinadorController
             $areaId = $areaCoordinador['area_id'];
             $areaNombre = $areaCoordinador['area_nombre'];
             
+           
+            $this->actualizarEstadosClasificacion($areaId);
+            
+           
+            $sqlEstadoCierre = "
+                SELECT estado, fecha_cierre
+                FROM cierre_fase_areas
+                WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                LIMIT 1
+            ";
+            $stmtEstadoCierre = $this->pdo->prepare($sqlEstadoCierre);
+            $stmtEstadoCierre->execute([$areaId]);
+            $estadoCierre = $stmtEstadoCierre->fetch(PDO::FETCH_ASSOC);
+            $faseCerrada = $estadoCierre && $estadoCierre['estado'] === 'cerrada';
             
             $sqlNiveles = "
                 SELECT 
                     nc.nombre as nivel_nombre,
-                    COUNT(DISTINCT ia.olimpista_id) as total_olimpistas,
-                    COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL AND ia.estado NOT IN ('desclasificado', 'no_clasificado') THEN ia.olimpista_id END) as evaluados,
-                    COUNT(DISTINCT CASE 
+                    COUNT(ia.id) as total_olimpistas,
+                    COUNT(CASE WHEN ec.id IS NOT NULL THEN ia.id END) as evaluados,
+                    COUNT(CASE 
+                        WHEN ia.estado = 'clasificado' THEN ia.id 
+                    END) as clasificados,
+                    COUNT(CASE 
+                        WHEN ia.estado = 'no_clasificado' OR EXISTS (
+                            SELECT 1 FROM no_clasificados ncl 
+                            WHERE ncl.inscripcion_area_id = ia.id 
+                            AND ncl.fase = 'clasificacion'
+                        ) THEN ia.id 
+                    END) as no_clasificados,
+                    COUNT(CASE 
                         WHEN ia.estado = 'desclasificado' OR EXISTS (
                             SELECT 1 FROM desclasificaciones d 
                             WHERE d.inscripcion_area_id = ia.id 
                             AND d.estado = 'activa'
-                        ) THEN ia.olimpista_id 
+                        ) THEN ia.id 
                     END) as desclasificados,
-                    COUNT(DISTINCT CASE 
+                    COUNT(CASE 
                         WHEN ia.estado NOT IN ('desclasificado', 'no_clasificado', 'clasificado') 
                         AND ec.id IS NULL 
                         AND NOT EXISTS (
                             SELECT 1 FROM desclasificaciones d 
                             WHERE d.inscripcion_area_id = ia.id 
                             AND d.estado = 'activa'
-                        ) THEN ia.olimpista_id 
+                        ) THEN ia.id 
                     END) as pendientes,
-                    AVG(CASE WHEN ec.id IS NOT NULL AND ia.estado NOT IN ('desclasificado', 'no_clasificado') THEN ec.puntuacion END) as promedio_puntuacion,
+                    AVG(CASE WHEN ec.id IS NOT NULL THEN ec.puntuacion END) as promedio_puntuacion,
                     CASE 
-                        WHEN COUNT(DISTINCT ia.olimpista_id) > 0 
-                        THEN ROUND((COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL AND ia.estado NOT IN ('desclasificado', 'no_clasificado') THEN ia.olimpista_id END) * 100.0) / COUNT(DISTINCT ia.olimpista_id), 2)
+                        WHEN COUNT(ia.id) > 0 
+                        THEN ROUND((COUNT(CASE WHEN ec.id IS NOT NULL THEN ia.id END) * 100.0) / COUNT(ia.id), 2)
                         ELSE 0 
                     END as porcentaje,
                     CASE 
-                        WHEN COUNT(DISTINCT ia.olimpista_id) > 0 
-                        THEN ROUND((COUNT(DISTINCT CASE 
+                        WHEN COUNT(ia.id) > 0 
+                        THEN ROUND((COUNT(CASE 
                             WHEN ia.estado = 'desclasificado' OR EXISTS (
                                 SELECT 1 FROM desclasificaciones d 
                                 WHERE d.inscripcion_area_id = ia.id 
                                 AND d.estado = 'activa'
-                            ) THEN ia.olimpista_id 
-                        END) * 100.0) / COUNT(DISTINCT ia.olimpista_id), 2)
+                            ) THEN ia.id 
+                        END) * 100.0) / COUNT(ia.id), 2)
                         ELSE 0 
                     END as porcentaje_desclasificados
                 FROM inscripciones_areas ia
@@ -1209,8 +1405,26 @@ class CoordinadorController
             $stmtNiveles->execute([$areaId]);
             $niveles = $stmtNiveles->fetchAll(PDO::FETCH_ASSOC);
             
+            error_log("getProgresoEvaluacion - Niveles obtenidos: " . count($niveles));
+            error_log("getProgresoEvaluacion - Primer nivel (raw): " . json_encode($niveles[0] ?? null));
             
-            // Contar evaluadores con permisos activos
+            // Asegurar que los valores numéricos sean enteros
+            foreach ($niveles as &$nivel) {
+                $nivel['total_olimpistas'] = (int)($nivel['total_olimpistas'] ?? 0);
+                $nivel['evaluados'] = (int)($nivel['evaluados'] ?? 0);
+                $nivel['clasificados'] = (int)($nivel['clasificados'] ?? 0);
+                $nivel['no_clasificados'] = (int)($nivel['no_clasificados'] ?? 0);
+                $nivel['desclasificados'] = (int)($nivel['desclasificados'] ?? 0);
+                $nivel['pendientes'] = (int)($nivel['pendientes'] ?? 0);
+                $nivel['promedio_puntuacion'] = $nivel['promedio_puntuacion'] ? round((float)$nivel['promedio_puntuacion'], 2) : 0;
+                $nivel['porcentaje'] = $nivel['porcentaje'] ? round((float)$nivel['porcentaje'], 2) : 0;
+                $nivel['porcentaje_desclasificados'] = $nivel['porcentaje_desclasificados'] ? round((float)$nivel['porcentaje_desclasificados'], 2) : 0;
+            }
+            unset($nivel); 
+            
+            error_log("getProgresoEvaluacion - Niveles procesados: " . json_encode($niveles));
+            
+            
             $sqlEvaluadores = "
                 SELECT 
                     COUNT(DISTINCT ea.user_id) as total_evaluadores,
@@ -1347,14 +1561,16 @@ class CoordinadorController
             $tiempoStats = $stmtTiempo->fetch(PDO::FETCH_ASSOC);
             
            
-            $totalOlimpistas = array_sum(array_column($niveles, 'total_olimpistas'));
-            $totalEvaluados = array_sum(array_column($niveles, 'evaluados'));
-            $totalDesclasificados = array_sum(array_column($niveles, 'desclasificados'));
-            $totalPendientes = $totalOlimpistas - $totalEvaluados - $totalDesclasificados;
+            $totalOlimpistas = (int)array_sum(array_map(function($n) { return (int)($n['total_olimpistas'] ?? 0); }, $niveles));
+            $totalEvaluados = (int)array_sum(array_map(function($n) { return (int)($n['evaluados'] ?? 0); }, $niveles));
+            $totalClasificados = (int)array_sum(array_map(function($n) { return (int)($n['clasificados'] ?? 0); }, $niveles));
+            $totalNoClasificados = (int)array_sum(array_map(function($n) { return (int)($n['no_clasificados'] ?? 0); }, $niveles));
+            $totalDesclasificados = (int)array_sum(array_map(function($n) { return (int)($n['desclasificados'] ?? 0); }, $niveles));
+            $totalPendientes = (int)array_sum(array_map(function($n) { return (int)($n['pendientes'] ?? 0); }, $niveles));
             $promedioGeneral = $totalOlimpistas > 0 ? round(($totalEvaluados * 100) / $totalOlimpistas, 2) : 0;
             $promedioDesclasificados = $totalOlimpistas > 0 ? round(($totalDesclasificados * 100) / $totalOlimpistas, 2) : 0;
             
-            Response::success([
+            $responseData = [
                 'niveles' => $niveles,
                 'evaluadores' => [
                     'total' => (int)$evaluadoresStats['total_evaluadores'],
@@ -1379,19 +1595,304 @@ class CoordinadorController
                     'total_alertas' => count(array_filter($olimpistasSinEvaluar, fn($p) => $p['nivel_alerta'] !== 'normal'))
                 ],
                 'estadisticas_generales' => [
-                    'total_olimpistas' => $totalOlimpistas,
-                    'total_evaluados' => $totalEvaluados,
-                    'total_pendientes' => $totalPendientes,
-                    'total_desclasificados' => $totalDesclasificados,
+                    'total_olimpistas' => (int)$totalOlimpistas,
+                    'total_evaluados' => (int)$totalEvaluados,
+                    'total_clasificados' => (int)$totalClasificados,
+                    'total_no_clasificados' => (int)$totalNoClasificados,
+                    'total_pendientes' => (int)$totalPendientes,
+                    'total_desclasificados' => (int)$totalDesclasificados,
                     'promedio_general' => $promedioGeneral,
                     'promedio_desclasificados' => $promedioDesclasificados
                 ],
+                'estado_fase' => [
+                    'cerrada' => $faseCerrada,
+                    'estado' => $estadoCierre ? $estadoCierre['estado'] : 'activa',
+                    'fecha_cierre' => $estadoCierre ? $estadoCierre['fecha_cierre'] : null
+                ],
                 'ultima_actualizacion' => date('Y-m-d H:i:s')
-            ], 'Datos de progreso obtenidos');
+            ];
+            
+            error_log("getProgresoEvaluacion - Estadísticas generales: " . json_encode($responseData['estadisticas_generales']));
+            error_log("getProgresoEvaluacion - Estado fase: " . json_encode($responseData['estado_fase']));
+            error_log("getProgresoEvaluacion - Total niveles: " . count($niveles));
+            
+            Response::success($responseData, 'Datos de progreso obtenidos');
             
         } catch (\Exception $e) {
             error_log('Error obteniendo progreso de evaluación: ' . $e->getMessage());
             Response::serverError('Error al obtener datos de progreso: ' . $e->getMessage());
+        }
+    }
+
+    
+    public function getProgresoEvaluacionFinal()
+    {
+        try {
+            
+            $userData = JWTManager::getCurrentUser();
+            
+            if (!$userData || $userData['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            $sqlAreaCoordinador = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlAreaCoordinador);
+            $stmtArea->execute([$userData['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+            
+            $sqlEstadoCierre = "
+                SELECT estado, fecha_cierre
+                FROM cierre_fase_general
+                WHERE fase = 'clasificacion'
+                ORDER BY id DESC LIMIT 1
+            ";
+            $stmtEstadoCierre = $this->pdo->prepare($sqlEstadoCierre);
+            $stmtEstadoCierre->execute();
+            $estadoCierreGeneral = $stmtEstadoCierre->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$estadoCierreGeneral || !in_array($estadoCierreGeneral['estado'], ['cerrada_general', 'cerrada_automatica'])) {
+                Response::error('La fase clasificatoria debe estar cerrada para acceder a la fase final', 400);
+                return;
+            }
+            
+            $sqlNiveles = "
+                SELECT 
+                    nc.nombre as nivel_nombre,
+                    COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') as total_clasificados,
+                    COUNT(ef.id) as evaluados,
+                    COUNT(CASE 
+                        WHEN ef.puntuacion >= 90 THEN ia.id 
+                    END) as premiados_oro,
+                    COUNT(CASE 
+                        WHEN ef.puntuacion >= 80 AND ef.puntuacion < 90 THEN ia.id 
+                    END) as premiados_plata,
+                    COUNT(CASE 
+                        WHEN ef.puntuacion >= 70 AND ef.puntuacion < 80 THEN ia.id 
+                    END) as premiados_bronce,
+                    COUNT(CASE 
+                        WHEN ef.puntuacion < 70 THEN ia.id 
+                    END) as no_premiados,
+                    COUNT(CASE 
+                        WHEN ef.id IS NULL AND ia.estado = 'clasificado' THEN ia.id 
+                    END) as pendientes,
+                    AVG(CASE WHEN ef.id IS NOT NULL THEN ef.puntuacion END) as promedio_puntuacion,
+                    CASE 
+                        WHEN COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') > 0 
+                        THEN ROUND((COUNT(ef.id) * 100.0) / COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado'), 2)
+                        ELSE 0 
+                    END as porcentaje_evaluados
+                FROM inscripciones_areas ia
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                GROUP BY nc.id, nc.nombre, nc.orden_display
+                ORDER BY nc.orden_display
+            ";
+            
+            $stmtNiveles = $this->pdo->prepare($sqlNiveles);
+            $stmtNiveles->execute([$areaId]);
+            $niveles = $stmtNiveles->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($niveles as &$nivel) {
+                $nivel['total_clasificados'] = (int)($nivel['total_clasificados'] ?? 0);
+                $nivel['evaluados'] = (int)($nivel['evaluados'] ?? 0);
+                $nivel['premiados_oro'] = (int)($nivel['premiados_oro'] ?? 0);
+                $nivel['premiados_plata'] = (int)($nivel['premiados_plata'] ?? 0);
+                $nivel['premiados_bronce'] = (int)($nivel['premiados_bronce'] ?? 0);
+                $nivel['no_premiados'] = (int)($nivel['no_premiados'] ?? 0);
+                $nivel['pendientes'] = (int)($nivel['pendientes'] ?? 0);
+                $nivel['promedio_puntuacion'] = $nivel['promedio_puntuacion'] ? round((float)$nivel['promedio_puntuacion'], 2) : 0;
+                $nivel['porcentaje_evaluados'] = $nivel['porcentaje_evaluados'] ? round((float)$nivel['porcentaje_evaluados'], 2) : 0;
+            }
+            unset($nivel);
+            
+            $sqlEvaluadores = "
+                SELECT 
+                    COUNT(DISTINCT ae.evaluador_id) as total_evaluadores_final,
+                    COUNT(DISTINCT CASE WHEN u.last_login > NOW() - INTERVAL '7 days' THEN ae.evaluador_id END) as evaluadores_activos,
+                    COUNT(DISTINCT CASE 
+                        WHEN pe.id IS NOT NULL 
+                        AND pe.status = 'activo'
+                        AND NOW() >= (pe.start_date + COALESCE(pe.start_time, '00:00:00')::time)
+                        AND NOW() <= (pe.start_date + (pe.duration_days || ' days')::interval)
+                        THEN ae.evaluador_id 
+                    END) as evaluadores_con_permisos
+                FROM asignaciones_evaluacion ae
+                JOIN users u ON u.id = ae.evaluador_id
+                JOIN inscripciones_areas ia ON ia.id = ae.inscripcion_area_id
+                LEFT JOIN permisos_evaluadores pe ON pe.evaluador_id = u.id 
+                    AND pe.status = 'activo'
+                WHERE ae.fase = 'final'
+                AND ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+            ";
+            
+            $stmtEvaluadores = $this->pdo->prepare($sqlEvaluadores);
+            $stmtEvaluadores->execute([$areaId]);
+            $evaluadoresStats = $stmtEvaluadores->fetch(PDO::FETCH_ASSOC);
+            
+            $sqlEvaluadoresActivos = "
+                SELECT 
+                    u.id,
+                    u.name as nombre,
+                    u.email,
+                    u.last_login,
+                    COUNT(DISTINCT ef.id) as evaluaciones_completadas,
+                    COUNT(DISTINCT ae.id) FILTER (WHERE ef.id IS NULL) as asignaciones_pendientes,
+                    pe.start_date,
+                    pe.start_time,
+                    pe.duration_days,
+                    CASE 
+                        WHEN pe.id IS NOT NULL 
+                        AND pe.status = 'activo'
+                        AND NOW() >= (pe.start_date + COALESCE(pe.start_time, '00:00:00')::time)
+                        AND NOW() <= (pe.start_date + (pe.duration_days || ' days')::interval)
+                        THEN 'con_permisos'
+                        WHEN u.last_login > NOW() - INTERVAL '7 days' THEN 'activo_sin_permisos'
+                        ELSE 'inactivo'
+                    END as estado
+                FROM asignaciones_evaluacion ae
+                JOIN users u ON u.id = ae.evaluador_id
+                JOIN inscripciones_areas ia ON ia.id = ae.inscripcion_area_id
+                LEFT JOIN (
+                    SELECT DISTINCT ON (evaluador_id) 
+                        id, evaluador_id, start_date, start_time, duration_days, status
+                    FROM permisos_evaluadores
+                    WHERE status = 'activo'
+                    ORDER BY evaluador_id, start_date DESC, start_time DESC
+                ) pe ON pe.evaluador_id = u.id
+                LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ae.inscripcion_area_id 
+                    AND ef.evaluador_id = ae.evaluador_id
+                WHERE ae.fase = 'final'
+                AND ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                GROUP BY u.id, u.name, u.email, u.last_login, pe.id, pe.start_date, pe.start_time, pe.duration_days, pe.status
+                ORDER BY u.last_login DESC NULLS LAST
+            ";
+            
+            $stmtEvaluadoresActivos = $this->pdo->prepare($sqlEvaluadoresActivos);
+            $stmtEvaluadoresActivos->execute([$areaId]);
+            $evaluadoresActivos = $stmtEvaluadoresActivos->fetchAll(PDO::FETCH_ASSOC);
+            
+            $sqlSinEvaluar = "
+                SELECT 
+                    ia.id,
+                    COALESCE(o.nombre_completo, CONCAT(o.nombre, ' ', COALESCE(o.apellido, ''))) as nombre,
+                    ac.nombre as area,
+                    nc.nombre as nivel,
+                    EXTRACT(DAYS FROM NOW() - cg.fecha_cierre) as dias_desde_cierre,
+                    CASE 
+                        WHEN EXTRACT(DAYS FROM NOW() - cg.fecha_cierre) > 5 THEN 'critico'
+                        WHEN EXTRACT(DAYS FROM NOW() - cg.fecha_cierre) > 3 THEN 'advertencia'
+                        ELSE 'normal'
+                    END as nivel_alerta,
+                    ae.evaluador_id,
+                    u.name as evaluador_nombre
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id AND ae.fase = 'final'
+                LEFT JOIN users u ON u.id = ae.evaluador_id
+                LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
+                LEFT JOIN cierre_fase_general cg ON cg.fase = 'clasificacion'
+                WHERE ia.estado = 'clasificado'
+                AND ef.id IS NULL
+                AND ia.area_competencia_id = ?
+                ORDER BY ia.created_at ASC
+                LIMIT 20
+            ";
+            
+            $stmtSinEvaluar = $this->pdo->prepare($sqlSinEvaluar);
+            $stmtSinEvaluar->execute([$areaId]);
+            $clasificadosSinEvaluar = $stmtSinEvaluar->fetchAll(PDO::FETCH_ASSOC);
+            
+            $sqlTiempoPromedio = "
+                SELECT 
+                    AVG(EXTRACT(EPOCH FROM (ef.fecha_evaluacion - cg.fecha_cierre))/86400) as dias_promedio_evaluacion,
+                    MIN(EXTRACT(EPOCH FROM (ef.fecha_evaluacion - cg.fecha_cierre))/86400) as tiempo_minimo,
+                    MAX(EXTRACT(EPOCH FROM (ef.fecha_evaluacion - cg.fecha_cierre))/86400) as tiempo_maximo
+                FROM inscripciones_areas ia
+                JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
+                JOIN cierre_fase_general cg ON cg.fase = 'clasificacion'
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                AND ef.fecha_evaluacion IS NOT NULL
+                AND cg.fecha_cierre IS NOT NULL
+            ";
+            
+            $stmtTiempo = $this->pdo->prepare($sqlTiempoPromedio);
+            $stmtTiempo->execute([$areaId]);
+            $tiempoStats = $stmtTiempo->fetch(PDO::FETCH_ASSOC);
+            
+            $totalClasificados = (int)array_sum(array_map(function($n) { return (int)($n['total_clasificados'] ?? 0); }, $niveles));
+            $totalEvaluados = (int)array_sum(array_map(function($n) { return (int)($n['evaluados'] ?? 0); }, $niveles));
+            $totalPremiadosOro = (int)array_sum(array_map(function($n) { return (int)($n['premiados_oro'] ?? 0); }, $niveles));
+            $totalPremiadosPlata = (int)array_sum(array_map(function($n) { return (int)($n['premiados_plata'] ?? 0); }, $niveles));
+            $totalPremiadosBronce = (int)array_sum(array_map(function($n) { return (int)($n['premiados_bronce'] ?? 0); }, $niveles));
+            $totalNoPremiados = (int)array_sum(array_map(function($n) { return (int)($n['no_premiados'] ?? 0); }, $niveles));
+            $totalPendientes = (int)array_sum(array_map(function($n) { return (int)($n['pendientes'] ?? 0); }, $niveles));
+            $promedioGeneral = $totalClasificados > 0 ? round(($totalEvaluados * 100) / $totalClasificados, 2) : 0;
+            
+            $responseData = [
+                'niveles' => $niveles,
+                'evaluadores' => [
+                    'total' => (int)($evaluadoresStats['total_evaluadores_final'] ?? 0),
+                    'activos' => (int)($evaluadoresStats['evaluadores_activos'] ?? 0),
+                    'con_permisos' => (int)($evaluadoresStats['evaluadores_con_permisos'] ?? 0)
+                ],
+                'evaluadores_lista' => $evaluadoresActivos,
+                'clasificados_sin_evaluar' => $clasificadosSinEvaluar,
+                'metricas_tiempo' => [
+                    'dias_promedio_evaluacion' => round($tiempoStats['dias_promedio_evaluacion'] ?? 0, 1),
+                    'tiempo_minimo' => round($tiempoStats['tiempo_minimo'] ?? 0, 1),
+                    'tiempo_maximo' => round($tiempoStats['tiempo_maximo'] ?? 0, 1)
+                ],
+                'alertas' => [
+                    'criticas' => count(array_filter($clasificadosSinEvaluar, fn($p) => $p['nivel_alerta'] === 'critico')),
+                    'advertencias' => count(array_filter($clasificadosSinEvaluar, fn($p) => $p['nivel_alerta'] === 'advertencia')),
+                    'total_alertas' => count(array_filter($clasificadosSinEvaluar, fn($p) => $p['nivel_alerta'] !== 'normal'))
+                ],
+                'estadisticas_generales' => [
+                    'total_clasificados' => (int)$totalClasificados,
+                    'total_evaluados' => (int)$totalEvaluados,
+                    'total_premiados_oro' => (int)$totalPremiadosOro,
+                    'total_premiados_plata' => (int)$totalPremiadosPlata,
+                    'total_premiados_bronce' => (int)$totalPremiadosBronce,
+                    'total_no_premiados' => (int)$totalNoPremiados,
+                    'total_pendientes' => (int)$totalPendientes,
+                    'promedio_general' => $promedioGeneral
+                ],
+                'estado_fase' => [
+                    'fase' => 'final',
+                    'clasificatoria_cerrada' => true,
+                    'fecha_cierre_clasificatoria' => $estadoCierreGeneral['fecha_cierre'] ?? null
+                ],
+                'ultima_actualizacion' => date('Y-m-d H:i:s')
+            ];
+            
+            Response::success($responseData, 'Datos de progreso de evaluación final obtenidos');
+            
+        } catch (\Exception $e) {
+            error_log('Error obteniendo progreso de evaluación final: ' . $e->getMessage());
+            Response::serverError('Error al obtener datos de progreso de evaluación final: ' . $e->getMessage());
         }
     }
 
@@ -1623,6 +2124,3222 @@ public function registrarTiemposEvaluadores()
     }
 }
 
+    
+    public function getDashboardCierreFaseArea()
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+            }
 
+           
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+            
+            error_log("getDashboardCierreFaseArea - areaId: " . $areaId . ", areaNombre: " . $areaNombre);
+
+            $sqlStats = "
+                SELECT 
+                    COUNT(DISTINCT ia.id) FILTER (WHERE ia.estado != 'desclasificado') as total_participantes,
+                    COUNT(DISTINCT ia.id) FILTER (
+                        WHERE EXISTS (
+                            SELECT 1 FROM evaluaciones_clasificacion ec2 
+                            WHERE ec2.inscripcion_area_id = ia.id 
+                            AND ec2.puntuacion IS NOT NULL
+                        )
+                        AND ia.estado != 'desclasificado'
+                    ) as total_evaluados
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+            ";
+            
+            $stmtStats = $this->pdo->prepare($sqlStats);
+            $stmtStats->execute([$areaId]);
+            $stats = $stmtStats->fetch(PDO::FETCH_ASSOC);
+            
+            $totalParticipantes = (int)$stats['total_participantes'];
+            $totalEvaluados = (int)$stats['total_evaluados'];
+            
+            error_log("getDashboardCierreFaseArea - Estadísticas: total_participantes={$totalParticipantes}, total_evaluados={$totalEvaluados}");
+            
+            $porcentajeClasificados = 0.6; 
+            $puntuacionMinima = 51.00; 
+            
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración de olimpiada: ' . $e->getMessage());
+            }
+            
+           
+            $sqlClasificados = "
+                SELECT COUNT(DISTINCT ia.id) as total
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+            ";
+            
+            $stmtClasificados = $this->pdo->prepare($sqlClasificados);
+            $stmtClasificados->execute([$areaId]);
+            $resultadoClasificados = $stmtClasificados->fetch(PDO::FETCH_ASSOC);
+            $clasificadosReal = (int)($resultadoClasificados['total'] ?? 0);
+            
+            $sqlNoClasificados = "
+                SELECT COUNT(DISTINCT ia.id) as total
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'no_clasificado'
+            ";
+            
+            $stmtNoClasificados = $this->pdo->prepare($sqlNoClasificados);
+            $stmtNoClasificados->execute([$areaId]);
+            $resultadoNoClasificados = $stmtNoClasificados->fetch(PDO::FETCH_ASSOC);
+            $noClasificadosReal = (int)($resultadoNoClasificados['total'] ?? 0);
+            
+           
+            $this->actualizarEstadosClasificacion($areaId);
+            
+           
+            $sqlClasificadosActualizado = "
+                SELECT COUNT(*) as total
+                FROM inscripciones_areas
+                WHERE area_competencia_id = ? AND estado = 'clasificado'
+            ";
+            $stmtClasificadosActualizado = $this->pdo->prepare($sqlClasificadosActualizado);
+            $stmtClasificadosActualizado->execute([$areaId]);
+            $resultadoClasificados = $stmtClasificadosActualizado->fetch(PDO::FETCH_ASSOC);
+            $clasificadosReal = (int)($resultadoClasificados['total'] ?? 0);
+            
+            $sqlNoClasificadosActualizado = "
+                SELECT COUNT(*) as total
+                FROM inscripciones_areas
+                WHERE area_competencia_id = ? AND estado = 'no_clasificado'
+            ";
+            $stmtNoClasificadosActualizado = $this->pdo->prepare($sqlNoClasificadosActualizado);
+            $stmtNoClasificadosActualizado->execute([$areaId]);
+            $resultadoNoClasificados = $stmtNoClasificadosActualizado->fetch(PDO::FETCH_ASSOC);
+            $noClasificadosReal = (int)($resultadoNoClasificados['total'] ?? 0);
+            
+            $sqlTodosEstados = "SELECT estado, COUNT(*) as total FROM inscripciones_areas WHERE area_competencia_id = ? GROUP BY estado";
+            $stmtTodosEstados = $this->pdo->prepare($sqlTodosEstados);
+            $stmtTodosEstados->execute([$areaId]);
+            $todosEstados = $stmtTodosEstados->fetchAll(PDO::FETCH_ASSOC);
+            
+            error_log("getDashboardCierreFaseArea - Clasificados reales (por estado, después de actualizar): {$clasificadosReal}");
+            error_log("getDashboardCierreFaseArea - No clasificados reales (por estado, después de actualizar): {$noClasificadosReal}");
+            error_log("getDashboardCierreFaseArea - Todos los estados en el área: " . json_encode($todosEstados));
+            $porcentajeCompletitud = $totalParticipantes > 0 
+                ? round(($totalEvaluados / $totalParticipantes) * 100, 2) 
+                : 0;
+            
+            $sqlCierre = "
+                SELECT estado, porcentaje_completitud, cantidad_clasificados, 
+                       fecha_cierre, coordinador_id
+                FROM cierre_fase_areas
+                WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                LIMIT 1
+            ";
+            
+            $stmtCierre = $this->pdo->prepare($sqlCierre);
+            $stmtCierre->execute([$areaId]);
+            $cierre = $stmtCierre->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cierre && $cierre['estado'] === 'cerrada' && !$cierre['fecha_cierre']) {
+                error_log("getDashboardCierreFaseArea - Detectado estado 'cerrada' sin fecha_cierre, esto es anómalo pero NO lo cambiamos automáticamente");
+                
+            }
+            
+            $estadoCierre = $cierre ? $cierre['estado'] : ($porcentajeCompletitud == 100 ? 'activa' : 'pendiente');
+            $fechaCierre = $cierre ? $cierre['fecha_cierre'] : null;
+           
+            $puedeCerrar = $porcentajeCompletitud == 100 && $estadoCierre !== 'cerrada' && in_array($estadoCierre, ['activa', 'pendiente', null]);
+
+            
+            $porcentajeClasificados = 0.6; 
+            $puntuacionMinima = 51.00;
+            
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                
+                error_log('No se pudo obtener configuración de olimpiada: ' . $e->getMessage());
+            }
+
+           
+            error_log("getDashboardCierreFaseArea - Estado cierre: " . $estadoCierre);
+            error_log("getDashboardCierreFaseArea - Fecha cierre: " . ($fechaCierre ?? 'null'));
+            error_log("getDashboardCierreFaseArea - Registro cierre completo: " . json_encode($cierre));
+            
+            if ($estadoCierre === 'cerrada') {
+                error_log("getDashboardCierreFaseArea - Llamando obtenerVistaPreviaClasificadosCerrada para areaId: " . $areaId);
+                $vistaPrevia = $this->obtenerVistaPreviaClasificadosCerrada($areaId);
+            } else {
+                error_log("getDashboardCierreFaseArea - Llamando obtenerVistaPreviaClasificados para areaId: " . $areaId);
+                $vistaPrevia = $this->obtenerVistaPreviaClasificados($areaId, $porcentajeClasificados, $puntuacionMinima);
+            }
+            error_log("getDashboardCierreFaseArea - Vista previa obtenida - Clasificados: " . (isset($vistaPrevia['clasificados']) ? count($vistaPrevia['clasificados']) : 0) . ", No clasificados: " . (isset($vistaPrevia['no_clasificados']) ? count($vistaPrevia['no_clasificados']) : 0));
+            if (isset($vistaPrevia['clasificados']) && count($vistaPrevia['clasificados']) > 0) {
+                error_log("getDashboardCierreFaseArea - Primer clasificado en vista previa: " . json_encode($vistaPrevia['clasificados'][0]));
+            }
+
+           
+            if ($totalParticipantes > 0) {
+                if (!$cierre) {
+                    $sqlInsert = "
+                        INSERT INTO cierre_fase_areas (
+                            area_competencia_id, nivel_competencia_id, estado,
+                            porcentaje_completitud, cantidad_clasificados, updated_at
+                        ) VALUES (?, NULL, ?, ?, ?, NOW())
+                        ON CONFLICT (area_competencia_id, nivel_competencia_id) 
+                        DO UPDATE SET 
+                            porcentaje_completitud = EXCLUDED.porcentaje_completitud,
+                            cantidad_clasificados = EXCLUDED.cantidad_clasificados,
+                            updated_at = NOW()
+                        RETURNING *
+                    ";
+                    $stmtInsert = $this->pdo->prepare($sqlInsert);
+                    
+                    $estadoInsert = $porcentajeCompletitud == 100 ? 'activa' : 'pendiente';
+                    $stmtInsert->execute([$areaId, $estadoInsert, $porcentajeCompletitud, $clasificadosReal]);
+                } else {
+                    
+                    $sqlUpdate = "
+                        UPDATE cierre_fase_areas
+                        SET porcentaje_completitud = ?,
+                            cantidad_clasificados = ?,
+                            estado = CASE 
+                                WHEN estado = 'cerrada' THEN 'cerrada'  -- NUNCA cambiar si ya está cerrada
+                                WHEN fecha_cierre IS NOT NULL THEN 'cerrada'  -- Si tiene fecha_cierre, mantener cerrada
+                                WHEN ? = 100 THEN 'activa'
+                                ELSE 'pendiente'
+                            END,
+                            updated_at = NOW()
+                        WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                        AND estado != 'cerrada'  -- Solo actualizar si NO está cerrada
+                    ";
+                    $stmtUpdate = $this->pdo->prepare($sqlUpdate);
+                    $stmtUpdate->execute([$porcentajeCompletitud, $clasificadosReal, $porcentajeCompletitud, $areaId]);
+                    
+                    
+                    if ($cierre && $cierre['estado'] === 'cerrada') {
+                        $stmtCierre->execute([$areaId]);
+                        $cierre = $stmtCierre->fetch(PDO::FETCH_ASSOC);
+                        error_log("getDashboardCierreFaseArea - Estado 'cerrada' preservado, recargado desde BD: " . ($cierre['estado'] ?? 'null'));
+                    }
+                }
+            }
+
+            Response::success([
+                'area' => [
+                    'id' => $areaId,
+                    'nombre' => $areaNombre
+                ],
+                'estadisticas' => [
+                    'total_participantes' => $totalParticipantes,
+                    'total_evaluados' => $totalEvaluados,
+                    'clasificados_real' => $clasificadosReal,
+                    'porcentaje_completitud' => $porcentajeCompletitud,
+                    'puede_cerrar' => $puedeCerrar
+                ],
+                'estado_cierre' => $estadoCierre,
+                'fecha_cierre' => $fechaCierre,
+                'vista_previa_clasificados' => $vistaPrevia
+            ]);
+
+        } catch (\Exception $e) {
+            error_log('Error en getDashboardCierreFaseArea: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            Response::serverError('Error al obtener información del cierre de fase');
+        }
+    }
+
+    
+    private function obtenerVistaPreviaClasificados($areaId, $porcentajeClasificados, $puntuacionMinima)
+    {
+        try {
+            
+            error_log("obtenerVistaPreviaClasificados - Calculando desde evaluaciones para areaId: {$areaId}, puntuacionMinima: {$puntuacionMinima}");
+            
+            
+            $sqlVerificarEvaluaciones = "
+                SELECT COUNT(*) as total
+                FROM evaluaciones_clasificacion ec
+                JOIN inscripciones_areas ia ON ia.id = ec.inscripcion_area_id
+                WHERE ia.area_competencia_id = ?
+                AND ec.puntuacion IS NOT NULL
+            ";
+            $stmtVerificar = $this->pdo->prepare($sqlVerificarEvaluaciones);
+            $stmtVerificar->execute([$areaId]);
+            $verificacion = $stmtVerificar->fetch(PDO::FETCH_ASSOC);
+            $totalEvaluaciones = (int)($verificacion['total'] ?? 0);
+            error_log("obtenerVistaPreviaClasificados - Total evaluaciones en BD para areaId {$areaId}: {$totalEvaluaciones}");
+            
+            
+            $sqlVerificarInscritos = "
+                SELECT COUNT(*) as total
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado != 'desclasificado'
+            ";
+            $stmtVerificarInscritos = $this->pdo->prepare($sqlVerificarInscritos);
+            $stmtVerificarInscritos->execute([$areaId]);
+            $verificacionInscritos = $stmtVerificarInscritos->fetch(PDO::FETCH_ASSOC);
+            $totalInscritos = (int)($verificacionInscritos['total'] ?? 0);
+            error_log("obtenerVistaPreviaClasificados - Total inscritos (sin desclasificados) para areaId {$areaId}: {$totalInscritos}");
+            
+           
+            $sqlElegibles = "
+                SELECT 
+                    ia.id,
+                    o.nombre_completo,
+                    COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                    AVG(ec.puntuacion) as puntuacion_promedio,
+                    ia.estado as estado_actual,
+                    COUNT(ec.id) as total_evaluaciones
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado != 'desclasificado'
+                AND ec.puntuacion IS NOT NULL
+                GROUP BY ia.id, o.nombre_completo, ue.nombre, ia.estado
+                HAVING AVG(ec.puntuacion) >= ?
+                ORDER BY puntuacion_promedio DESC
+            ";
+            
+            $stmtElegibles = $this->pdo->prepare($sqlElegibles);
+            $stmtElegibles->execute([$areaId, $puntuacionMinima]);
+            $participantesElegibles = $stmtElegibles->fetchAll(PDO::FETCH_ASSOC);
+            
+            error_log("obtenerVistaPreviaClasificados - Participantes elegibles (puntuación >= {$puntuacionMinima}): " . count($participantesElegibles));
+            if (count($participantesElegibles) > 0) {
+                error_log("obtenerVistaPreviaClasificados - Primer elegible: " . json_encode($participantesElegibles[0]));
+            } else {
+                
+                $sqlDebug = "
+                    SELECT 
+                        ia.id,
+                        o.nombre_completo,
+                        AVG(ec.puntuacion) as puntuacion_promedio,
+                        COUNT(ec.id) as total_evaluaciones
+                    FROM inscripciones_areas ia
+                    JOIN olimpistas o ON o.id = ia.olimpista_id
+                    LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado != 'desclasificado'
+                    GROUP BY ia.id, o.nombre_completo
+                    HAVING COUNT(ec.id) > 0
+                    ORDER BY puntuacion_promedio DESC
+                    LIMIT 10
+                ";
+                $stmtDebug = $this->pdo->prepare($sqlDebug);
+                $stmtDebug->execute([$areaId]);
+                $debugData = $stmtDebug->fetchAll(PDO::FETCH_ASSOC);
+                error_log("obtenerVistaPreviaClasificados - DEBUG: Participantes con evaluaciones (sin filtro de puntuación): " . json_encode($debugData));
+            }
+            
+            
+            $clasificados = $participantesElegibles;
+            
+            error_log("obtenerVistaPreviaClasificados - Clasificados calculados: " . count($clasificados) . " de " . count($participantesElegibles) . " elegibles (todos con >= {$puntuacionMinima} puntos)");
+            
+           
+            $noClasificados = [];
+            
+            
+                $sqlNoMinima = "
+                    SELECT 
+                        ia.id,
+                        o.nombre_completo,
+                        COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                        AVG(ec.puntuacion) as puntuacion_promedio,
+                        ia.estado as estado_actual
+                    FROM inscripciones_areas ia
+                    JOIN olimpistas o ON o.id = ia.olimpista_id
+                    LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                    JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado != 'desclasificado'
+                    AND ec.puntuacion IS NOT NULL
+                    GROUP BY ia.id, o.nombre_completo, ue.nombre, ia.estado
+                    HAVING AVG(ec.puntuacion) < ?
+                    ORDER BY puntuacion_promedio DESC
+                ";
+            $stmtNoMinima = $this->pdo->prepare($sqlNoMinima);
+            $stmtNoMinima->execute([$areaId, $puntuacionMinima]);
+            $sinMinima = $stmtNoMinima->fetchAll(PDO::FETCH_ASSOC);
+            
+            $noClasificados = $sinMinima;
+            
+            error_log("obtenerVistaPreviaClasificados - No clasificados calculados: " . count($noClasificados) . " (sin puntuación mínima: " . count($sinMinima) . ")");
+            
+            error_log("obtenerVistaPreviaClasificados - Clasificados encontrados: " . count($clasificados));
+            error_log("obtenerVistaPreviaClasificados - No clasificados encontrados: " . count($noClasificados));
+            
+            
+            $clasificadosMapeados = array_map(function($p) {
+                $resultado = [
+                    'id' => (int)$p['id'],
+                    'nombre_completo' => $p['nombre_completo'] ?? '',
+                    'unidad_educativa_nombre' => $p['unidad_educativa_nombre'] ?? '',
+                    'puntuacion' => round((float)($p['puntuacion_promedio'] ?? 0), 2)
+                ];
+                error_log("obtenerVistaPreviaClasificados - Clasificado mapeado: " . json_encode($resultado));
+                return $resultado;
+            }, $clasificados);
+            
+            $noClasificadosMapeados = array_map(function($p) {
+                $resultado = [
+                    'id' => (int)$p['id'],
+                    'nombre_completo' => $p['nombre_completo'] ?? '',
+                    'unidad_educativa_nombre' => $p['unidad_educativa_nombre'] ?? '',
+                    'puntuacion' => round((float)($p['puntuacion_promedio'] ?? 0), 2)
+                ];
+                return $resultado;
+            }, $noClasificados);
+            
+            $resultado = [
+                'clasificados' => $clasificadosMapeados,
+                'no_clasificados' => $noClasificadosMapeados,
+                'criterios' => [
+                    'puntuacion_minima' => $puntuacionMinima,
+                    'nota' => 'Todos los participantes con puntuación >= ' . $puntuacionMinima . ' puntos son clasificados'
+                ]
+            ];
+            
+            error_log("obtenerVistaPreviaClasificados - Resultado final - Clasificados: " . count($resultado['clasificados']) . ", No clasificados: " . count($resultado['no_clasificados']));
+            
+            
+            if (!isset($resultado['clasificados']) || !is_array($resultado['clasificados'])) {
+                $resultado['clasificados'] = [];
+            }
+            if (!isset($resultado['no_clasificados']) || !is_array($resultado['no_clasificados'])) {
+                $resultado['no_clasificados'] = [];
+            }
+            
+            $resultadoJson = json_encode($resultado);
+            $resultadoLog = strlen($resultadoJson) > 1000 ? substr($resultadoJson, 0, 1000) . '...' : $resultadoJson;
+            error_log("obtenerVistaPreviaClasificados - Resultado completo (primeros 1000 chars): " . $resultadoLog);
+            error_log("obtenerVistaPreviaClasificados - Estructura del resultado: clasificados=" . count($resultado['clasificados']) . ", no_clasificados=" . count($resultado['no_clasificados']) . ", criterios=" . json_encode($resultado['criterios'] ?? []));
+            
+            return $resultado;
+
+        } catch (\Exception $e) {
+            error_log('Error obteniendo vista previa de clasificados: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            return [
+                'clasificados' => [],
+                'no_clasificados' => [],
+                'criterios' => [
+                    'puntuacion_minima' => $puntuacionMinima,
+                    'nota' => 'Todos los participantes con puntuación >= ' . $puntuacionMinima . ' puntos son clasificados'
+                ]
+            ];
+        }
+    }
+
+    
+    private function obtenerVistaPreviaClasificadosCerrada($areaId)
+    {
+        try {
+            error_log("obtenerVistaPreviaClasificadosCerrada - INICIO - areaId: " . $areaId);
+            
+            $porcentajeClasificados = 0.6;
+            $puntuacionMinima = 51.00;
+            
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración: ' . $e->getMessage());
+            }
+
+            
+            $sqlVerificacion = "SELECT COUNT(*) as total FROM inscripciones_areas WHERE area_competencia_id = ? AND estado = 'clasificado'";
+            $stmtVerificacion = $this->pdo->prepare($sqlVerificacion);
+            $stmtVerificacion->execute([$areaId]);
+            $verificacion = $stmtVerificacion->fetch(PDO::FETCH_ASSOC);
+            error_log("obtenerVistaPreviaClasificadosCerrada - Total con estado 'clasificado': " . ($verificacion['total'] ?? 0));
+            
+            $sqlTodosEstados = "SELECT estado, COUNT(*) as total FROM inscripciones_areas WHERE area_competencia_id = ? GROUP BY estado";
+            $stmtTodosEstados = $this->pdo->prepare($sqlTodosEstados);
+            $stmtTodosEstados->execute([$areaId]);
+            $todosEstados = $stmtTodosEstados->fetchAll(PDO::FETCH_ASSOC);
+            error_log("obtenerVistaPreviaClasificadosCerrada - Todos los estados en el área: " . json_encode($todosEstados));
+
+           
+            $sqlClasificados = "
+                SELECT DISTINCT
+                    ia.id,
+                    o.nombre_completo,
+                    COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                    COALESCE(
+                        (SELECT AVG(puntuacion) FROM evaluaciones_clasificacion WHERE inscripcion_area_id = ia.id),
+                        0
+                    ) as puntuacion_promedio
+                FROM inscripciones_areas ia
+                INNER JOIN olimpistas o ON o.id = ia.olimpista_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                ORDER BY puntuacion_promedio DESC
+            ";
+            
+            error_log("obtenerVistaPreviaClasificadosCerrada - Ejecutando consulta clasificados con areaId: " . $areaId);
+            $stmtClasificados = $this->pdo->prepare($sqlClasificados);
+            $stmtClasificados->execute([$areaId]);
+            $clasificados = $stmtClasificados->fetchAll(PDO::FETCH_ASSOC);
+            
+           
+            if (count($clasificados) == 0 && $verificacion['total'] == 0) {
+                error_log("obtenerVistaPreviaClasificadosCerrada - No hay clasificados por estado, calculando desde evaluaciones...");
+                
+                $sqlElegibles = "
+                    SELECT 
+                        ia.id,
+                        o.nombre_completo,
+                        COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                        AVG(ec.puntuacion) as puntuacion_promedio
+                    FROM inscripciones_areas ia
+                    JOIN olimpistas o ON o.id = ia.olimpista_id
+                    LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                    JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado != 'desclasificado'
+                    AND ec.puntuacion IS NOT NULL
+                    GROUP BY ia.id, o.nombre_completo, ue.nombre
+                    HAVING AVG(ec.puntuacion) >= ?
+                    ORDER BY puntuacion_promedio DESC
+                ";
+                $stmtElegibles = $this->pdo->prepare($sqlElegibles);
+                $stmtElegibles->execute([$areaId, $puntuacionMinima]);
+                $participantesElegibles = $stmtElegibles->fetchAll(PDO::FETCH_ASSOC);
+                
+                $clasificados = $participantesElegibles;
+                
+                error_log("obtenerVistaPreviaClasificadosCerrada - Clasificados calculados desde evaluaciones: " . count($clasificados) . " (todos con >= {$puntuacionMinima} puntos)");
+            }
+            
+            error_log("obtenerVistaPreviaClasificadosCerrada - Clasificados encontrados: " . count($clasificados));
+            if (count($clasificados) > 0) {
+                error_log("obtenerVistaPreviaClasificadosCerrada - Primer clasificado: " . json_encode($clasificados[0]));
+            } else {
+                error_log("obtenerVistaPreviaClasificadosCerrada - No se encontraron clasificados. Verificando consulta directa...");
+                
+                $sqlVerifDirecta = "SELECT id, estado FROM inscripciones_areas WHERE area_competencia_id = ? AND estado = 'clasificado' LIMIT 5";
+                $stmtVerif = $this->pdo->prepare($sqlVerifDirecta);
+                $stmtVerif->execute([$areaId]);
+                $verifDirecta = $stmtVerif->fetchAll(PDO::FETCH_ASSOC);
+                error_log("obtenerVistaPreviaClasificadosCerrada - Verificación directa: " . json_encode($verifDirecta));
+            }
+
+            
+            $sqlNoClasificados = "
+                SELECT DISTINCT
+                    ia.id,
+                    o.nombre_completo,
+                    COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                    COALESCE(
+                        (SELECT AVG(puntuacion) FROM evaluaciones_clasificacion WHERE inscripcion_area_id = ia.id),
+                        0
+                    ) as puntuacion_promedio
+                FROM inscripciones_areas ia
+                INNER JOIN olimpistas o ON o.id = ia.olimpista_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                WHERE ia.area_competencia_id = ?
+                AND (
+                    ia.estado = 'no_clasificado' 
+                    OR EXISTS (
+                        SELECT 1 FROM no_clasificados ncl 
+                        WHERE ncl.inscripcion_area_id = ia.id 
+                        AND ncl.fase = 'clasificacion'
+                    )
+                )
+                AND ia.estado != 'desclasificado'
+                ORDER BY puntuacion_promedio DESC
+            ";
+            
+            error_log("obtenerVistaPreviaClasificadosCerrada - Ejecutando consulta no_clasificados con areaId: " . $areaId);
+            $stmtNoClasificados = $this->pdo->prepare($sqlNoClasificados);
+            $stmtNoClasificados->execute([$areaId]);
+            $noClasificados = $stmtNoClasificados->fetchAll(PDO::FETCH_ASSOC);
+            
+           
+            if (count($noClasificados) == 0) {
+                error_log("obtenerVistaPreviaClasificadosCerrada - No hay no_clasificados por estado, calculando desde evaluaciones...");
+               
+                $sqlTodosEvaluados = "
+                    SELECT 
+                        ia.id,
+                        o.nombre_completo,
+                        COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                        AVG(ec.puntuacion) as puntuacion_promedio
+                    FROM inscripciones_areas ia
+                    JOIN olimpistas o ON o.id = ia.olimpista_id
+                    LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                    JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado != 'desclasificado'
+                    AND ec.puntuacion IS NOT NULL
+                    GROUP BY ia.id, o.nombre_completo, ue.nombre
+                    HAVING AVG(ec.puntuacion) >= ?
+                    ORDER BY puntuacion_promedio DESC
+                ";
+                $stmtTodosEvaluados = $this->pdo->prepare($sqlTodosEvaluados);
+                $stmtTodosEvaluados->execute([$areaId, $puntuacionMinima]);
+                $todosElegibles = $stmtTodosEvaluados->fetchAll(PDO::FETCH_ASSOC);
+                
+                $sqlNoMinima = "
+                    SELECT 
+                        ia.id,
+                        o.nombre_completo,
+                        COALESCE(ue.nombre, '') as unidad_educativa_nombre,
+                        AVG(ec.puntuacion) as puntuacion_promedio
+                    FROM inscripciones_areas ia
+                    JOIN olimpistas o ON o.id = ia.olimpista_id
+                    LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                    JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado != 'desclasificado'
+                    AND ec.puntuacion IS NOT NULL
+                    GROUP BY ia.id, o.nombre_completo, ue.nombre
+                    HAVING AVG(ec.puntuacion) < ?
+                    ORDER BY puntuacion_promedio DESC
+                ";
+                $stmtNoMinima = $this->pdo->prepare($sqlNoMinima);
+                $stmtNoMinima->execute([$areaId, $puntuacionMinima]);
+                $sinMinima = $stmtNoMinima->fetchAll(PDO::FETCH_ASSOC);
+                
+                $noClasificados = $sinMinima;
+                
+                error_log("obtenerVistaPreviaClasificadosCerrada - No clasificados calculados desde evaluaciones: " . count($noClasificados));
+            }
+            
+            error_log("obtenerVistaPreviaClasificadosCerrada - No clasificados encontrados: " . count($noClasificados));
+            if (count($noClasificados) > 0) {
+                error_log("obtenerVistaPreviaClasificadosCerrada - Primer no_clasificado: " . json_encode($noClasificados[0]));
+            } else {
+                error_log("obtenerVistaPreviaClasificadosCerrada - No se encontraron no_clasificados. Verificando consulta directa...");
+                
+                $sqlVerifNoClas = "SELECT id, estado FROM inscripciones_areas WHERE area_competencia_id = ? AND estado = 'no_clasificado' LIMIT 5";
+                $stmtVerifNoClas = $this->pdo->prepare($sqlVerifNoClas);
+                $stmtVerifNoClas->execute([$areaId]);
+                $verifNoClas = $stmtVerifNoClas->fetchAll(PDO::FETCH_ASSOC);
+                error_log("obtenerVistaPreviaClasificadosCerrada - Verificación directa no_clasificados: " . json_encode($verifNoClas));
+            }
+
+            $resultado = [
+                'clasificados' => array_map(function($p) {
+                    return [
+                        'id' => (int)$p['id'],
+                        'nombre_completo' => $p['nombre_completo'],
+                        'unidad_educativa_nombre' => $p['unidad_educativa_nombre'],
+                        'puntuacion' => round((float)$p['puntuacion_promedio'], 2)
+                    ];
+                }, $clasificados),
+                'no_clasificados' => array_map(function($p) {
+                    return [
+                        'id' => (int)$p['id'],
+                        'nombre_completo' => $p['nombre_completo'],
+                        'unidad_educativa_nombre' => $p['unidad_educativa_nombre'],
+                        'puntuacion' => round((float)$p['puntuacion_promedio'], 2)
+                    ];
+                }, $noClasificados),
+                'criterios' => [
+                    'puntuacion_minima' => $puntuacionMinima,
+                    'nota' => 'Todos los participantes con puntuación >= ' . $puntuacionMinima . ' puntos son clasificados'
+                ]
+            ];
+            
+            error_log("obtenerVistaPreviaClasificadosCerrada - Resultado final: " . json_encode($resultado));
+            return $resultado;
+
+        } catch (\Exception $e) {
+            error_log('Error obteniendo vista previa de clasificados (cerrada): ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            return [
+                'clasificados' => [],
+                'no_clasificados' => [],
+                'criterios' => [
+                    'porcentaje_clasificados' => 0.6,
+                    'puntuacion_minima' => 51.00
+                ]
+            ];
+        }
+    }
+
+   
+    private function actualizarEstadosClasificacion($areaId)
+    {
+        try {
+            
+            $puntuacionMinima = 51.00;
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración: ' . $e->getMessage());
+            }
+            
+            
+            $sqlActualizarClasificados = "
+                UPDATE inscripciones_areas ia
+                SET estado = 'clasificado',
+                    updated_at = NOW()
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado != 'desclasificado'
+                AND (
+                    SELECT AVG(ec.puntuacion)
+                    FROM evaluaciones_clasificacion ec
+                    WHERE ec.inscripcion_area_id = ia.id
+                ) >= ?
+                AND (
+                    ia.estado != 'clasificado'
+                    OR ia.estado IS NULL
+                )
+            ";
+            
+            $stmtClasificados = $this->pdo->prepare($sqlActualizarClasificados);
+            $stmtClasificados->execute([$areaId, $puntuacionMinima]);
+            $actualizadosClasificados = $stmtClasificados->rowCount();
+            
+            
+            $sqlActualizarNoClasificados = "
+                UPDATE inscripciones_areas ia
+                SET estado = 'no_clasificado',
+                    updated_at = NOW()
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado != 'desclasificado'
+                AND EXISTS (
+                    SELECT 1 FROM evaluaciones_clasificacion ec
+                    WHERE ec.inscripcion_area_id = ia.id
+                )
+                AND (
+                    SELECT AVG(ec.puntuacion)
+                    FROM evaluaciones_clasificacion ec
+                    WHERE ec.inscripcion_area_id = ia.id
+                ) < ?
+                AND ia.estado != 'no_clasificado'
+            ";
+            
+            $stmtNoClasificados = $this->pdo->prepare($sqlActualizarNoClasificados);
+            $stmtNoClasificados->execute([$areaId, $puntuacionMinima]);
+            $actualizadosNoClasificados = $stmtNoClasificados->rowCount();
+            
+            if ($actualizadosClasificados > 0 || $actualizadosNoClasificados > 0) {
+                error_log("actualizarEstadosClasificacion - Actualizados: {$actualizadosClasificados} clasificados, {$actualizadosNoClasificados} no_clasificados");
+            }
+            
+        } catch (\Exception $e) {
+            error_log("Error actualizando estados de clasificación: " . $e->getMessage());
+            
+        }
+    }
+
+    
+    public function cerrarFaseArea()
+    {
+        
+        error_log("===========================================");
+        error_log(" cerrarFaseArea() MÉTODO LLAMADO ");
+        error_log("===========================================");
+        
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            error_log(" Usuario actual: " . ($currentUser['name'] ?? 'sin nombre') . " - Role: " . ($currentUser['role'] ?? 'sin rol'));
+            
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                error_log(" [INICIO] Acceso denegado - no es coordinador");
+                Response::forbidden('Acceso de coordinador requerido');
+            }
+            
+            error_log(" [INICIO] Usuario es coordinador, continuando...");
+
+            
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+
+            
+            $sqlStats = "
+                SELECT 
+                    COUNT(DISTINCT ia.id) FILTER (WHERE ia.estado != 'desclasificado') as total_participantes,
+                    COUNT(DISTINCT ia.id) FILTER (
+                        WHERE ec.id IS NOT NULL 
+                        AND ia.estado != 'desclasificado'
+                    ) as total_evaluados
+                FROM inscripciones_areas ia
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+            ";
+            
+            $stmtStats = $this->pdo->prepare($sqlStats);
+            $stmtStats->execute([$areaId]);
+            $stats = $stmtStats->fetch(PDO::FETCH_ASSOC);
+            
+            $totalParticipantes = (int)$stats['total_participantes'];
+            $totalEvaluados = (int)$stats['total_evaluados'];
+            
+            error_log("cerrarFaseArea - Estadísticas: total_participantes={$totalParticipantes}, total_evaluados={$totalEvaluados}");
+            
+            if ($totalParticipantes == 0) {
+                error_log(" cerrarFaseArea - No hay participantes en el área {$areaId}");
+                Response::validationError(['general' => 'No hay participantes inscritos en esta área']);
+                return;
+            }
+            
+            if ($totalEvaluados < $totalParticipantes) {
+                $pendientes = $totalParticipantes - $totalEvaluados;
+                Response::validationError(['general' => "Faltan {$pendientes} evaluaciones por completar. Se requiere 100% de completitud."]);
+                return;
+            }
+
+            
+            $sqlCierre = "
+                SELECT estado FROM cierre_fase_areas
+                WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                LIMIT 1
+            ";
+            
+            $stmtCierre = $this->pdo->prepare($sqlCierre);
+            $stmtCierre->execute([$areaId]);
+            $cierre = $stmtCierre->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cierre && $cierre['estado'] === 'cerrada') {
+                Response::validationError(['general' => 'La fase de esta área ya está cerrada']);
+                return;
+            }
+
+            
+            error_log("[cerrarFaseArea] Actualizando estados de clasificación antes de cerrar fase...");
+            $this->actualizarEstadosClasificacion($areaId);
+            error_log(" [cerrarFaseArea] Estados de clasificación actualizados");
+            
+            
+            $puntuacionMinima = 51.00;
+            $porcentajeClasificados = 0.0; 
+            
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración de olimpiada: ' . $e->getMessage());
+            }
+            
+           
+            $sqlClasificados = "
+                SELECT ia.id
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+            ";
+            
+            $stmtClasificados = $this->pdo->prepare($sqlClasificados);
+            $stmtClasificados->execute([$areaId]);
+            $clasificadosData = $stmtClasificados->fetchAll(PDO::FETCH_ASSOC);
+            $idsClasificados = array_map(function($p) {
+                return $p['id'];
+            }, $clasificadosData);
+            $cantidadClasificados = count($idsClasificados);
+            
+            error_log(" [cerrarFaseArea] Clasificados encontrados: {$cantidadClasificados}");
+            
+            
+            $sqlNoClasificados = "
+                SELECT ia.id
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'no_clasificado'
+            ";
+            
+            $stmtNoClasificados = $this->pdo->prepare($sqlNoClasificados);
+            $stmtNoClasificados->execute([$areaId]);
+            $noClasificadosData = $stmtNoClasificados->fetchAll(PDO::FETCH_ASSOC);
+            $idsNoClasificados = array_map(function($p) {
+                return $p['id'];
+            }, $noClasificadosData);
+            
+            error_log("[cerrarFaseArea] No clasificados encontrados: " . count($idsNoClasificados));
+
+            
+            if (!empty($idsNoClasificados)) {
+                $noClasificadoModel = new NoClasificado();
+                
+                foreach ($idsNoClasificados as $inscripcionId) {
+                   
+                    $sqlPromedio = "
+                        SELECT AVG(puntuacion) as promedio
+                        FROM evaluaciones_clasificacion
+                        WHERE inscripcion_area_id = ?
+                    ";
+                    $stmtPromedio = $this->pdo->prepare($sqlPromedio);
+                    $stmtPromedio->execute([$inscripcionId]);
+                    $promedioData = $stmtPromedio->fetch(PDO::FETCH_ASSOC);
+                    $promedio = $promedioData ? (float)$promedioData['promedio'] : 0;
+
+                   
+                    if (!$noClasificadoModel->estaNoClasificado($inscripcionId, 'clasificacion')) {
+                        try {
+                            $noClasificadoModel->create([
+                                'inscripcion_area_id' => $inscripcionId,
+                                'puntuacion' => $promedio,
+                                'puntuacion_minima_requerida' => $puntuacionMinima,
+                                'motivo' => "Puntuación promedio {$promedio} menor a la mínima requerida de {$puntuacionMinima} puntos",
+                                'evaluador_id' => null,
+                                'fase' => 'clasificacion'
+                            ]);
+                        } catch (\Exception $e) {
+                            error_log("Error registrando no clasificado: " . $e->getMessage());
+                        }
+                    }
+                }
+            }
+
+           
+            $sqlUpdate = "
+                INSERT INTO cierre_fase_areas (
+                    area_competencia_id, nivel_competencia_id, estado,
+                    porcentaje_completitud, cantidad_clasificados, 
+                    fecha_cierre, coordinador_id, updated_at
+                ) VALUES (?, NULL, 'cerrada', 100, ?, NOW(), ?, NOW())
+                ON CONFLICT (area_competencia_id, nivel_competencia_id) 
+                DO UPDATE SET 
+                    estado = 'cerrada',
+                    porcentaje_completitud = 100,
+                    cantidad_clasificados = EXCLUDED.cantidad_clasificados,
+                    fecha_cierre = NOW(),
+                    coordinador_id = EXCLUDED.coordinador_id,
+                    updated_at = NOW()
+                RETURNING *
+            ";
+            
+            $stmtUpdate = $this->pdo->prepare($sqlUpdate);
+            $stmtUpdate->execute([$areaId, $cantidadClasificados, $currentUser['id']]);
+            $cierreActualizado = $stmtUpdate->fetch(PDO::FETCH_ASSOC);
+
+           
+            AuditService::logCierreCalificacion(
+                $currentUser['id'],
+                $currentUser['name'] ?? $currentUser['email'],
+                $areaId,
+                null, 
+                [
+                    'fase' => 'clasificacion',
+                    'total_participantes' => $totalParticipantes,
+                    'total_evaluados' => $totalEvaluados,
+                    'cantidad_clasificados' => $cantidadClasificados,
+                    'fecha_cierre' => $cierreActualizado['fecha_cierre']
+                ]
+            );
+
+           
+            error_log("NOTIFICACIÓN: El área {$areaNombre} (ID: {$areaId}) ha sido cerrada por el coordinador {$currentUser['name']} (ID: {$currentUser['id']})");
+           
+            if (function_exists('fastcgi_finish_request')) {
+               
+            }
+            error_log("[PUNTO DE NOTIFICACIONES] Llegamos al punto de enviar notificaciones - Área: {$areaNombre}, ID: {$areaId}");
+            error_log("[PUNTO DE NOTIFICACIONES] VERIFICACIÓN: Este log DEBE aparecer");
+
+            error_log("[ANTES DE RESPUESTA] Iniciando envío de notificaciones a evaluadores del área {$areaNombre} (ID: {$areaId})");
+            try {
+                error_log("[ANTES DE RESPUESTA] Creando instancia de Mailer...");
+                $mailer = new Mailer();
+                error_log("[ANTES DE RESPUESTA] Instancia de Mailer creada exitosamente");
+                
+                $nombreCoordinador = $currentUser['name'] ?? $currentUser['email'];
+                $correoCoordinador = $currentUser['email'];
+                error_log("[ANTES DE RESPUESTA] Datos: Coordinador={$nombreCoordinador}, Email={$correoCoordinador}, AreaID={$areaId}");
+                error_log("[ANTES DE RESPUESTA] Llamando a enviarMensajeEvaluadoresCierre...");
+                
+                $resultadoNotificaciones = $mailer->enviarMensajeEvaluadoresCierre(
+                    $areaId,
+                    $nombreCoordinador,
+                    $correoCoordinador
+                );
+                
+                error_log("[ANTES DE RESPUESTA] Resultado de enviarMensajeEvaluadoresCierre: " . ($resultadoNotificaciones ? 'true' : 'false'));
+                
+                if ($resultadoNotificaciones) {
+                    error_log("[ANTES DE RESPUESTA] Notificaciones enviadas exitosamente a evaluadores del área {$areaNombre}");
+                } else {
+                    error_log(" [ANTES DE RESPUESTA] Error al enviar notificaciones a evaluadores del área {$areaNombre}");
+                }
+            } catch (\Exception $e) {
+                error_log("[ANTES DE RESPUESTA] Error enviando notificaciones a evaluadores: " . $e->getMessage());
+                error_log("Stack trace: " . $e->getTraceAsString());
+               
+            }
+
+            
+            $responseData = [
+                'area_id' => $areaId,
+                'area_nombre' => $areaNombre,
+                'total_participantes' => $totalParticipantes,
+                'total_evaluados' => $totalEvaluados,
+                'cantidad_clasificados' => $cantidadClasificados,
+                'fecha_cierre' => $cierreActualizado['fecha_cierre']
+            ];
+
+           
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+
+            
+            $responseJson = json_encode([
+                'success' => true,
+                'message' => 'Fase clasificatoria cerrada exitosamente',
+                'data' => $responseData,
+                'timestamp' => date('Y-m-d H:i:s')
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            
+           
+            http_response_code(200);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Length: ' . strlen($responseJson));
+            
+            echo $responseJson;
+            
+            
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+               
+                if (ob_get_level()) {
+                    ob_end_flush();
+                }
+                flush();
+            }
+
+            
+            set_time_limit(300); 
+            ignore_user_abort(true);
+            
+            
+            try {
+                $this->generarReportePDFCierreFase($areaId, $areaNombre, $totalParticipantes, $totalEvaluados, $cantidadClasificados, $idsClasificados, $idsNoClasificados, $puntuacionMinima, $porcentajeClasificados, $cierreActualizado['fecha_cierre'], $currentUser);
+            } catch (\Exception $e) {
+                error_log('Error generando PDF de cierre de fase: ' . $e->getMessage());
+            }
+
+            // Generar reporte Excel de clasificados
+            try {
+                $this->generarReporteExcelClasificados($areaId, $areaNombre, $puntuacionMinima, $porcentajeClasificados, $cierreActualizado['fecha_cierre'], $currentUser);
+            } catch (\Exception $e) {
+                error_log('Error generando Excel de clasificados: ' . $e->getMessage());
+            }
+
+            // Generar reporte PDF de estadísticas detalladas
+            try {
+                $this->generarReportePDFEstadisticasDetalladas($areaId, $areaNombre, $puntuacionMinima, $porcentajeClasificados, $cierreActualizado['fecha_cierre'], $currentUser);
+            } catch (\Exception $e) {
+                error_log('Error generando PDF de estadísticas detalladas: ' . $e->getMessage());
+            }
+            
+            exit();
+
+        } catch (\Exception $e) {
+            error_log('Error cerrando fase del área: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            Response::serverError('Error al cerrar la fase clasificatoria');
+        }
+    }
+
+    /**
+     * Generar reporte PDF del cierre de fase clasificatoria
+     * @param int $areaId
+     * @param string $areaNombre
+     * @param int $totalParticipantes
+     * @param int $totalEvaluados
+     * @param int $cantidadClasificados
+     * @param array $idsClasificados
+     * @param array $idsNoClasificados
+     * @param float $puntuacionMinima
+     * @param float $porcentajeClasificados
+     * @param string $fechaCierre
+     * @param array $coordinador
+     * @return string
+     */
+    private function generarReportePDFCierreFase($areaId, $areaNombre, $totalParticipantes, $totalEvaluados, $cantidadClasificados, $idsClasificados, $idsNoClasificados, $puntuacionMinima, $porcentajeClasificados, $fechaCierre, $coordinador)
+    {
+        try {
+           
+            require_once __DIR__ . '/../../vendor/tecnickcom/tcpdf/tcpdf.php';
+            
+            
+            /** @var \TCPDF $pdf */
+            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            
+            
+            $pdf->SetCreator('ForwardSoft - Sistema de Olimpiadas');
+            $pdf->SetAuthor('Sistema de Olimpiadas');
+            $pdf->SetTitle('Reporte de Cierre de Fase Clasificatoria - ' . $areaNombre);
+            $pdf->SetSubject('Reporte de Cierre de Fase');
+            
+           
+            $pdf->setPrintHeader(false);
+            $pdf->setPrintFooter(false);
+            
+            
+            $configModel = new ConfiguracionOlimpiada();
+            $config = $configModel->getConfiguracion();
+            $nombreOlimpiada = $config['nombre'] ?? 'Olimpiada Oh! SanSi';
+            $añoOlimpiada = date('Y', strtotime($config['fecha_inicio'] ?? 'now'));
+            
+           
+            $pdf->AddPage();
+            
+            $pdf->SetFont('helvetica', 'B', 18);
+            $pdf->Cell(0, 10, 'REPORTE OFICIAL DE FASE CLASIFICATORIA', 0, 1, 'C');
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->Cell(0, 8, $nombreOlimpiada . ' ' . $añoOlimpiada, 0, 1, 'C');
+            $pdf->SetFont('helvetica', '', 12);
+            $pdf->Cell(0, 6, 'Área: ' . $areaNombre, 0, 1, 'C');
+            $pdf->Ln(5);
+            
+            
+            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->Cell(0, 8, 'INFORMACIÓN GENERAL', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(80, 6, 'Fecha de cierre:', 0, 0, 'L');
+            $pdf->Cell(0, 6, date('d/m/Y H:i:s', strtotime($fechaCierre)), 0, 1, 'L');
+            
+            $pdf->Cell(80, 6, 'Coordinador:', 0, 0, 'L');
+            $pdf->Cell(0, 6, $coordinador['name'] ?? $coordinador['email'], 0, 1, 'L');
+            
+            $pdf->Cell(80, 6, 'Total de participantes:', 0, 0, 'L');
+            $pdf->Cell(0, 6, $totalParticipantes, 0, 1, 'L');
+            
+            $pdf->Cell(80, 6, 'Total evaluados:', 0, 0, 'L');
+            $pdf->Cell(0, 6, $totalEvaluados, 0, 1, 'L');
+            
+            $pdf->Cell(80, 6, 'Clasificados:', 0, 0, 'L');
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->Cell(0, 6, $cantidadClasificados, 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            // Obtener conteo real de no clasificados desde la base de datos
+            $sqlCountNoClasificados = "
+                SELECT COUNT(DISTINCT ia.id) as total
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'no_clasificado'
+            ";
+            $stmtCountNoClasificados = $this->pdo->prepare($sqlCountNoClasificados);
+            $stmtCountNoClasificados->execute([$areaId]);
+            $countNoClasificados = $stmtCountNoClasificados->fetch(PDO::FETCH_ASSOC);
+            $totalNoClasificados = (int)($countNoClasificados['total'] ?? 0);
+            
+            $pdf->Cell(80, 6, 'No clasificados:', 0, 0, 'L');
+            $pdf->SetTextColor(255, 140, 0);
+            $pdf->Cell(0, 6, $totalNoClasificados, 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            
+            $sqlCountDesclasificados = "
+                SELECT COUNT(DISTINCT ia.id) as total
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'desclasificado'
+            ";
+            $stmtCountDesclasificados = $this->pdo->prepare($sqlCountDesclasificados);
+            $stmtCountDesclasificados->execute([$areaId]);
+            $countDesclasificados = $stmtCountDesclasificados->fetch(PDO::FETCH_ASSOC);
+            $totalDesclasificados = (int)($countDesclasificados['total'] ?? 0);
+            
+            $pdf->Cell(80, 6, 'Desclasificados:', 0, 0, 'L');
+            $pdf->SetTextColor(200, 0, 0);
+            $pdf->Cell(0, 6, $totalDesclasificados, 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->Ln(5);
+            
+            
+            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->Cell(0, 8, 'CRITERIOS DE CLASIFICACIÓN', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(0, 6, 'Puntuación mínima requerida: ' . number_format($puntuacionMinima, 2) . ' puntos', 0, 1, 'L');
+            $pdf->Cell(0, 6, 'Criterio: Todos los participantes con puntuación >= ' . number_format($puntuacionMinima, 2) . ' puntos son clasificados', 0, 1, 'L');
+            
+            $pdf->Ln(5);
+            
+            
+            $sqlTodosEvaluados = "
+                SELECT 
+                    o.nombre_completo,
+                    nc.nombre as nivel_nombre,
+                    ac.nombre as area_nombre,
+                    COALESCE(AVG(ec.puntuacion), 0) as nota_final,
+                    ia.estado,
+                    ue.nombre as unidad_educativa_nombre
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND EXISTS (
+                    SELECT 1 FROM evaluaciones_clasificacion ec2 
+                    WHERE ec2.inscripcion_area_id = ia.id 
+                    AND ec2.puntuacion IS NOT NULL
+                )
+                GROUP BY ia.id, o.nombre_completo, nc.nombre, ac.nombre, ia.estado, ue.nombre
+                ORDER BY nota_final DESC, o.nombre_completo
+            ";
+            
+            $stmtTodosEvaluados = $this->pdo->prepare($sqlTodosEvaluados);
+            $stmtTodosEvaluados->execute([$areaId]);
+            $todosEvaluados = $stmtTodosEvaluados->fetchAll(PDO::FETCH_ASSOC);
+            
+            
+            if (!empty($todosEvaluados)) {
+                $pdf->SetFont('helvetica', 'B', 12);
+                $pdf->Cell(0, 8, 'LISTA DE PARTICIPANTES EVALUADOS (' . count($todosEvaluados) . ')', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 9);
+                
+                // Encabezado de tabla
+                $pdf->SetFillColor(200, 200, 200);
+                $pdf->Cell(10, 6, '#', 1, 0, 'C', true);
+                $pdf->Cell(70, 6, 'Participante', 1, 0, 'L', true);
+                $pdf->Cell(30, 6, 'Nivel', 1, 0, 'L', true);
+                $pdf->Cell(40, 6, 'Área', 1, 0, 'L', true);
+                $pdf->Cell(30, 6, 'Nota Final', 1, 0, 'C', true);
+                $pdf->Cell(10, 6, 'Estado', 1, 1, 'C', true);
+                
+                $pdf->SetFillColor(245, 245, 245);
+                $contador = 1;
+                foreach ($todosEvaluados as $participante) {
+                    $fill = ($contador % 2 == 0);
+                    
+                    
+                    if ($pdf->GetY() > 250) {
+                        $pdf->AddPage();
+                        
+                        $pdf->SetFillColor(200, 200, 200);
+                        $pdf->SetFont('helvetica', 'B', 9);
+                        $pdf->Cell(10, 6, '#', 1, 0, 'C', true);
+                        $pdf->Cell(70, 6, 'Participante', 1, 0, 'L', true);
+                        $pdf->Cell(30, 6, 'Nivel', 1, 0, 'L', true);
+                        $pdf->Cell(40, 6, 'Área', 1, 0, 'L', true);
+                        $pdf->Cell(30, 6, 'Nota Final', 1, 0, 'C', true);
+                        $pdf->Cell(10, 6, 'Estado', 1, 1, 'C', true);
+                        $pdf->SetFillColor(245, 245, 245);
+                        $pdf->SetFont('helvetica', '', 9);
+                    }
+                    
+                    $pdf->Cell(10, 6, $contador, 1, 0, 'C', $fill);
+                    $pdf->Cell(70, 6, $participante['nombre_completo'], 1, 0, 'L', $fill);
+                    $pdf->Cell(30, 6, $participante['nivel_nombre'], 1, 0, 'L', $fill);
+                    $pdf->Cell(40, 6, $participante['area_nombre'], 1, 0, 'L', $fill);
+                    $pdf->Cell(30, 6, number_format($participante['nota_final'], 2), 1, 0, 'C', $fill);
+                    
+                    $estado = $participante['estado'] ?? '';
+                    if ($estado === 'clasificado') {
+                        $pdf->SetTextColor(0, 128, 0);
+                        $pdf->Cell(10, 6, 'C', 1, 1, 'C', $fill);
+                    } elseif ($estado === 'no_clasificado') {
+                        $pdf->SetTextColor(255, 140, 0);
+                        $pdf->Cell(10, 6, 'NC', 1, 1, 'C', $fill);
+                    } elseif ($estado === 'desclasificado') {
+                        $pdf->SetTextColor(200, 0, 0);
+                        $pdf->Cell(10, 6, 'D', 1, 1, 'C', $fill);
+                    } else {
+                        $pdf->SetTextColor(0, 0, 0);
+                        $pdf->Cell(10, 6, '-', 1, 1, 'C', $fill);
+                    }
+                    $pdf->SetTextColor(0, 0, 0);
+                    
+                    $contador++;
+                }
+                
+                $pdf->Ln(3);
+                $pdf->SetFont('helvetica', 'I', 8);
+                $pdf->Cell(0, 4, 'Leyenda: C = Clasificado, NC = No Clasificado, D = Desclasificado', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 9);
+                $pdf->Ln(5);
+            }
+            
+            
+            $sqlClasificados = "
+                SELECT 
+                    o.nombre_completo,
+                    ue.nombre as unidad_educativa_nombre,
+                    AVG(ec.puntuacion) as puntuacion_promedio
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                GROUP BY ia.id, o.nombre_completo, ue.nombre
+                ORDER BY puntuacion_promedio DESC
+            ";
+            
+            $stmtClasificados = $this->pdo->prepare($sqlClasificados);
+            $stmtClasificados->execute([$areaId]);
+            $clasificados = $stmtClasificados->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (!empty($clasificados)) {
+                
+                $pdf->SetFont('helvetica', 'B', 12);
+                $pdf->SetTextColor(0, 128, 0);
+                $pdf->Cell(0, 8, 'CLASIFICADOS (' . count($clasificados) . ')', 0, 1, 'L');
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFont('helvetica', '', 9);
+                
+                $pdf->SetFillColor(200, 230, 200);
+                $pdf->Cell(10, 6, '#', 1, 0, 'C', true);
+                $pdf->Cell(80, 6, 'Participante', 1, 0, 'L', true);
+                $pdf->Cell(70, 6, 'Unidad Educativa', 1, 0, 'L', true);
+                $pdf->Cell(30, 6, 'Puntuación', 1, 1, 'C', true);
+                
+                $pdf->SetFillColor(245, 255, 245);
+                $contador = 1;
+                foreach ($clasificados as $participante) {
+                    $fill = ($contador % 2 == 0);
+                    $pdf->Cell(10, 6, $contador, 1, 0, 'C', $fill);
+                    $pdf->Cell(80, 6, $participante['nombre_completo'], 1, 0, 'L', $fill);
+                    $pdf->Cell(70, 6, $participante['unidad_educativa_nombre'] ?? 'N/A', 1, 0, 'L', $fill);
+                    $pdf->Cell(30, 6, number_format($participante['puntuacion_promedio'], 2), 1, 1, 'C', $fill);
+                    $contador++;
+                }
+                
+                $pdf->Ln(5);
+            }
+            
+            
+            $sqlNoClasificados = "
+                SELECT 
+                    o.nombre_completo,
+                    ue.nombre as unidad_educativa_nombre,
+                    AVG(ec.puntuacion) as puntuacion_promedio
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'no_clasificado'
+                GROUP BY ia.id, o.nombre_completo, ue.nombre
+                ORDER BY puntuacion_promedio DESC
+            ";
+            
+            $stmtNoClasificados = $this->pdo->prepare($sqlNoClasificados);
+            $stmtNoClasificados->execute([$areaId]);
+            $noClasificados = $stmtNoClasificados->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (!empty($noClasificados)) {
+                
+                $pdf->SetFont('helvetica', 'B', 12);
+                $pdf->SetTextColor(255, 140, 0);
+                $pdf->Cell(0, 8, 'NO CLASIFICADOS (' . count($noClasificados) . ')', 0, 1, 'L');
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFont('helvetica', '', 9);
+                
+                $pdf->SetFillColor(255, 230, 200);
+                $pdf->Cell(10, 6, '#', 1, 0, 'C', true);
+                $pdf->Cell(80, 6, 'Participante', 1, 0, 'L', true);
+                $pdf->Cell(70, 6, 'Unidad Educativa', 1, 0, 'L', true);
+                $pdf->Cell(30, 6, 'Puntuación', 1, 1, 'C', true);
+                
+                $pdf->SetFillColor(255, 245, 230);
+                $contador = 1;
+                foreach ($noClasificados as $participante) {
+                    $fill = ($contador % 2 == 0);
+                    $pdf->Cell(10, 6, $contador, 1, 0, 'C', $fill);
+                    $pdf->Cell(80, 6, $participante['nombre_completo'], 1, 0, 'L', $fill);
+                    $pdf->Cell(70, 6, $participante['unidad_educativa_nombre'] ?? 'N/A', 1, 0, 'L', $fill);
+                    $pdf->Cell(30, 6, number_format($participante['puntuacion_promedio'], 2), 1, 1, 'C', $fill);
+                    $contador++;
+                }
+            }
+            
+            $sqlDesclasificados = "
+                SELECT 
+                    ia.id as inscripcion_id,
+                    o.nombre_completo,
+                    COALESCE(ue.nombre, 'Sin institución') as unidad_educativa_nombre,
+                    COALESCE(
+                        (SELECT ROUND(AVG(puntuacion), 2) 
+                         FROM evaluaciones_clasificacion 
+                         WHERE inscripcion_area_id = ia.id 
+                         AND puntuacion IS NOT NULL), 
+                        0
+                    ) as puntuacion_promedio,
+                    COALESCE(
+                        (SELECT motivo 
+                         FROM desclasificaciones 
+                         WHERE inscripcion_area_id = ia.id 
+                         AND estado = 'activa' 
+                         ORDER BY fecha_desclasificacion DESC 
+                         LIMIT 1), 
+                        'Sin observación'
+                    ) as observacion,
+                    (SELECT fecha_desclasificacion 
+                     FROM desclasificaciones 
+                     WHERE inscripcion_area_id = ia.id 
+                     AND estado = 'activa' 
+                     ORDER BY fecha_desclasificacion DESC 
+                     LIMIT 1) as fecha_desclasificacion
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                LEFT JOIN unidad_educativa ue ON ue.id = o.unidad_educativa_id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'desclasificado'
+                ORDER BY fecha_desclasificacion DESC NULLS LAST, o.nombre_completo
+            ";
+            
+            $stmtDesclasificados = $this->pdo->prepare($sqlDesclasificados);
+            $stmtDesclasificados->execute([$areaId]);
+            $desclasificados = $stmtDesclasificados->fetchAll(PDO::FETCH_ASSOC);
+            
+            error_log("PDF - Desclasificados encontrados para área {$areaId}: " . count($desclasificados));
+            if (count($desclasificados) > 0) {
+                error_log("PDF - Primer desclasificado: " . json_encode($desclasificados[0]));
+            }
+            
+            if (!empty($desclasificados)) {
+                $pdf->Ln(5);
+                
+                $pdf->SetFont('helvetica', 'B', 12);
+                $pdf->SetTextColor(200, 0, 0);
+                $pdf->Cell(0, 8, 'DESCLASIFICADOS (' . count($desclasificados) . ')', 0, 1, 'L');
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFont('helvetica', '', 9);
+                
+                // Encabezado de tabla
+                $pdf->SetFillColor(255, 200, 200);
+                $pdf->Cell(10, 6, '#', 1, 0, 'C', true);
+                $pdf->Cell(60, 6, 'Participante', 1, 0, 'L', true);
+                $pdf->Cell(50, 6, 'Unidad Educativa', 1, 0, 'L', true);
+                $pdf->Cell(25, 6, 'Puntuación', 1, 0, 'C', true);
+                $pdf->Cell(45, 6, 'Observación', 1, 1, 'L', true);
+                
+                $pdf->SetFillColor(255, 240, 240);
+                $contador = 1;
+                foreach ($desclasificados as $participante) {
+                    $fill = ($contador % 2 == 0);
+                    
+                    if ($pdf->GetY() > 250) {
+                        $pdf->AddPage();
+                    }
+                    
+                    $xInicio = $pdf->GetX();
+                    $yInicio = $pdf->GetY();
+                    
+                    $observacion = $participante['observacion'] ?? 'Sin observación';
+                    $anchoObs = 45;
+                    
+                    $altura = $pdf->getStringHeight($anchoObs, $observacion);
+                    $altura = max(6, ceil($altura)); 
+                    
+                    $pdf->Cell(10, $altura, $contador, 1, 0, 'C', $fill);
+                    $pdf->Cell(60, $altura, $participante['nombre_completo'], 1, 0, 'L', $fill);
+                    $pdf->Cell(50, $altura, $participante['unidad_educativa_nombre'] ?? 'N/A', 1, 0, 'L', $fill);
+                    
+                    $puntuacion = $participante['puntuacion_promedio'] ? number_format($participante['puntuacion_promedio'], 2) : 'N/A';
+                    $pdf->Cell(25, $altura, $puntuacion, 1, 0, 'C', $fill);
+                    
+                    $xObs = $pdf->GetX();
+                    $yObs = $pdf->GetY();
+                    $pdf->SetXY($xObs, $yObs);
+                    $pdf->MultiCell($anchoObs, 6, $observacion, 1, 'L', $fill, 1, $xObs, $yObs);
+                    
+                   
+                    $pdf->SetXY($xInicio, $yInicio + $altura);
+                    
+                    $contador++;
+                }
+            }
+            
+            $pdf->Ln(10);
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Cell(0, 6, 'Fecha y hora de generación: ' . date('d/m/Y H:i:s'), 0, 1, 'L');
+            
+           
+            $pdf->Ln(15);
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Cell(0, 6, 'Generado por:', 0, 1, 'L');
+            $pdf->Ln(10);
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, $coordinador['name'] ?? $coordinador['email'], 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->Cell(0, 4, 'Coordinador de Área', 0, 1, 'L');
+            $pdf->Ln(5);
+            
+            // Línea para firma
+            $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
+            $pdf->SetFont('helvetica', 'I', 8);
+            $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+            
+           
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            if (!is_dir($uploadsDir)) {
+                mkdir($uploadsDir, 0755, true);
+            }
+            
+            $filename = 'reporte_cierre_fase_' . $areaId . '_' . date('Y-m-d_H-i-s') . '.pdf';
+            $filepath = $uploadsDir . $filename;
+            
+            $pdf->Output($filepath, 'F');
+            
+            error_log("PDF generado exitosamente: {$filepath}");
+            
+            return $filename;
+            
+        } catch (\Exception $e) {
+            error_log('Error generando PDF: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            throw $e;
+        }
+    }
+
+    /**
+     * Generar reporte Excel de clasificados al cerrar la fase
+     * @param int $areaId
+     * @param string $areaNombre
+     * @param float $puntuacionMinima
+     * @param float $porcentajeClasificados
+     * @param string $fechaCierre
+     * @param array $coordinador
+     * @return string
+     */
+    private function generarReporteExcelClasificados($areaId, $areaNombre, $puntuacionMinima, $porcentajeClasificados, $fechaCierre, $coordinador)
+    {
+        try {
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
+            if (file_exists($autoloadPath) && !class_exists(\PhpOffice\PhpSpreadsheet\Spreadsheet::class)) {
+                require_once $autoloadPath;
+            }
+            
+            $spreadsheet = new Spreadsheet();
+            
+           
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Clasificados');
+            
+           
+            $sheet->setCellValue('A1', 'REPORTE DE CLASIFICADOS - FASE CLASIFICATORIA');
+            $sheet->mergeCells('A1:F1');
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+            $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            
+            $sheet->setCellValue('A2', 'Área: ' . $areaNombre);
+            $sheet->mergeCells('A2:F2');
+            $sheet->setCellValue('A3', 'Fecha de cierre: ' . date('d/m/Y H:i:s', strtotime($fechaCierre)));
+            $sheet->mergeCells('A3:F3');
+            $sheet->setCellValue('A4', 'Generado por: ' . ($coordinador['name'] ?? $coordinador['email']));
+            $sheet->mergeCells('A4:F4');
+            
+            $headers = ['ID', 'Nombre', 'Nivel', 'Área', 'Nota Final', 'Estado'];
+            $col = 'A';
+            $row = 6;
+            foreach ($headers as $header) {
+                $sheet->setCellValue($col . $row, $header);
+                $sheet->getStyle($col . $row)->getFont()->setBold(true);
+                $sheet->getStyle($col . $row)->getFill()
+                    ->setFillType(Fill::FILL_SOLID)
+                    ->getStartColor()->setRGB('CCCCCC');
+                $sheet->getStyle($col . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $col++;
+            }
+            
+            $sqlClasificados = "
+                SELECT 
+                    ia.id as inscripcion_id,
+                    o.nombre_completo,
+                    nc.nombre as nivel_nombre,
+                    ac.nombre as area_nombre,
+                    COALESCE(AVG(ec.puntuacion), 0) as nota_final,
+                    'Clasificado' as estado
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                GROUP BY ia.id, o.nombre_completo, nc.nombre, ac.nombre
+                ORDER BY nota_final DESC, o.nombre_completo
+            ";
+            
+            $stmtClasificados = $this->pdo->prepare($sqlClasificados);
+            $stmtClasificados->execute([$areaId]);
+            $clasificados = $stmtClasificados->fetchAll(PDO::FETCH_ASSOC);
+            
+           
+            $row = 7;
+            foreach ($clasificados as $participante) {
+                $sheet->setCellValue('A' . $row, $participante['inscripcion_id']);
+                $sheet->setCellValue('B' . $row, $participante['nombre_completo']);
+                $sheet->setCellValue('C' . $row, $participante['nivel_nombre']);
+                $sheet->setCellValue('D' . $row, $participante['area_nombre']);
+                $sheet->setCellValue('E' . $row, number_format($participante['nota_final'], 2));
+                $sheet->setCellValue('F' . $row, $participante['estado']);
+                
+                
+                $sheet->getStyle('E' . $row)->getNumberFormat()
+                    ->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_NUMBER_00);
+                
+                $row++;
+            }
+            
+           
+            $sheet->setAutoFilter('A6:F' . ($row - 1));
+            
+           
+            foreach (range('A', 'F') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            
+           
+            $sheet->freezePane('A7');
+            
+           
+            $sheet2 = $spreadsheet->createSheet();
+            $sheet2->setTitle('Estadísticas');
+            
+           
+            $sqlStatsNivel = "
+                SELECT 
+                    nc.nombre as nivel_nombre,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'clasificado' THEN ia.id END) as clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'no_clasificado' THEN ia.id END) as no_clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'desclasificado' THEN ia.id END) as desclasificados,
+                    COUNT(DISTINCT ia.id) as total,
+                    AVG(CASE WHEN ia.estado = 'clasificado' THEN ec.puntuacion END) as promedio_nota
+                FROM inscripciones_areas ia
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                GROUP BY nc.id, nc.nombre
+                ORDER BY nc.orden_display
+            ";
+            
+            $stmtStatsNivel = $this->pdo->prepare($sqlStatsNivel);
+            $stmtStatsNivel->execute([$areaId]);
+            $statsNivel = $stmtStatsNivel->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Título
+            $sheet2->setCellValue('A1', 'ESTADÍSTICAS POR NIVEL');
+            $sheet2->mergeCells('A1:F1');
+            $sheet2->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+            $sheet2->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            
+            // Encabezados estadísticas
+            $headersStats = ['Nivel', 'Clasificados', 'No Clasificados', 'Desclasificados', 'Total', 'Promedio Nota'];
+            $col = 'A';
+            $row = 3;
+            foreach ($headersStats as $header) {
+                $sheet2->setCellValue($col . $row, $header);
+                $sheet2->getStyle($col . $row)->getFont()->setBold(true);
+                $sheet2->getStyle($col . $row)->getFill()
+                    ->setFillType(Fill::FILL_SOLID)
+                    ->getStartColor()->setRGB('CCCCCC');
+                $col++;
+            }
+            
+            // Datos estadísticas
+            $row = 4;
+            foreach ($statsNivel as $stat) {
+                $sheet2->setCellValue('A' . $row, $stat['nivel_nombre']);
+                $sheet2->setCellValue('B' . $row, $stat['clasificados'] ?? 0);
+                $sheet2->setCellValue('C' . $row, $stat['no_clasificados'] ?? 0);
+                $sheet2->setCellValue('D' . $row, $stat['desclasificados'] ?? 0);
+                $sheet2->setCellValue('E' . $row, $stat['total'] ?? 0);
+                $sheet2->setCellValue('F' . $row, $stat['promedio_nota'] ? number_format($stat['promedio_nota'], 2) : 'N/A');
+                $row++;
+            }
+            
+            // Estadísticas generales
+            $row += 2;
+            $sheet2->setCellValue('A' . $row, 'ESTADÍSTICAS GENERALES');
+            $sheet2->mergeCells('A' . $row . ':F' . $row);
+            $sheet2->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
+            $row++;
+            
+            $sqlStatsGeneral = "
+                SELECT 
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'clasificado' THEN ia.id END) as total_clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'no_clasificado' THEN ia.id END) as total_no_clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'desclasificado' THEN ia.id END) as total_desclasificados,
+                    COUNT(DISTINCT ia.id) as total_participantes,
+                    AVG(CASE WHEN ia.estado = 'clasificado' THEN ec.puntuacion END) as promedio_general
+                FROM inscripciones_areas ia
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+            ";
+            
+            $stmtStatsGeneral = $this->pdo->prepare($sqlStatsGeneral);
+            $stmtStatsGeneral->execute([$areaId]);
+            $statsGeneral = $stmtStatsGeneral->fetch(PDO::FETCH_ASSOC);
+            
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Total Clasificados:');
+            $sheet2->setCellValue('B' . $row, $statsGeneral['total_clasificados'] ?? 0);
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Total No Clasificados:');
+            $sheet2->setCellValue('B' . $row, $statsGeneral['total_no_clasificados'] ?? 0);
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Total Desclasificados:');
+            $sheet2->setCellValue('B' . $row, $statsGeneral['total_desclasificados'] ?? 0);
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Total Participantes:');
+            $sheet2->setCellValue('B' . $row, $statsGeneral['total_participantes'] ?? 0);
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Promedio General:');
+            $sheet2->setCellValue('B' . $row, $statsGeneral['promedio_general'] ? number_format($statsGeneral['promedio_general'], 2) : 'N/A');
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Puntuación Mínima:');
+            $sheet2->setCellValue('B' . $row, number_format($puntuacionMinima, 2));
+            $row++;
+            $sheet2->setCellValue('A' . $row, 'Criterio de Clasificación:');
+            $sheet2->setCellValue('B' . $row, 'Todos los participantes con puntuación >= ' . number_format($puntuacionMinima, 2) . ' puntos son clasificados');
+            
+           
+            foreach (range('A', 'F') as $col) {
+                $sheet2->getColumnDimension($col)->setAutoSize(true);
+            }
+            
+           
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            if (!is_dir($uploadsDir)) {
+                if (!mkdir($uploadsDir, 0755, true)) {
+                    throw new \Exception("No se pudo crear el directorio de reportes: {$uploadsDir}");
+                }
+            }
+            
+           
+            if (!is_writable($uploadsDir)) {
+                throw new \Exception("El directorio de reportes no tiene permisos de escritura: {$uploadsDir}");
+            }
+            
+            $filename = 'reporte_clasificados_' . $areaId . '_' . date('Y-m-d_H-i-s') . '.xlsx';
+            $filepath = $uploadsDir . $filename;
+            
+            $writer = new Xlsx($spreadsheet);
+            $writer->save($filepath);
+            
+            if (!file_exists($filepath)) {
+                throw new \Exception("El archivo Excel se intentó guardar pero no se encontró: {$filepath}");
+            }
+            
+            if (filesize($filepath) == 0) {
+                throw new \Exception("El archivo Excel se creó pero está vacío: {$filepath}");
+            }
+            
+            error_log("Excel de clasificados generado exitosamente: {$filepath} (tamaño: " . filesize($filepath) . " bytes)");
+            
+            return $filename;
+            
+        } catch (\Exception $e) {
+            error_log('Error generando Excel de clasificados: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            throw $e;
+        }
+    }
+
+    /**
+     * Generar reporte PDF de estadísticas detalladas cuando la fase está cerrada
+     * @param int $areaId
+     * @param string $areaNombre
+     * @param float $puntuacionMinima
+     * @param float $porcentajeClasificados
+     * @param string $fechaCierre
+     * @param array $coordinador
+     * @return string
+     */
+    private function generarReportePDFEstadisticasDetalladas($areaId, $areaNombre, $puntuacionMinima, $porcentajeClasificados, $fechaCierre, $coordinador)
+    {
+        try {
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            
+            require_once __DIR__ . '/../../vendor/tecnickcom/tcpdf/tcpdf.php';
+            
+           
+            /** @var \TCPDF $pdf */
+            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            
+            
+            $pdf->SetCreator('ForwardSoft - Sistema de Olimpiadas');
+            $pdf->SetAuthor('Sistema de Olimpiadas');
+            $pdf->SetTitle('Reporte de Estadísticas Detalladas - ' . $areaNombre);
+            $pdf->SetSubject('Reporte Estadístico Detallado');
+            
+            
+            $pdf->setPrintHeader(false);
+            $pdf->setPrintFooter(false);
+            
+            
+            $configModel = new ConfiguracionOlimpiada();
+            $config = $configModel->getConfiguracion();
+            $nombreOlimpiada = $config['nombre'] ?? 'Olimpiada Oh! SanSi';
+            $añoOlimpiada = date('Y', strtotime($config['fecha_inicio'] ?? 'now'));
+            
+            
+            $sqlNotas = "
+                SELECT 
+                    ec.puntuacion,
+                    nc.nombre as nivel_nombre,
+                    ac.nombre as area_nombre,
+                    ia.estado
+                FROM evaluaciones_clasificacion ec
+                JOIN inscripciones_areas ia ON ia.id = ec.inscripcion_area_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                WHERE ia.area_competencia_id = ?
+                AND ec.puntuacion IS NOT NULL
+            ";
+            
+            $stmtNotas = $this->pdo->prepare($sqlNotas);
+            $stmtNotas->execute([$areaId]);
+            $todasLasNotas = $stmtNotas->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (empty($todasLasNotas)) {
+                throw new \Exception('No hay datos de evaluaciones para generar estadísticas');
+            }
+            
+            
+            $notas = array_column($todasLasNotas, 'puntuacion');
+            $promedioGeneral = count($notas) > 0 ? array_sum($notas) / count($notas) : 0;
+            $notaMaxima = max($notas);
+            $notaMinima = min($notas);
+            
+            // Calcular desviación estándar
+            $sumaCuadrados = 0;
+            foreach ($notas as $nota) {
+                $sumaCuadrados += pow($nota - $promedioGeneral, 2);
+            }
+            $desviacionEstandar = count($notas) > 1 ? sqrt($sumaCuadrados / (count($notas) - 1)) : 0;
+            
+            // Distribución por rangos
+            $distribucionRangos = [
+                '0-20' => 0,
+                '21-40' => 0,
+                '41-60' => 0,
+                '61-80' => 0,
+                '81-100' => 0
+            ];
+            
+            foreach ($notas as $nota) {
+                if ($nota >= 0 && $nota <= 20) {
+                    $distribucionRangos['0-20']++;
+                } elseif ($nota >= 21 && $nota <= 40) {
+                    $distribucionRangos['21-40']++;
+                } elseif ($nota >= 41 && $nota <= 60) {
+                    $distribucionRangos['41-60']++;
+                } elseif ($nota >= 61 && $nota <= 80) {
+                    $distribucionRangos['61-80']++;
+                } elseif ($nota >= 81 && $nota <= 100) {
+                    $distribucionRangos['81-100']++;
+                }
+            }
+            
+           
+            $sqlPorNivel = "
+                SELECT 
+                    nc.nombre as nivel_nombre,
+                    COUNT(DISTINCT ia.id) as total_participantes,
+                    COUNT(DISTINCT ec.id) as total_evaluaciones,
+                    AVG(ec.puntuacion) as promedio,
+                    MIN(ec.puntuacion) as nota_minima,
+                    MAX(ec.puntuacion) as nota_maxima,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'clasificado' THEN ia.id END) as clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'no_clasificado' THEN ia.id END) as no_clasificados
+                FROM inscripciones_areas ia
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ec.puntuacion IS NOT NULL
+                GROUP BY nc.id, nc.nombre
+                ORDER BY nc.orden_display
+            ";
+            
+            $stmtPorNivel = $this->pdo->prepare($sqlPorNivel);
+            $stmtPorNivel->execute([$areaId]);
+            $estadisticasPorNivel = $stmtPorNivel->fetchAll(PDO::FETCH_ASSOC);
+            
+            
+            $sqlClasificacion = "
+                SELECT 
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'clasificado' THEN ia.id END) as total_clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'no_clasificado' THEN ia.id END) as total_no_clasificados,
+                    COUNT(DISTINCT CASE WHEN ia.estado = 'desclasificado' THEN ia.id END) as total_desclasificados,
+                    COUNT(DISTINCT ia.id) as total_participantes
+                FROM inscripciones_areas ia
+                WHERE ia.area_competencia_id = ?
+            ";
+            
+            $stmtClasificacion = $this->pdo->prepare($sqlClasificacion);
+            $stmtClasificacion->execute([$areaId]);
+            $clasificacion = $stmtClasificacion->fetch(PDO::FETCH_ASSOC);
+            
+            $totalClasificados = (int)($clasificacion['total_clasificados'] ?? 0);
+            $totalNoClasificados = (int)($clasificacion['total_no_clasificados'] ?? 0);
+            $totalDesclasificados = (int)($clasificacion['total_desclasificados'] ?? 0);
+            $totalParticipantes = (int)($clasificacion['total_participantes'] ?? 0);
+            $porcentajeAprobacion = $totalParticipantes > 0 ? ($totalClasificados / $totalParticipantes) * 100 : 0;
+            
+           
+            $pdf->AddPage();
+            
+            // Título
+            $pdf->SetFont('helvetica', 'B', 18);
+            $pdf->Cell(0, 10, 'REPORTE ESTADÍSTICAS DETALLADAS', 0, 1, 'C');
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->Cell(0, 8, $nombreOlimpiada . ' ' . $añoOlimpiada, 0, 1, 'C');
+            $pdf->SetFont('helvetica', '', 12);
+            $pdf->Cell(0, 6, 'Área: ' . $areaNombre, 0, 1, 'C');
+            $pdf->Cell(0, 6, 'Fecha de cierre: ' . date('d/m/Y H:i:s', strtotime($fechaCierre)), 0, 1, 'C');
+            $pdf->Ln(5);
+            
+            // ANÁLISIS ESTADÍSTICO COMPLETO
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->Cell(0, 8, 'ANÁLISIS ESTADÍSTICO COMPLETO', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Ln(2);
+            
+            // Estadísticas básicas
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->Cell(0, 6, 'Estadísticas Básicas', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Promedio general de notas:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, number_format($promedioGeneral, 2), 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Desviación estándar:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, number_format($desviacionEstandar, 2), 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Nota máxima:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->Cell(0, 6, number_format($notaMaxima, 2), 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Nota mínima:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(200, 0, 0);
+            $pdf->Cell(0, 6, number_format($notaMinima, 2), 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Total de evaluaciones:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, count($notas), 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Ln(5);
+            
+            // Distribución por rangos
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->Cell(0, 6, 'Distribución por Rangos de Notas', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Ln(2);
+            
+            // Tabla de distribución
+            $pdf->SetFillColor(230, 230, 230);
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(60, 8, 'Rango', 1, 0, 'C', true);
+            $pdf->Cell(60, 8, 'Cantidad', 1, 0, 'C', true);
+            $pdf->Cell(70, 8, 'Porcentaje', 1, 1, 'C', true);
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->SetFillColor(255, 255, 255);
+            
+            $totalEvaluaciones = count($notas);
+            foreach ($distribucionRangos as $rango => $cantidad) {
+                $porcentaje = $totalEvaluaciones > 0 ? ($cantidad / $totalEvaluaciones) * 100 : 0;
+                $pdf->Cell(60, 7, $rango, 1, 0, 'C');
+                $pdf->Cell(60, 7, $cantidad, 1, 0, 'C');
+                $pdf->Cell(70, 7, number_format($porcentaje, 2) . '%', 1, 1, 'C');
+            }
+            
+            $pdf->Ln(5);
+            
+           
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->Cell(0, 6, 'Clasificación y Aprobación', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Ln(2);
+            
+            $pdf->Cell(100, 6, 'Total de participantes:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, $totalParticipantes, 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Cantidad de clasificados:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->Cell(0, 6, $totalClasificados, 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Cantidad de no clasificados:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(255, 140, 0);
+            $pdf->Cell(0, 6, $totalNoClasificados, 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Cantidad de desclasificados:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(200, 0, 0);
+            $pdf->Cell(0, 6, $totalDesclasificados, 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Porcentaje de aprobación:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->Cell(0, 6, number_format($porcentajeAprobacion, 2) . '%', 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Ln(5);
+            
+            // Análisis por nivel educativo
+            if (!empty($estadisticasPorNivel)) {
+                $pdf->AddPage();
+                $pdf->SetFont('helvetica', 'B', 14);
+                $pdf->Cell(0, 8, 'ANÁLISIS POR NIVEL EDUCATIVO', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 10);
+                $pdf->Ln(2);
+                
+                // Tabla de análisis por nivel
+                $pdf->SetFillColor(230, 230, 230);
+                $pdf->SetFont('helvetica', 'B', 9);
+                $pdf->Cell(40, 8, 'Nivel', 1, 0, 'C', true);
+                $pdf->Cell(30, 8, 'Total', 1, 0, 'C', true);
+                $pdf->Cell(30, 8, 'Promedio', 1, 0, 'C', true);
+                $pdf->Cell(25, 8, 'Mínima', 1, 0, 'C', true);
+                $pdf->Cell(25, 8, 'Máxima', 1, 0, 'C', true);
+                $pdf->Cell(20, 8, 'Clasif.', 1, 0, 'C', true);
+                $pdf->Cell(20, 8, 'No Clasif.', 1, 1, 'C', true);
+                $pdf->SetFont('helvetica', '', 9);
+                $pdf->SetFillColor(255, 255, 255);
+                
+                foreach ($estadisticasPorNivel as $nivel) {
+                    $pdf->Cell(40, 7, $nivel['nivel_nombre'], 1, 0, 'L');
+                    $pdf->Cell(30, 7, $nivel['total_participantes'], 1, 0, 'C');
+                    $pdf->Cell(30, 7, number_format($nivel['promedio'] ?? 0, 2), 1, 0, 'C');
+                    $pdf->Cell(25, 7, number_format($nivel['nota_minima'] ?? 0, 2), 1, 0, 'C');
+                    $pdf->Cell(25, 7, number_format($nivel['nota_maxima'] ?? 0, 2), 1, 0, 'C');
+                    $pdf->Cell(20, 7, $nivel['clasificados'] ?? 0, 1, 0, 'C');
+                    $pdf->Cell(20, 7, $nivel['no_clasificados'] ?? 0, 1, 1, 'C');
+                }
+            }
+            
+            
+            $pdf->AddPage();
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->Cell(0, 8, 'ANÁLISIS POR ÁREA ACADÉMICA', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Ln(2);
+            
+            $pdf->Cell(100, 6, 'Área analizada:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, $areaNombre, 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Promedio del área:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, number_format($promedioGeneral, 2), 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $pdf->Cell(100, 6, 'Desviación estándar del área:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, number_format($desviacionEstandar, 2), 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            
+            $pdf->Ln(5);
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->Cell(0, 6, 'Gráfico de Distribución por Rangos', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->Ln(2);
+            
+            $maxCantidad = max($distribucionRangos);
+            $anchoMaximo = 150; // Ancho máximo de la barra en mm
+            
+            foreach ($distribucionRangos as $rango => $cantidad) {
+                $porcentaje = $totalEvaluaciones > 0 ? ($cantidad / $totalEvaluaciones) * 100 : 0;
+                $anchoBarra = $maxCantidad > 0 ? ($cantidad / $maxCantidad) * $anchoMaximo : 0;
+                
+                $pdf->Cell(30, 6, $rango . ':', 0, 0, 'L');
+                $pdf->SetFillColor(70, 130, 180);
+                $pdf->Rect($pdf->GetX(), $pdf->GetY() + 1, $anchoBarra, 5, 'F');
+                $pdf->SetFillColor(255, 255, 255);
+                $pdf->Cell(5, 6, '', 0, 0, 'L');
+                $pdf->Cell(30, 6, $cantidad . ' (' . number_format($porcentaje, 1) . '%)', 0, 1, 'L');
+            }
+            
+            // Fecha y hora de generación
+            $pdf->Ln(10);
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Cell(0, 6, 'Fecha y hora de generación: ' . date('d/m/Y H:i:s'), 0, 1, 'L');
+            
+            // Firma digital
+            $pdf->Ln(15);
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Cell(0, 6, 'Generado por:', 0, 1, 'L');
+            $pdf->Ln(10);
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->Cell(0, 6, $coordinador['name'] ?? $coordinador['email'], 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->Cell(0, 4, 'Coordinador de Área', 0, 1, 'L');
+            $pdf->Ln(5);
+            
+            // Línea para firma
+            $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
+            $pdf->SetFont('helvetica', 'I', 8);
+            $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+            
+           
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            if (!is_dir($uploadsDir)) {
+                mkdir($uploadsDir, 0755, true);
+            }
+            
+            $filename = 'reporte_estadisticas_detalladas_' . $areaId . '_' . date('Y-m-d_H-i-s') . '.pdf';
+            $filepath = $uploadsDir . $filename;
+            
+            $pdf->Output($filepath, 'F');
+            
+            error_log("PDF de estadísticas detalladas generado exitosamente: {$filepath}");
+            
+            return $filename;
+            
+        } catch (\Exception $e) {
+            error_log('Error generando PDF de estadísticas detalladas: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            throw $e;
+        }
+    }
+
+    
+    public function descargarReportePDFCierreFase()
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+            }
+
+           
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            
+           
+            $pattern = $uploadsDir . 'reporte_cierre_fase_' . $areaId . '_*.pdf';
+            $files = glob($pattern);
+            
+            if (empty($files)) {
+                Response::error('No se encontró ningún reporte PDF para esta área', 404);
+                return;
+            }
+            
+           
+            usort($files, function($a, $b) {
+                return filemtime($b) - filemtime($a);
+            });
+            
+            $latestFile = $files[0];
+            
+            if (!file_exists($latestFile)) {
+                Response::error('El archivo PDF no existe', 404);
+                return;
+            }
+            
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . basename($latestFile) . '"');
+            header('Content-Length: ' . filesize($latestFile));
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            
+            readfile($latestFile);
+            exit;
+            
+        } catch (\Exception $e) {
+            error_log('Error descargando PDF de cierre de fase: ' . $e->getMessage());
+            Response::serverError('Error al descargar el reporte PDF');
+        }
+    }
+
+    
+    public function descargarReporteExcelClasificados()
+    {
+        
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+            }
+            
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            
+           
+            $sqlCierre = "
+                SELECT estado, fecha_cierre, cantidad_clasificados
+                FROM cierre_fase_areas
+                WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                LIMIT 1
+            ";
+            $stmtCierre = $this->pdo->prepare($sqlCierre);
+            $stmtCierre->execute([$areaId]);
+            $cierre = $stmtCierre->fetch(PDO::FETCH_ASSOC);
+            
+           
+            $pattern = $uploadsDir . 'reporte_clasificados_' . $areaId . '_*.xlsx';
+            $files = glob($pattern);
+            
+            
+            if (empty($files) && $cierre && $cierre['estado'] === 'cerrada') {
+                
+                while (ob_get_level()) {
+                    ob_end_clean();
+                }
+                
+                try {
+                    
+                    $porcentajeClasificados = 0.6; 
+                    $puntuacionMinima = 51.00;
+                    
+                    
+                    try {
+                        $configModel = new ConfiguracionOlimpiada();
+                        $config = $configModel->getConfiguracion();
+                        
+                        if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                            $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                        }
+                    } catch (\Exception $e) {
+                        error_log('No se pudo obtener configuración de olimpiada: ' . $e->getMessage());
+                        
+                    }
+                    
+                    error_log("Generando Excel automáticamente para área {$areaId} (fase cerrada)");
+                    $this->generarReporteExcelClasificados($areaId, $areaNombre, $puntuacionMinima, $porcentajeClasificados, $cierre['fecha_cierre'], $currentUser);
+                    
+                    
+                    while (ob_get_level()) {
+                        ob_end_clean();
+                    }
+                    
+                    
+                    $files = glob($pattern);
+                    error_log("Archivos encontrados después de generar: " . count($files));
+                    
+                    if (empty($files)) {
+                        throw new \Exception('El archivo Excel se generó pero no se encontró en el directorio de reportes');
+                    }
+                } catch (\Exception $e) {
+                    
+                    while (ob_get_level()) {
+                        ob_end_clean();
+                    }
+                    
+                    error_log('Error generando Excel automáticamente: ' . $e->getMessage());
+                    error_log('Trace: ' . $e->getTraceAsString());
+                    
+                    
+                    if ($cierre && $cierre['estado'] === 'cerrada') {
+                        $errorMsg = 'No se pudo generar el reporte Excel automáticamente. ';
+                        $errorMsg .= 'Error: ' . $e->getMessage();
+                        $errorMsg .= ' Por favor, contacte al administrador o intente nuevamente más tarde.';
+                        Response::error($errorMsg, 500);
+                        return;
+                    }
+                }
+            }
+            
+            if (empty($files)) {
+                
+                while (ob_get_level()) {
+                    ob_end_clean();
+                }
+                if ($cierre && $cierre['estado'] === 'cerrada') {
+                    Response::error('No se encontró ningún reporte Excel para esta área. La generación automática falló. Por favor, contacte al administrador.', 500);
+                } else {
+                    Response::error('No se encontró ningún reporte Excel para esta área. La fase debe estar cerrada para generar el reporte.', 404);
+                }
+                return;
+            }
+            
+            
+            usort($files, function($a, $b) {
+                return filemtime($b) - filemtime($a);
+            });
+            
+            $latestFile = $files[0];
+            
+            if (!file_exists($latestFile)) {
+                Response::error('El archivo Excel no existe', 404);
+                return;
+            }
+            
+           
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+          
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="' . basename($latestFile) . '"');
+            header('Content-Length: ' . filesize($latestFile));
+            header('Content-Transfer-Encoding: binary');
+            header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+            header('Pragma: public');
+            header('Expires: 0');
+            
+            readfile($latestFile);
+            exit;
+            
+        } catch (\Exception $e) {
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            error_log('Error descargando Excel de clasificados: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            Response::serverError('Error al descargar el reporte Excel');
+        }
+    }
+
+    
+    public function descargarReportePDFEstadisticasDetalladas()
+    {
+        try {
+           
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+            }
+
+           
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            
+            // Buscar el PDF más reciente de estadísticas detalladas para este área
+            $pattern = $uploadsDir . 'reporte_estadisticas_detalladas_' . $areaId . '_*.pdf';
+            $files = glob($pattern);
+            
+            if (empty($files)) {
+                Response::error('No se encontró ningún reporte de estadísticas detalladas para esta área. La fase debe estar cerrada para generar el reporte.', 404);
+                return;
+            }
+            
+            
+            usort($files, function($a, $b) {
+                return filemtime($b) - filemtime($a);
+            });
+            
+            $latestFile = $files[0];
+            
+            if (!file_exists($latestFile)) {
+                Response::error('El archivo PDF no existe', 404);
+                return;
+            }
+            
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . basename($latestFile) . '"');
+            header('Content-Length: ' . filesize($latestFile));
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            
+            readfile($latestFile);
+            exit;
+            
+        } catch (\Exception $e) {
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            error_log('Error descargando PDF de estadísticas detalladas: ' . $e->getMessage());
+            Response::serverError('Error al descargar el reporte de estadísticas detalladas');
+        }
+    }
+
+   
+    public function listarReportesPDF()
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+            }
+
+            
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
+            
+            
+            $pattern = $uploadsDir . 'reporte_cierre_fase_' . $areaId . '_*.pdf';
+            $files = glob($pattern);
+            
+            $reportes = [];
+            foreach ($files as $file) {
+                $reportes[] = [
+                    'filename' => basename($file),
+                    'fecha_generacion' => date('Y-m-d H:i:s', filemtime($file)),
+                    'tamaño' => filesize($file),
+                    'url' => '/uploads/reportes/' . basename($file)
+                ];
+            }
+            
+            
+            usort($reportes, function($a, $b) {
+                return strtotime($b['fecha_generacion']) - strtotime($a['fecha_generacion']);
+            });
+            
+            Response::success([
+                'area_id' => $areaId,
+                'area_nombre' => $areaCoordinador['area_nombre'],
+                'reportes' => $reportes,
+                'total' => count($reportes)
+            ], 'Reportes obtenidos exitosamente');
+            
+        } catch (\Exception $e) {
+            error_log('Error listando PDFs de cierre de fase: ' . $e->getMessage());
+            Response::serverError('Error al listar los reportes PDF');
+        }
+    }
+
+    
+    public function generarReportePDFProgreso()
+    {
+       
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        ob_start();
+        
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                ob_end_clean();
+                Response::forbidden('Acceso de coordinador requerido');
+                return;
+            }
+
+           
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                ob_end_clean();
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+            
+            // Obtener datos de progreso
+            $progressData = $this->obtenerDatosProgresoParaReporte($areaId);
+            
+            // Cargar TCPDF
+            require_once __DIR__ . '/../../vendor/tecnickcom/tcpdf/tcpdf.php';
+            
+            // Crear instancia de TCPDF
+            /** @var \TCPDF $pdf */
+            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            
+            // Configuración del documento
+            $pdf->SetCreator('ForwardSoft - Sistema de Olimpiadas');
+            $pdf->SetAuthor('Sistema de Olimpiadas');
+            $pdf->SetTitle('Reporte de Progreso de Evaluación Clasificatoria - ' . $areaNombre);
+            $pdf->SetSubject('Reporte de Progreso');
+            
+            // Eliminar header y footer por defecto
+            $pdf->setPrintHeader(false);
+            $pdf->setPrintFooter(false);
+            
+            // Agregar página
+            $pdf->AddPage();
+            
+            // Título
+            $pdf->SetFont('helvetica', 'B', 20);
+            $pdf->Cell(0, 10, 'REPORTE DE PROGRESO DE EVALUACIÓN', 0, 1, 'C');
+            $pdf->SetFont('helvetica', '', 14);
+            $pdf->Cell(0, 8, 'Fase Clasificatoria - ' . $areaNombre, 0, 1, 'C');
+            $pdf->Cell(0, 6, 'Generado: ' . date('d/m/Y H:i:s'), 0, 1, 'C');
+            $pdf->Ln(5);
+            
+            // Estadísticas Generales
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->Cell(0, 8, 'ESTADÍSTICAS GENERALES', 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 10);
+            
+            $stats = $progressData['estadisticas_generales'];
+            $pdf->Cell(100, 6, 'Total Olimpistas:', 0, 0, 'L');
+            $pdf->Cell(0, 6, $stats['total_olimpistas'], 0, 1, 'L');
+            
+            $pdf->Cell(100, 6, 'Total Evaluados:', 0, 0, 'L');
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->Cell(0, 6, $stats['total_evaluados'], 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->Cell(100, 6, 'Total Pendientes:', 0, 0, 'L');
+            $pdf->SetTextColor(255, 140, 0);
+            $pdf->Cell(0, 6, $stats['total_pendientes'], 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->Cell(100, 6, 'Total Clasificados:', 0, 0, 'L');
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->Cell(0, 6, $stats['total_clasificados'], 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->Cell(100, 6, 'Total No Clasificados:', 0, 0, 'L');
+            $pdf->SetTextColor(255, 140, 0);
+            $pdf->Cell(0, 6, $stats['total_no_clasificados'], 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->Cell(100, 6, 'Total Desclasificados:', 0, 0, 'L');
+            $pdf->SetTextColor(200, 0, 0);
+            $pdf->Cell(0, 6, $stats['total_desclasificados'], 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->Cell(100, 6, 'Promedio General:', 0, 0, 'L');
+            $pdf->Cell(0, 6, number_format($stats['promedio_general'], 2) . '%', 0, 1, 'L');
+            
+            $pdf->Ln(5);
+            
+            // Progreso por Niveles
+            if (!empty($progressData['niveles'])) {
+                $pdf->SetFont('helvetica', 'B', 14);
+                $pdf->Cell(0, 8, 'PROGRESO POR NIVELES', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 9);
+                
+                // Encabezado de tabla
+                $pdf->SetFillColor(200, 200, 200);
+                $pdf->Cell(50, 6, 'Nivel', 1, 0, 'L', true);
+                $pdf->Cell(20, 6, 'Total', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'Evaluados', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'Pendientes', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'Clasif.', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'No Clasif.', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'Desclasif.', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'Promedio', 1, 1, 'C', true);
+                
+                $pdf->SetFillColor(245, 245, 245);
+                foreach ($progressData['niveles'] as $index => $nivel) {
+                    $fill = ($index % 2 == 0);
+                    $pdf->Cell(50, 6, $nivel['nivel_nombre'], 1, 0, 'L', $fill);
+                    $pdf->Cell(20, 6, $nivel['total_olimpistas'], 1, 0, 'C', $fill);
+                    $pdf->Cell(20, 6, $nivel['evaluados'], 1, 0, 'C', $fill);
+                    $pdf->Cell(20, 6, $nivel['pendientes'], 1, 0, 'C', $fill);
+                    $pdf->Cell(20, 6, $nivel['clasificados'], 1, 0, 'C', $fill);
+                    $pdf->Cell(20, 6, $nivel['no_clasificados'], 1, 0, 'C', $fill);
+                    $pdf->Cell(20, 6, $nivel['desclasificados'], 1, 0, 'C', $fill);
+                    $pdf->Cell(20, 6, number_format($nivel['promedio_puntuacion'] ?? 0, 1), 1, 1, 'C', $fill);
+                }
+                
+                $pdf->Ln(5);
+            }
+            
+            // Evaluadores
+            if (!empty($progressData['evaluadores_lista'])) {
+                $pdf->SetFont('helvetica', 'B', 14);
+                $pdf->Cell(0, 8, 'EVALUADORES', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 9);
+                
+                // Encabezado
+                $pdf->SetFillColor(200, 200, 200);
+                $pdf->Cell(60, 6, 'Nombre', 1, 0, 'L', true);
+                $pdf->Cell(60, 6, 'Email', 1, 0, 'L', true);
+                $pdf->Cell(30, 6, 'Completadas', 1, 0, 'C', true);
+                $pdf->Cell(30, 6, 'Pendientes', 1, 0, 'C', true);
+                $pdf->Cell(20, 6, 'Estado', 1, 1, 'C', true);
+                
+                $pdf->SetFillColor(245, 245, 245);
+                foreach ($progressData['evaluadores_lista'] as $index => $eval) {
+                    $fill = ($index % 2 == 0);
+                    $pdf->Cell(60, 6, $eval['nombre'], 1, 0, 'L', $fill);
+                    $pdf->Cell(60, 6, $eval['email'], 1, 0, 'L', $fill);
+                    $pdf->Cell(30, 6, $eval['evaluaciones_completadas'], 1, 0, 'C', $fill);
+                    $pdf->Cell(30, 6, $eval['asignaciones_pendientes'], 1, 0, 'C', $fill);
+                    
+                    $estadoColor = [0, 0, 0];
+                    if ($eval['estado'] === 'con_permisos') {
+                        $estadoColor = [0, 128, 0];
+                    } elseif ($eval['estado'] === 'activo_sin_permisos') {
+                        $estadoColor = [255, 140, 0];
+                    } else {
+                        $estadoColor = [200, 0, 0];
+                    }
+                    $pdf->SetTextColor($estadoColor[0], $estadoColor[1], $estadoColor[2]);
+                    $pdf->Cell(20, 6, ucfirst(str_replace('_', ' ', $eval['estado'])), 1, 1, 'C', $fill);
+                    $pdf->SetTextColor(0, 0, 0);
+                }
+                
+                $pdf->Ln(5);
+            }
+            
+            // Olimpistas sin evaluar (primeros 20)
+            if (!empty($progressData['olimpistas_sin_evaluar'])) {
+                $pdf->SetFont('helvetica', 'B', 14);
+                $pdf->Cell(0, 8, 'OLIMPISTAS SIN EVALUAR (Primeros 20)', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 9);
+                
+                // Encabezado
+                $pdf->SetFillColor(255, 200, 200);
+                $pdf->Cell(60, 6, 'Nombre', 1, 0, 'L', true);
+                $pdf->Cell(40, 6, 'Nivel', 1, 0, 'L', true);
+                $pdf->Cell(30, 6, 'Días Pendiente', 1, 0, 'C', true);
+                $pdf->Cell(40, 6, 'Evaluador Asignado', 1, 0, 'L', true);
+                $pdf->Cell(20, 6, 'Alerta', 1, 1, 'C', true);
+                
+                $pdf->SetFillColor(255, 240, 240);
+                foreach ($progressData['olimpistas_sin_evaluar'] as $index => $olimpista) {
+                    $fill = ($index % 2 == 0);
+                    $pdf->Cell(60, 6, $olimpista['nombre'], 1, 0, 'L', $fill);
+                    $pdf->Cell(40, 6, $olimpista['nivel'], 1, 0, 'L', $fill);
+                    $pdf->Cell(30, 6, $olimpista['dias_pendiente'], 1, 0, 'C', $fill);
+                    $pdf->Cell(40, 6, $olimpista['evaluador_nombre'] ?? 'Sin asignar', 1, 0, 'L', $fill);
+                    
+                    $alertaColor = [0, 0, 0];
+                    if ($olimpista['nivel_alerta'] === 'critico') {
+                        $alertaColor = [200, 0, 0];
+                    } elseif ($olimpista['nivel_alerta'] === 'advertencia') {
+                        $alertaColor = [255, 140, 0];
+                    }
+                    $pdf->SetTextColor($alertaColor[0], $alertaColor[1], $alertaColor[2]);
+                    $pdf->Cell(20, 6, ucfirst($olimpista['nivel_alerta']), 1, 1, 'C', $fill);
+                    $pdf->SetTextColor(0, 0, 0);
+                }
+            }
+            
+            // Métricas de tiempo
+            if (!empty($progressData['metricas_tiempo'])) {
+                $pdf->Ln(5);
+                $pdf->SetFont('helvetica', 'B', 14);
+                $pdf->Cell(0, 8, 'MÉTRICAS DE TIEMPO', 0, 1, 'L');
+                $pdf->SetFont('helvetica', '', 10);
+                
+                $metricas = $progressData['metricas_tiempo'];
+                $pdf->Cell(100, 6, 'Días promedio de evaluación:', 0, 0, 'L');
+                $pdf->Cell(0, 6, number_format($metricas['dias_promedio_evaluacion'], 1) . ' días', 0, 1, 'L');
+                
+                $pdf->Cell(100, 6, 'Tiempo mínimo:', 0, 0, 'L');
+                $pdf->Cell(0, 6, number_format($metricas['tiempo_minimo'], 1) . ' días', 0, 1, 'L');
+                
+                $pdf->Cell(100, 6, 'Tiempo máximo:', 0, 0, 'L');
+                $pdf->Cell(0, 6, number_format($metricas['tiempo_maximo'], 1) . ' días', 0, 1, 'L');
+            }
+            
+            
+            ob_end_clean();
+            
+            $filename = 'reporte_progreso_evaluacion_' . $areaId . '_' . date('Y-m-d_H-i-s') . '.pdf';
+            
+           
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Transfer-Encoding: binary');
+            header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+            header('Pragma: public');
+            header('Expires: 0');
+            
+            
+            $pdfContent = $pdf->Output('', 'S');
+            
+           
+            echo $pdfContent;
+            exit;
+            
+        } catch (\Exception $e) {
+            ob_end_clean();
+            error_log('Error generando PDF de progreso: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            Response::serverError('Error al generar el reporte PDF: ' . $e->getMessage());
+        }
+    }
+
+   
+    public function generarReporteExcelProgreso()
+    {
+       
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        ob_start();
+        
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                ob_end_clean();
+                Response::forbidden('Acceso de coordinador requerido');
+                return;
+            }
+
+            // Obtener el área asignada al coordinador
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                ob_end_clean();
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
+            
+            // Obtener datos de progreso
+            $progressData = $this->obtenerDatosProgresoParaReporte($areaId);
+            
+            // Cargar PhpSpreadsheet
+            require_once __DIR__ . '/../../vendor/autoload.php';
+            
+            $spreadsheet = new Spreadsheet();
+            
+            // Hoja 1: Estadísticas Generales
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Estadísticas Generales');
+            
+            $sheet->setCellValue('A1', 'REPORTE DE PROGRESO DE EVALUACIÓN CLASIFICATORIA');
+            $sheet->mergeCells('A1:D1');
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+            $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            
+            $sheet->setCellValue('A2', 'Área: ' . $areaNombre);
+            $sheet->mergeCells('A2:D2');
+            $sheet->setCellValue('A3', 'Generado: ' . date('d/m/Y H:i:s'));
+            $sheet->mergeCells('A3:D3');
+            
+            $row = 5;
+            $sheet->setCellValue('A' . $row, 'ESTADÍSTICAS GENERALES');
+            $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
+            $row++;
+            
+            $stats = $progressData['estadisticas_generales'];
+            $sheet->setCellValue('A' . $row, 'Total Olimpistas');
+            $sheet->setCellValue('B' . $row, $stats['total_olimpistas']);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, 'Total Evaluados');
+            $sheet->setCellValue('B' . $row, $stats['total_evaluados']);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, 'Total Pendientes');
+            $sheet->setCellValue('B' . $row, $stats['total_pendientes']);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, 'Total Clasificados');
+            $sheet->setCellValue('B' . $row, $stats['total_clasificados']);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, 'Total No Clasificados');
+            $sheet->setCellValue('B' . $row, $stats['total_no_clasificados']);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, 'Total Desclasificados');
+            $sheet->setCellValue('B' . $row, $stats['total_desclasificados']);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, 'Promedio General');
+            $sheet->setCellValue('B' . $row, number_format($stats['promedio_general'], 2) . '%');
+            
+            // Hoja 2: Progreso por Niveles
+            if (!empty($progressData['niveles'])) {
+                $sheet2 = $spreadsheet->createSheet();
+                $sheet2->setTitle('Progreso por Niveles');
+                
+                $headers = ['Nivel', 'Total', 'Evaluados', 'Pendientes', 'Clasificados', 'No Clasificados', 'Desclasificados', 'Promedio'];
+                $col = 'A';
+                foreach ($headers as $header) {
+                    $sheet2->setCellValue($col . '1', $header);
+                    $sheet2->getStyle($col . '1')->getFont()->setBold(true);
+                    $sheet2->getStyle($col . '1')->getFill()
+                        ->setFillType(Fill::FILL_SOLID)
+                        ->getStartColor()->setRGB('CCCCCC');
+                    $col++;
+                }
+                
+                $row = 2;
+                foreach ($progressData['niveles'] as $nivel) {
+                    $sheet2->setCellValue('A' . $row, $nivel['nivel_nombre']);
+                    $sheet2->setCellValue('B' . $row, $nivel['total_olimpistas']);
+                    $sheet2->setCellValue('C' . $row, $nivel['evaluados']);
+                    $sheet2->setCellValue('D' . $row, $nivel['pendientes']);
+                    $sheet2->setCellValue('E' . $row, $nivel['clasificados']);
+                    $sheet2->setCellValue('F' . $row, $nivel['no_clasificados']);
+                    $sheet2->setCellValue('G' . $row, $nivel['desclasificados']);
+                    $sheet2->setCellValue('H' . $row, number_format($nivel['promedio_puntuacion'] ?? 0, 2));
+                    $row++;
+                }
+                
+                // Auto-ajustar columnas
+                foreach (range('A', 'H') as $col) {
+                    $sheet2->getColumnDimension($col)->setAutoSize(true);
+                }
+            }
+            
+            // Hoja 3: Evaluadores
+            if (!empty($progressData['evaluadores_lista'])) {
+                $sheet3 = $spreadsheet->createSheet();
+                $sheet3->setTitle('Evaluadores');
+                
+                $headers = ['Nombre', 'Email', 'Evaluaciones Completadas', 'Asignaciones Pendientes', 'Estado', 'Último Acceso'];
+                $col = 'A';
+                foreach ($headers as $header) {
+                    $sheet3->setCellValue($col . '1', $header);
+                    $sheet3->getStyle($col . '1')->getFont()->setBold(true);
+                    $sheet3->getStyle($col . '1')->getFill()
+                        ->setFillType(Fill::FILL_SOLID)
+                        ->getStartColor()->setRGB('CCCCCC');
+                    $col++;
+                }
+                
+                $row = 2;
+                foreach ($progressData['evaluadores_lista'] as $eval) {
+                    $sheet3->setCellValue('A' . $row, $eval['nombre']);
+                    $sheet3->setCellValue('B' . $row, $eval['email']);
+                    $sheet3->setCellValue('C' . $row, $eval['evaluaciones_completadas']);
+                    $sheet3->setCellValue('D' . $row, $eval['asignaciones_pendientes']);
+                    $sheet3->setCellValue('E' . $row, ucfirst(str_replace('_', ' ', $eval['estado'])));
+                    $sheet3->setCellValue('F' . $row, $eval['last_login'] ? date('d/m/Y H:i', strtotime($eval['last_login'])) : 'Nunca');
+                    $row++;
+                }
+                
+                foreach (range('A', 'F') as $col) {
+                    $sheet3->getColumnDimension($col)->setAutoSize(true);
+                }
+            }
+            
+            // Hoja 4: Olimpistas sin evaluar
+            if (!empty($progressData['olimpistas_sin_evaluar'])) {
+                $sheet4 = $spreadsheet->createSheet();
+                $sheet4->setTitle('Pendientes de Evaluar');
+                
+                $headers = ['Nombre', 'Nivel', 'Días Pendiente', 'Evaluador Asignado', 'Nivel de Alerta'];
+                $col = 'A';
+                foreach ($headers as $header) {
+                    $sheet4->setCellValue($col . '1', $header);
+                    $sheet4->getStyle($col . '1')->getFont()->setBold(true);
+                    $sheet4->getStyle($col . '1')->getFill()
+                        ->setFillType(Fill::FILL_SOLID)
+                        ->getStartColor()->setRGB('FFCCCC');
+                    $col++;
+                }
+                
+                $row = 2;
+                foreach ($progressData['olimpistas_sin_evaluar'] as $olimpista) {
+                    $sheet4->setCellValue('A' . $row, $olimpista['nombre']);
+                    $sheet4->setCellValue('B' . $row, $olimpista['nivel']);
+                    $sheet4->setCellValue('C' . $row, $olimpista['dias_pendiente']);
+                    $sheet4->setCellValue('D' . $row, $olimpista['evaluador_nombre'] ?? 'Sin asignar');
+                    $sheet4->setCellValue('E' . $row, ucfirst($olimpista['nivel_alerta']));
+                    $row++;
+                }
+                
+                foreach (range('A', 'E') as $col) {
+                    $sheet4->getColumnDimension($col)->setAutoSize(true);
+                }
+            }
+            
+            // Limpiar buffer completamente
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            $filename = 'reporte_progreso_evaluacion_' . $areaId . '_' . date('Y-m-d_H-i-s') . '.xlsx';
+            
+            // Generar Excel en un archivo temporal con extensión correcta
+            $tempDir = sys_get_temp_dir();
+            $tempFile = $tempDir . DIRECTORY_SEPARATOR . 'excel_' . uniqid() . '.xlsx';
+            
+            $writer = new Xlsx($spreadsheet);
+            $writer->save($tempFile);
+            
+            
+            if (!file_exists($tempFile) || filesize($tempFile) == 0) {
+                @unlink($tempFile);
+                throw new \Exception('Error al generar el archivo Excel');
+            }
+            
+           
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Transfer-Encoding: binary');
+            header('Content-Length: ' . filesize($tempFile));
+            header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+            header('Pragma: public');
+            header('Expires: 0');
+            
+           
+            readfile($tempFile);
+            
+            
+            @unlink($tempFile);
+            exit;
+            
+        } catch (\Exception $e) {
+            ob_end_clean();
+            error_log('Error generando Excel de progreso: ' . $e->getMessage());
+            error_log('Trace: ' . $e->getTraceAsString());
+            Response::serverError('Error al generar el reporte Excel: ' . $e->getMessage());
+        }
+    }
+
+   
+    private function obtenerDatosProgresoParaReporte($areaId)
+    {
+        
+        
+        $sqlNiveles = "
+            SELECT 
+                nc.nombre as nivel_nombre,
+                COUNT(DISTINCT ia.olimpista_id) as total_olimpistas,
+                COUNT(DISTINCT CASE WHEN ec.id IS NOT NULL AND ia.estado NOT IN ('desclasificado', 'no_clasificado') THEN ia.olimpista_id END) as evaluados,
+                COUNT(CASE WHEN ia.estado = 'clasificado' THEN ia.id END) as clasificados,
+                COUNT(CASE 
+                    WHEN ia.estado = 'no_clasificado' OR EXISTS (
+                        SELECT 1 FROM no_clasificados ncl 
+                        WHERE ncl.inscripcion_area_id = ia.id 
+                        AND ncl.fase = 'clasificacion'
+                    ) THEN ia.id 
+                END) as no_clasificados,
+                COUNT(CASE 
+                    WHEN ia.estado = 'desclasificado' OR EXISTS (
+                        SELECT 1 FROM desclasificaciones d 
+                        WHERE d.inscripcion_area_id = ia.id 
+                        AND d.estado = 'activa'
+                    ) THEN ia.id 
+                END) as desclasificados,
+                COUNT(CASE 
+                    WHEN ia.estado NOT IN ('desclasificado', 'no_clasificado', 'clasificado') 
+                    AND ec.id IS NULL 
+                    AND NOT EXISTS (
+                        SELECT 1 FROM desclasificaciones d 
+                        WHERE d.inscripcion_area_id = ia.id 
+                        AND d.estado = 'activa'
+                    ) THEN ia.id 
+                END) as pendientes,
+                AVG(CASE WHEN ec.id IS NOT NULL AND ia.estado NOT IN ('desclasificado', 'no_clasificado') THEN ec.puntuacion END) as promedio_puntuacion
+            FROM inscripciones_areas ia
+            JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+            LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+            WHERE ia.area_competencia_id = ?
+            GROUP BY nc.id, nc.nombre, nc.orden_display
+            ORDER BY nc.orden_display
+        ";
+        
+        $stmtNiveles = $this->pdo->prepare($sqlNiveles);
+        $stmtNiveles->execute([$areaId]);
+        $niveles = $stmtNiveles->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($niveles as &$nivel) {
+            $nivel['total_olimpistas'] = (int)($nivel['total_olimpistas'] ?? 0);
+            $nivel['evaluados'] = (int)($nivel['evaluados'] ?? 0);
+            $nivel['clasificados'] = (int)($nivel['clasificados'] ?? 0);
+            $nivel['no_clasificados'] = (int)($nivel['no_clasificados'] ?? 0);
+            $nivel['desclasificados'] = (int)($nivel['desclasificados'] ?? 0);
+            $nivel['pendientes'] = (int)($nivel['pendientes'] ?? 0);
+            $nivel['promedio_puntuacion'] = (float)($nivel['promedio_puntuacion'] ?? 0);
+        }
+        unset($nivel);
+        
+        // Evaluadores
+        $sqlEvaluadores = "
+            SELECT 
+                u.id,
+                u.name as nombre,
+                u.email,
+                u.last_login,
+                COUNT(DISTINCT ec.id) as evaluaciones_completadas,
+                COUNT(DISTINCT ae.id) as asignaciones_pendientes,
+                CASE 
+                    WHEN pe.id IS NOT NULL 
+                    AND pe.status = 'activo'
+                    AND NOW() >= (pe.start_date + COALESCE(pe.start_time, '00:00:00')::time)
+                    AND NOW() <= (pe.start_date + (pe.duration_days || ' days')::interval)
+                    THEN 'con_permisos'
+                    WHEN u.last_login > NOW() - INTERVAL '7 days' THEN 'activo_sin_permisos'
+                    ELSE 'inactivo'
+                END as estado
+            FROM evaluadores_areas ea
+            JOIN users u ON u.id = ea.user_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (evaluador_id) 
+                    id, evaluador_id, start_date, start_time, duration_days, status
+                FROM permisos_evaluadores
+                WHERE status = 'activo'
+                ORDER BY evaluador_id, start_date DESC, start_time DESC
+            ) pe ON pe.evaluador_id = u.id
+            LEFT JOIN evaluaciones_clasificacion ec ON ec.evaluador_id = u.id
+            LEFT JOIN asignaciones_evaluacion ae ON ae.evaluador_id = u.id
+            WHERE ea.is_active = true AND u.is_active = true AND ea.area_competencia_id = ?
+            GROUP BY u.id, u.name, u.email, u.last_login, pe.id, pe.start_date, pe.start_time, pe.duration_days, pe.status
+            ORDER BY u.last_login DESC NULLS LAST
+        ";
+        
+        $stmtEvaluadores = $this->pdo->prepare($sqlEvaluadores);
+        $stmtEvaluadores->execute([$areaId]);
+        $evaluadores = $stmtEvaluadores->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Olimpistas sin evaluar
+        $sqlSinEvaluar = "
+            SELECT 
+                ia.id,
+                COALESCE(o.nombre_completo, CONCAT(o.nombre, ' ', COALESCE(o.apellido, ''))) as nombre,
+                ac.nombre as area,
+                nc.nombre as nivel,
+                EXTRACT(DAYS FROM NOW() - ia.created_at)::int as dias_pendiente,
+                CASE 
+                    WHEN EXTRACT(DAYS FROM NOW() - ia.created_at) > 5 THEN 'critico'
+                    WHEN EXTRACT(DAYS FROM NOW() - ia.created_at) > 3 THEN 'advertencia'
+                    ELSE 'normal'
+                END as nivel_alerta,
+                ae.evaluador_id,
+                u.name as evaluador_nombre
+            FROM inscripciones_areas ia
+            JOIN olimpistas o ON o.id = ia.olimpista_id
+            JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+            JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+            LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+            LEFT JOIN asignaciones_evaluacion ae ON ae.inscripcion_area_id = ia.id
+            LEFT JOIN users u ON u.id = ae.evaluador_id
+            WHERE (ia.estado IS NULL OR ia.estado NOT IN ('desclasificado', 'no_clasificado'))
+            AND ec.id IS NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM desclasificaciones d 
+                WHERE d.inscripcion_area_id = ia.id 
+                AND d.estado = 'activa'
+            )
+            AND ia.area_competencia_id = ?
+            ORDER BY ia.created_at ASC
+            LIMIT 100
+        ";
+        
+        $stmtSinEvaluar = $this->pdo->prepare($sqlSinEvaluar);
+        $stmtSinEvaluar->execute([$areaId]);
+        $olimpistasSinEvaluar = $stmtSinEvaluar->fetchAll(PDO::FETCH_ASSOC);
+        
+
+        $sqlTiempo = "
+            SELECT 
+                AVG(EXTRACT(EPOCH FROM (ec.fecha_evaluacion - ia.created_at))/86400) as dias_promedio_evaluacion,
+                MIN(EXTRACT(EPOCH FROM (ec.fecha_evaluacion - ia.created_at))/86400) as tiempo_minimo,
+                MAX(EXTRACT(EPOCH FROM (ec.fecha_evaluacion - ia.created_at))/86400) as tiempo_maximo
+            FROM inscripciones_areas ia
+            JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ia.id
+            WHERE ia.area_competencia_id = ?
+            AND ec.fecha_evaluacion IS NOT NULL
+        ";
+        
+        $stmtTiempo = $this->pdo->prepare($sqlTiempo);
+        $stmtTiempo->execute([$areaId]);
+        $tiempoStats = $stmtTiempo->fetch(PDO::FETCH_ASSOC);
+        
+       
+        $totalOlimpistas = (int)array_sum(array_map(function($n) { return (int)($n['total_olimpistas'] ?? 0); }, $niveles));
+        $totalEvaluados = (int)array_sum(array_map(function($n) { return (int)($n['evaluados'] ?? 0); }, $niveles));
+        $totalClasificados = (int)array_sum(array_map(function($n) { return (int)($n['clasificados'] ?? 0); }, $niveles));
+        $totalNoClasificados = (int)array_sum(array_map(function($n) { return (int)($n['no_clasificados'] ?? 0); }, $niveles));
+        $totalDesclasificados = (int)array_sum(array_map(function($n) { return (int)($n['desclasificados'] ?? 0); }, $niveles));
+        $totalPendientes = (int)array_sum(array_map(function($n) { return (int)($n['pendientes'] ?? 0); }, $niveles));
+        $promedioGeneral = $totalOlimpistas > 0 ? round(($totalEvaluados * 100) / $totalOlimpistas, 2) : 0;
+        
+        return [
+            'niveles' => $niveles,
+            'evaluadores_lista' => $evaluadores,
+            'olimpistas_sin_evaluar' => $olimpistasSinEvaluar,
+            'metricas_tiempo' => [
+                'dias_promedio_evaluacion' => round($tiempoStats['dias_promedio_evaluacion'] ?? 0, 1),
+                'tiempo_minimo' => round($tiempoStats['tiempo_minimo'] ?? 0, 1),
+                'tiempo_maximo' => round($tiempoStats['tiempo_maximo'] ?? 0, 1)
+            ],
+            'estadisticas_generales' => [
+                'total_olimpistas' => $totalOlimpistas,
+                'total_evaluados' => $totalEvaluados,
+                'total_clasificados' => $totalClasificados,
+                'total_no_clasificados' => $totalNoClasificados,
+                'total_desclasificados' => $totalDesclasificados,
+                'total_pendientes' => $totalPendientes,
+                'promedio_general' => $promedioGeneral
+            ]
+        ];
+    }
 
 } 

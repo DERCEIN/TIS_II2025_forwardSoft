@@ -19,8 +19,10 @@
         "guzzlehttp/guzzle": "^7.10",
         "monolog/monolog": "^3.9",
         "phpmailer/phpmailer": "^6.10",
+        "phpoffice/phpspreadsheet": "^5.2",
         "respect/validation": "^2.4",
         "symfony/cache": "^7.3",
+        "tecnickcom/tcpdf": "6.6",
         "vlucas/phpdotenv": "^5.6"
     },
     "require-dev": {

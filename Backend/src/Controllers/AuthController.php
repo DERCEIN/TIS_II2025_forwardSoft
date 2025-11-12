@@ -144,12 +144,12 @@ class AuthController
             Response::unauthorized('Token inválido');
         }
 
-        error_log("🔍 Debug ME - Usuario del JWT: " . json_encode($user));
+        error_log("Usuario del JWT: " . json_encode($user));
 
        
         try {
             $dbUser = $this->userModel->findById($user['id']);
-            error_log("🔍 Debug ME - Usuario de BD: " . json_encode($dbUser));
+            error_log("Usuario de BD: " . json_encode($dbUser));
             
             if ($dbUser) {
                 
@@ -204,7 +204,7 @@ class AuthController
             $user['areas'] = [];
         }
 
-        error_log("🔍 Debug ME - Usuario final a devolver: " . json_encode($user));
+        error_log("Debug ME - Usuario final a devolver: " . json_encode($user));
         Response::success($user, 'Información del usuario');
     }
 

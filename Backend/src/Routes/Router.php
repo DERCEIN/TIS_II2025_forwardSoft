@@ -54,12 +54,12 @@ class Router
         $this->addRoute('POST', '/api/admin/users', [AdminController::class, 'createUser'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/users/{id}/resend-credentials', [AdminController::class, 'reenviarCredenciales'], ['auth', 'admin']);
         
-        // Rutas de cierre de fase general
+        // Rutas de cierre de fase (administrador)
         $this->addRoute('GET', '/api/admin/cierre-fase/dashboard', [AdminController::class, 'getDashboardCierreFase'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/cierre-fase/extender-fecha', [AdminController::class, 'extenderFechaCierre'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/cierre-fase/cerrar-general', [AdminController::class, 'cerrarFaseGeneral'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/cierre-fase/revertir', [AdminController::class, 'revertirCierreFase'], ['auth', 'admin']);
-        $this->addRoute('POST', '/api/admin/cierre-fase/verificar-automatico', [AdminController::class, 'verificarCierreAutomatico'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/admin/cierre-fase/verificar-automatico', [AdminController::class, 'verificarCierreAutomatico'], ['auth', 'admin']);
         $this->addRoute('GET', '/api/admin/cierre-fase/reporte-consolidado', [AdminController::class, 'generarReporteConsolidado'], ['auth', 'admin']);
         
         // Rutas de configuración general
@@ -98,11 +98,20 @@ class Router
         $this->addRoute('POST', '/api/coordinador/rondas', [CoordinadorController::class, 'crearRonda'], ['auth', 'coordinador']);
         $this->addRoute('POST', '/api/coordinador/cerrar-calificacion', [CoordinadorController::class, 'cerrarCalificacion'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/participantes-evaluaciones', [CoordinadorController::class, 'getParticipantesConEvaluaciones'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase/dashboard', [CoordinadorController::class, 'getDashboardCierreFaseArea'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/cierre-fase/cerrar', [CoordinadorController::class, 'cerrarFaseArea'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-pdf', [CoordinadorController::class, 'descargarReportePDFCierreFase'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-excel', [CoordinadorController::class, 'descargarReporteExcelClasificados'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-estadisticas', [CoordinadorController::class, 'descargarReportePDFEstadisticasDetalladas'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase/listar-pdfs', [CoordinadorController::class, 'listarReportesPDF'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/listas-clasificacion', [CoordinadorController::class, 'getListasClasificacion'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/log-cambios-notas', [CoordinadorController::class, 'getLogCambiosNotas'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/evaluadores-por-area', [CoordinadorController::class, 'getEvaluadoresPorArea'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/progreso-evaluacion', [CoordinadorController::class, 'getProgresoEvaluacion'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/progreso-evaluacion-final', [CoordinadorController::class, 'getProgresoEvaluacionFinal'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/alertas-criticas', [CoordinadorController::class, 'getAlertasCriticas'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/progreso-evaluacion/reporte-pdf', [CoordinadorController::class, 'generarReportePDFProgreso'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/progreso-evaluacion/reporte-excel', [CoordinadorController::class, 'generarReporteExcelProgreso'], ['auth', 'coordinador']);
 
         //Rutas de coordinador - tiempos de evaluadores
         $this->addRoute('GET', path: '/api/coordinador/tiempos-evaluadores-por-area' ,handler: [CoordinadorController::class,'getTiemposEvaluadoresPorArea'], middleware: ['auth','coordinador']);
@@ -158,15 +167,15 @@ class Router
             
             // Validar que el nombre del archivo sea seguro (solo números, guiones y extensiones de imagen)
             if (!preg_match('/^[0-9]+-[0-9]+\.(png|jpg|jpeg|gif|webp)$/i', $filename)) {
-                error_log(" Avatar - Nombre de archivo no válido: " . $filename);
+                error_log("❌ Avatar - Nombre de archivo no válido: " . $filename);
                 Response::notFound('Archivo no válido');
             }
             
             $filePath = __DIR__ . '/../../public/uploads/avatars/' . $filename;
-            error_log(" Avatar - Buscando archivo en: " . $filePath);
+            error_log("🔍 Avatar - Buscando archivo en: " . $filePath);
             
             if (file_exists($filePath) && is_file($filePath)) {
-                error_log("Avatar - Archivo encontrado: " . $filePath);
+                error_log("✅ Avatar - Archivo encontrado: " . $filePath);
                 
                 
                 $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
@@ -191,7 +200,7 @@ class Router
                 readfile($filePath);
                 exit();
             } else {
-                error_log(" Avatar - Archivo no encontrado: " . $filePath);
+                error_log("❌ Avatar - Archivo no encontrado: " . $filePath);
                 Response::notFound('Avatar no encontrado');
             }
         });
@@ -244,9 +253,18 @@ class Router
         }
         
         error_log("Router - Final Path: " . $path);
+        
+        // Log especial para la ruta de cerrar fase
+        if ($path === '/api/coordinador/cierre-fase/cerrar' && $method === 'POST') {
+            error_log("🎯🎯🎯 RUTA DE CERRAR FASE DETECTADA 🎯🎯🎯");
+        }
 
         foreach ($this->routes as $route) {
             if ($this->matchRoute($route, $method, $path)) {
+                error_log("✅ Router - Ruta encontrada: {$method} {$route['path']}");
+                if ($path === '/api/coordinador/cierre-fase/cerrar') {
+                    error_log("🎯🎯🎯 EJECUTANDO RUTA DE CERRAR FASE 🎯🎯🎯");
+                }
                 $this->executeRoute($route, $path);
                 return;
             }
@@ -290,9 +308,15 @@ class Router
             $controller = new $handler[0]();
             $method = $handler[1];
             
+            if ($method === 'cerrarFaseArea') {
+                error_log("🎯🎯🎯 EJECUTANDO CONTROLADOR: {$handler[0]}::{$method} 🎯🎯🎯");
+            }
+            
             if (method_exists($controller, $method)) {
+                error_log("✅ Router - Llamando método: {$handler[0]}::{$method}");
                 call_user_func_array([$controller, $method], $params);
             } else {
+                error_log("❌ Router - Método no encontrado: {$handler[0]}::{$method}");
                 Response::serverError('Método no encontrado en el controlador');
             }
         } else {
@@ -320,13 +344,13 @@ class Router
         $middlewares = [
             'auth' => function() {
                 $user = \ForwardSoft\Utils\JWTManager::getCurrentUser();
-                error_log(" Debug Auth Middleware - User: " . json_encode($user));
+                error_log("🔍 Debug Auth Middleware - User: " . json_encode($user));
                 if (!$user) {
-                    error_log(" Debug Auth Middleware - No user found, token may be invalid or missing");
+                    error_log("❌ Debug Auth Middleware - No user found, token may be invalid or missing");
                     \ForwardSoft\Utils\Response::unauthorized('Token de autenticación requerido');
                     return false;
                 }
-                error_log(" Debug Auth Middleware - User authenticated successfully");
+                error_log("✅ Debug Auth Middleware - User authenticated successfully");
                 return true;
             },
             'admin' => function() {

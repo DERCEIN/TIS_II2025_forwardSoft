@@ -6,6 +6,11 @@ class Response
 {
     public static function json($data, $statusCode = 200, $headers = [])
     {
+       
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        
         http_response_code($statusCode);
         
         foreach ($headers as $header => $value) {

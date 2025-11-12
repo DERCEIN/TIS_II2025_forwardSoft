@@ -6,6 +6,7 @@ use ForwardSoft\Utils\Response;
 use ForwardSoft\Utils\JWTManager;
 use ForwardSoft\Utils\AuditService;
 use ForwardSoft\Utils\LogCambiosNotas;
+use ForwardSoft\Utils\Mailer;
 use ForwardSoft\Models\EvaluacionClasificacion;
 use ForwardSoft\Models\EvaluacionFinal;
 use ForwardSoft\Models\InscripcionArea;
@@ -69,6 +70,25 @@ class EvaluacionController
             if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'])) {
                 Response::forbidden('No tienes permisos para evaluar esta inscripción');
             }
+            
+            
+            $inscripcion = $this->inscripcionModel->findById($input['inscripcion_area_id']);
+            if ($inscripcion) {
+                $areaId = $inscripcion['area_competencia_id'];
+                $sqlCierre = "
+                    SELECT estado FROM cierre_fase_areas
+                    WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                    LIMIT 1
+                ";
+                $stmtCierre = $this->pdo->prepare($sqlCierre);
+                $stmtCierre->execute([$areaId]);
+                $cierre = $stmtCierre->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($cierre && $cierre['estado'] === 'cerrada') {
+                    Response::validationError(['general' => 'No se pueden editar notas después del cierre de calificación. La fase ya está cerrada.']);
+                    return;
+                }
+            }
 
             
             $existingEval = $this->evalClasificacionModel->findByInscripcionAndEvaluador(
@@ -123,7 +143,6 @@ class EvaluacionController
            
             
             $puntuacion = (float)$input['puntuacion'];
-            $estadoInscripcion = 'evaluado';
             
             
             $configModel = new ConfiguracionOlimpiada();
@@ -133,6 +152,7 @@ class EvaluacionController
                 $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
             }
             
+           
            
             if ($puntuacion < $puntuacionMinima) {
                 $noClasificadoModel = new NoClasificado();
@@ -148,10 +168,12 @@ class EvaluacionController
                     $estadoInscripcion = 'no_clasificado';
                 } catch (\Exception $e) {
                     error_log("Error al registrar no clasificado: " . $e->getMessage());
-                    
                     $estadoInscripcion = 'no_clasificado';
                 }
             } else {
+                
+                $estadoInscripcion = 'clasificado';
+                
                 
                 $noClasificadoModel = new NoClasificado();
                 if ($noClasificadoModel->estaNoClasificado((int)$input['inscripcion_area_id'], 'clasificacion')) {
@@ -169,13 +191,11 @@ class EvaluacionController
             try {
                 $this->inscripcionModel->update($input['inscripcion_area_id'], $updateData);
             } catch (\Exception $e) {
-                
                 error_log("Error actualizando inscripción (intentando sin updated_at): " . $e->getMessage());
                 $this->inscripcionModel->update($input['inscripcion_area_id'], ['estado' => $estadoInscripcion]);
             }
 
             $evaluacion = $this->evalClasificacionModel->findById($evaluacionId);
-            
             
             $datosNuevos = [
                 'puntuacion' => (float)$input['puntuacion'],
@@ -247,6 +267,21 @@ class EvaluacionController
                 }
             } else {
                 error_log("No es una modificación, no se registra en log de cambios");
+            }
+            
+            // Verificar si el evaluador ha completado todas sus evaluaciones y notificar al coordinador
+            try {
+                if ($inscripcion && isset($inscripcion['area_competencia_id'])) {
+                    $this->verificarYNotificarEvaluadorCompleto(
+                        $currentUser['id'], 
+                        $inscripcion['area_competencia_id'], 
+                        $currentUser['name'] ?? $currentUser['email'], 
+                        $currentUser['email']
+                    );
+                }
+            } catch (\Exception $e) {
+                error_log("Error verificando si evaluador completó todas sus evaluaciones: " . $e->getMessage());
+                // No fallar el registro si la notificación falla
             }
             
             Response::success($evaluacion, 'Evaluación registrada exitosamente');
@@ -363,24 +398,86 @@ class EvaluacionController
         }
 
         try {
-            $clasificados = $this->evalClasificacionModel->calcularClasificados($areaId, $nivelId);
             
+            //$porcentajeClasificados = 0.6; 
+            $puntuacionMinima = 51.00; 
+            
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración de olimpiada: ' . $e->getMessage());
+            }
+            
+          
+            $sql = "
+                SELECT 
+                    ia.id as inscripcion_area_id,
+                    o.nombre_completo as olimpista_nombre,
+                    o.documento_identidad as olimpista_documento,
+                    AVG(ec.puntuacion) as puntuacion_promedio,
+                    COUNT(ec.id) as total_evaluaciones
+                FROM inscripciones_areas ia
+                LEFT JOIN olimpistas o ON ia.olimpista_id = o.id
+                LEFT JOIN evaluaciones_clasificacion ec ON ia.id = ec.inscripcion_area_id
+                WHERE ia.area_competencia_id = ? 
+                AND ia.estado NOT IN ('desclasificado', 'no_clasificado')";
+            
+            $params = [$areaId];
+            
+            if ($nivelId) {
+                $sql .= " AND ia.nivel_competencia_id = ?";
+                $params[] = $nivelId;
+            }
+            
+            $sql .= " GROUP BY ia.id, o.nombre_completo, o.documento_identidad
+                      HAVING COUNT(ec.id) > 0 AND AVG(ec.puntuacion) >= ?
+                      ORDER BY puntuacion_promedio DESC";
+            
+            $params[] = $puntuacionMinima;
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $participantesElegibles = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            
+            $clasificados = $participantesElegibles;
+            $totalElegibles = count($participantesElegibles);
             
             
             foreach ($clasificados as $clasificado) {
                 $inscripcionId = $clasificado['inscripcion_area_id'];
                 $inscripcion = $this->inscripcionModel->getById($inscripcionId);
                 
-                
                 if ($inscripcion && !in_array($inscripcion['estado'], ['desclasificado', 'no_clasificado'])) {
-                    $this->inscripcionModel->update($inscripcionId, [
-                        'estado' => 'clasificado',
-                        'updated_at' => date('Y-m-d H:i:s')
-                    ]);
+                    try {
+                        $this->inscripcionModel->update($inscripcionId, [
+                    'estado' => 'clasificado',
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                    } catch (\Exception $e) {
+                       
+                        error_log("Error actualizando inscripción (intentando sin updated_at): " . $e->getMessage());
+                        $this->inscripcionModel->update($inscripcionId, [
+                            'estado' => 'clasificado'
+                        ]);
+                    }
                 }
             }
             
-            Response::success($clasificados, 'Clasificados calculados exitosamente');
+            Response::success([
+                'clasificados' => $clasificados,
+                'total_elegibles' => $totalElegibles,
+                'total_clasificados' => count($clasificados),
+                'criterios' => [
+                    'puntuacion_minima' => $puntuacionMinima,
+                    'nota' => 'Todos los participantes con puntuación >= ' . $puntuacionMinima . ' puntos son clasificados'
+                ]
+            ], 'Clasificados calculados exitosamente');
             
         } catch (\Exception $e) {
             error_log("Error al calcular clasificados: " . $e->getMessage());
@@ -494,10 +591,10 @@ class EvaluacionController
         $endPermiso = new \DateTime($permiso['end_datetime']);
         
         if ($now < $startPermiso || $now > $endPermiso) {
-            return false; // Fuera del periodo asignado por el coordinador
+            return false;
         }
 
-        // 3. Verificar que está dentro del periodo configurado para el área
+        
         $configAreaModel = new ConfiguracionAreaEvaluacion();
         $configArea = $configAreaModel->getByAreaId($inscripcion['area_competencia_id']);
         
@@ -519,6 +616,124 @@ class EvaluacionController
         return true; 
     }
 
+   
+    private function verificarYActualizarClasificacion($inscripcionAreaId)
+    {
+        try {
+           
+            $inscripcion = $this->inscripcionModel->findById($inscripcionAreaId);
+            if (!$inscripcion || in_array($inscripcion['estado'], ['desclasificado', 'no_clasificado'])) {
+                return;
+            }
+
+            $areaId = $inscripcion['area_competencia_id'];
+            $nivelId = $inscripcion['nivel_competencia_id'];
+
+            
+            $puntuacionMinima = 51.00;
+            
+            try {
+                $configModel = new ConfiguracionOlimpiada();
+                $config = $configModel->getConfiguracion();
+                
+                if ($config && isset($config['clasificacion_puntuacion_minima'])) {
+                    $puntuacionMinima = (float)$config['clasificacion_puntuacion_minima'];
+                }
+            } catch (\Exception $e) {
+                error_log('No se pudo obtener configuración: ' . $e->getMessage());
+            }
+
+            
+            $sqlAsignaciones = "
+                SELECT COUNT(*) as total_asignaciones
+                FROM asignaciones_evaluacion
+                WHERE inscripcion_area_id = ? AND fase = 'clasificacion'
+            ";
+            $stmtAsignaciones = $this->pdo->prepare($sqlAsignaciones);
+            $stmtAsignaciones->execute([$inscripcionAreaId]);
+            $asignaciones = $stmtAsignaciones->fetch(\PDO::FETCH_ASSOC);
+            $totalAsignaciones = (int)$asignaciones['total_asignaciones'];
+
+            if ($totalAsignaciones == 0) {
+                return; // No hay asignaciones aún
+            }
+
+            
+            $sqlEvaluaciones = "
+                SELECT COUNT(*) as total_evaluaciones, AVG(puntuacion) as promedio
+                FROM evaluaciones_clasificacion
+                WHERE inscripcion_area_id = ?
+            ";
+            $stmtEvaluaciones = $this->pdo->prepare($sqlEvaluaciones);
+            $stmtEvaluaciones->execute([$inscripcionAreaId]);
+            $evaluaciones = $stmtEvaluaciones->fetch(\PDO::FETCH_ASSOC);
+            $totalEvaluaciones = (int)$evaluaciones['total_evaluaciones'];
+            $promedio = (float)$evaluaciones['promedio'];
+
+            
+            if ($totalEvaluaciones >= $totalAsignaciones && $promedio >= $puntuacionMinima) {
+                try {
+                    $this->inscripcionModel->update($inscripcionAreaId, [
+                        'estado' => 'clasificado',
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ]);
+                    error_log("verificarYActualizarClasificacion - Participante {$inscripcionAreaId} clasificado (promedio: {$promedio}, mínimo: {$puntuacionMinima})");
+                    
+                    
+                    $noClasificadoModel = new NoClasificado();
+                    if ($noClasificadoModel->estaNoClasificado($inscripcionAreaId, 'clasificacion')) {
+                        try {
+                            $noClasificadoModel->eliminar($inscripcionAreaId, 'clasificacion');
+                        } catch (\Exception $e) {
+                            error_log("Error al eliminar registro de no clasificado: " . $e->getMessage());
+                        }
+                    }
+                } catch (\Exception $e) {
+                    error_log("Error actualizando a clasificado (intentando sin updated_at): " . $e->getMessage());
+                    $this->inscripcionModel->update($inscripcionAreaId, [
+                        'estado' => 'clasificado'
+                    ]);
+                }
+            } else {
+               
+                if ($promedio < $puntuacionMinima) {
+                    $noClasificadoModel = new NoClasificado();
+                    try {
+                        
+                        if (!$noClasificadoModel->estaNoClasificado($inscripcionAreaId, 'clasificacion')) {
+                            $noClasificadoModel->create([
+                                'inscripcion_area_id' => $inscripcionAreaId,
+                                'puntuacion' => $promedio,
+                                'puntuacion_minima_requerida' => $puntuacionMinima,
+                                'motivo' => "Puntuación promedio {$promedio} menor a la mínima requerida de {$puntuacionMinima} puntos",
+                                'evaluador_id' => null,
+                                'fase' => 'clasificacion'
+                            ]);
+                        }
+                        
+                        $this->inscripcionModel->update($inscripcionAreaId, [
+                            'estado' => 'no_clasificado',
+                            'updated_at' => date('Y-m-d H:i:s')
+                        ]);
+                        error_log("verificarYActualizarClasificacion - Participante {$inscripcionAreaId} marcado como no_clasificado (promedio: {$promedio}, mínimo: {$puntuacionMinima})");
+                    } catch (\Exception $e) {
+                        error_log("Error actualizando a no_clasificado: " . $e->getMessage());
+                        try {
+                            $this->inscripcionModel->update($inscripcionAreaId, [
+                                'estado' => 'no_clasificado'
+                            ]);
+                        } catch (\Exception $e2) {
+                            error_log("Error en segundo intento de actualizar a no_clasificado: " . $e2->getMessage());
+                        }
+                    }
+                }
+            }
+
+        } catch (\Exception $e) {
+            error_log("Error verificando clasificación: " . $e->getMessage());
+            // No lanzar excepción para no interrumpir el flujo principal
+        }
+    }
     
     public function confirmarCierreCalificacion()
     {
@@ -583,6 +798,69 @@ class EvaluacionController
         } catch (\Exception $e) {
             error_log('Error confirmando cierre de calificación: ' . $e->getMessage());
             Response::serverError('Error al confirmar cierre de calificación: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Verificar si el evaluador ha completado todas sus evaluaciones asignadas y notificar al coordinador
+     */
+    private function verificarYNotificarEvaluadorCompleto($evaluadorId, $areaId, $nombreEvaluador, $correoEvaluador)
+    {
+        try {
+            // Obtener todas las asignaciones del evaluador en esta área para fase clasificatoria
+            $sqlAsignaciones = "
+                SELECT COUNT(*) as total_asignaciones
+                FROM asignaciones_evaluacion ae
+                JOIN inscripciones_areas ia ON ia.id = ae.inscripcion_area_id
+                WHERE ae.evaluador_id = ?
+                AND ia.area_competencia_id = ?
+                AND ae.fase = 'clasificacion'
+            ";
+            
+            $stmtAsignaciones = $this->pdo->prepare($sqlAsignaciones);
+            $stmtAsignaciones->execute([$evaluadorId, $areaId]);
+            $asignaciones = $stmtAsignaciones->fetch(\PDO::FETCH_ASSOC);
+            $totalAsignaciones = (int)$asignaciones['total_asignaciones'];
+            
+            if ($totalAsignaciones == 0) {
+                return; // No tiene asignaciones en esta área
+            }
+            
+            
+            $sqlEvaluaciones = "
+                SELECT COUNT(DISTINCT ec.inscripcion_area_id) as evaluaciones_completas
+                FROM evaluaciones_clasificacion ec
+                JOIN inscripciones_areas ia ON ia.id = ec.inscripcion_area_id
+                WHERE ec.evaluador_id = ?
+                AND ia.area_competencia_id = ?
+            ";
+            
+            $stmtEvaluaciones = $this->pdo->prepare($sqlEvaluaciones);
+            $stmtEvaluaciones->execute([$evaluadorId, $areaId]);
+            $evaluaciones = $stmtEvaluaciones->fetch(\PDO::FETCH_ASSOC);
+            $evaluacionesCompletas = (int)$evaluaciones['evaluaciones_completas'];
+            
+            
+            if ($evaluacionesCompletas >= $totalAsignaciones) {
+               
+                
+                $mailer = new Mailer();
+                $resultado = $mailer->enviarMensajeEvaluadorTerminado(
+                    $nombreEvaluador,
+                    $correoEvaluador,
+                    $areaId
+                );
+                
+                if ($resultado) {
+                    error_log("Notificación enviada al coordinador: Evaluador {$nombreEvaluador} completó todas sus evaluaciones en área {$areaId}");
+                } else {
+                    error_log("Error al enviar notificación al coordinador para evaluador {$nombreEvaluador}");
+                }
+            }
+            
+        } catch (\Exception $e) {
+            error_log("Error en verificarYNotificarEvaluadorCompleto: " . $e->getMessage());
+           
         }
     }
 }

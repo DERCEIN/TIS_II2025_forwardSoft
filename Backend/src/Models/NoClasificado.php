@@ -15,12 +15,13 @@ class NoClasificado
         $this->db = Database::getInstance()->getConnection();
     }
 
+   
     public function create($data)
     {
         try {
             $this->db->beginTransaction();
             
-           
+            
             $stmt = $this->db->prepare("
                 INSERT INTO no_clasificados 
                 (inscripcion_area_id, puntuacion, puntuacion_minima_requerida, motivo, evaluador_id, fase)
@@ -44,7 +45,7 @@ class NoClasificado
             
             $noClasificadoId = $this->db->lastInsertId();
             
-            
+           
             $stmt = $this->db->prepare("
                 UPDATE inscripciones_areas 
                 SET estado = 'no_clasificado'
@@ -105,7 +106,9 @@ class NoClasificado
         }
     }
 
-    
+    /**
+     * Obtener estadísticas de no clasificados por área
+     */
     public function getEstadisticas($areaId, $fase = 'clasificacion')
     {
         try {
@@ -128,20 +131,20 @@ class NoClasificado
         }
     }
 
-    
+   
     public function eliminar($inscripcionId, $fase = 'clasificacion')
     {
         try {
             $this->db->beginTransaction();
             
-            
+           
             $stmt = $this->db->prepare("
                 DELETE FROM no_clasificados 
                 WHERE inscripcion_area_id = ? AND fase = ?
             ");
             $stmt->execute([$inscripcionId, $fase]);
             
-           
+            
             $stmt = $this->db->prepare("
                 UPDATE inscripciones_areas 
                 SET estado = 'evaluado'
