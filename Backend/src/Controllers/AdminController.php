@@ -13,6 +13,7 @@ use ForwardSoft\Models\InscripcionArea;
 use PDO;
 use PDOException;
 use Exception;
+use ForwardSoft\Utils\Mailer;
 
 class AdminController
 {
@@ -138,9 +139,40 @@ class AdminController
             $newUser = $this->userModel->findById($userId);
             $currentAdmin = JWTManager::getCurrentUser();
             
-           
-            $emailService = new EmailService();
-            $emailEnviado = $emailService->enviarCredenciales($newUser, $passwordTemporal, $currentAdmin);
+            
+            $mailer = new Mailer();
+            $areaID = $input['area_id'] ?? null;
+            $areaName = $areaID ? $this->encontrarAreaPorID($areaID) : null;
+            $nombre = htmlspecialchars($input['name']);
+            $correo = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
+            $contrasena = htmlspecialchars($passwordTemporal);
+            $roleCreado = htmlspecialchars($input['role'] ?? 'evaluador');
+            
+            $contenido = "
+                <p>Hola <strong>" . htmlspecialchars($nombre) . "</strong>,</p>
+                <p>Se ha creado tu cuenta en el sistema <strong>Olimpiada Oh! SanSi</strong>.</p>
+                <p>Tu rol asignado es: <strong>" . htmlspecialchars($roleCreado) . "</strong></p>
+                " . ($areaName ? "<p>Área de competencia asignada: <strong>" . htmlspecialchars($areaName) . "</strong></p>" : "") . "
+                <p>
+                    <strong>Correo:</strong> " . htmlspecialchars($correo) . "<br>
+                    <strong>Contraseña temporal:</strong> " . htmlspecialchars($contrasena) . "
+                </p>
+                <p>Por favor, cambia tu contraseña al iniciar sesión.</p>
+                <p><em>No olvides tu nueva contraseña, ya que no podrás recuperarla.</em></p>
+                <p>
+                    <a href='http://forwardsoft.tis.cs.umss.edu.bo/login' 
+                        style='background-color:#004aad;
+                            color:#ffffff;
+                            padding:10px 15px;
+                            text-decoration:none;
+                            border-radius:5px;
+                            font-weight:bold;'>
+                        Iniciar sesión
+                    </a>
+                </p>
+                ";
+            
+            $emailEnviado = $mailer->enviar($correo, "Credenciales de acceso", $contenido);
             
             if ($emailEnviado) {
                 unset($newUser['password']);
@@ -161,6 +193,20 @@ class AdminController
             }
         } else {
             Response::serverError('Error al crear el usuario');
+        }
+    }
+
+    
+    public function encontrarAreaPorID($areaId): mixed
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT nombre FROM areas_competencia WHERE id = ?");
+            $stmt->execute([$areaId]);
+            $area = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $area ? $area['nombre'] : null;
+        } catch (Exception $e) {
+            error_log("Error al encontrar área por ID: " . $e->getMessage());
+            return null;
         }
     }
 
@@ -475,7 +521,11 @@ class AdminController
                 $area['porcentaje_completitud'] = (float)$area['porcentaje_completitud'];
                 $area['cantidad_clasificados'] = (int)$area['cantidad_clasificados'];
                 
-                if (($area['estado'] === 'pendiente' || !isset($area['estado'])) && isset($area['id'])) {
+                
+                $tieneParticipantes = isset($area['total_participantes']) && $area['total_participantes'] > 0;
+                
+                
+                if ($tieneParticipantes && ($area['estado'] === 'pendiente' || !isset($area['estado'])) && isset($area['id'])) {
                     try {
                         $stmtUpdate = $this->pdo->prepare("
                             INSERT INTO cierre_fase_areas (
@@ -486,10 +536,23 @@ class AdminController
                             DO UPDATE SET 
                                 porcentaje_completitud = EXCLUDED.porcentaje_completitud,
                                 cantidad_clasificados = EXCLUDED.cantidad_clasificados,
+                                estado = CASE 
+                                    WHEN cierre_fase_areas.estado = 'cerrada' THEN 'cerrada'
+                                    WHEN EXCLUDED.porcentaje_completitud = 100 THEN 'activa'
+                                    ELSE 'pendiente'
+                                END,
                                 updated_at = NOW()
                         ");
-                        $estadoArea = $area['porcentaje_completitud'] == 100 ? 'cerrada' : 
-                                      ($area['porcentaje_completitud'] > 0 ? 'activa' : 'pendiente');
+                        
+                        $estadoActual = $area['estado'] ?? null;
+                        if ($estadoActual === 'cerrada') {
+                           
+                            $estadoArea = 'cerrada';
+                        } else {
+                            
+                            $estadoArea = $area['porcentaje_completitud'] == 100 ? 'activa' : 
+                                          ($area['porcentaje_completitud'] > 0 ? 'pendiente' : 'pendiente');
+                        }
                         $stmtUpdate->execute([
                             $area['id'],
                             $estadoArea,
@@ -631,7 +694,7 @@ class AdminController
             $configModel = new ConfiguracionOlimpiada();
             $configModel->updateConfiguracion(['clasificacion_fecha_fin' => $nuevaFecha]);
 
-            // Registrar en auditoría
+            
             AuditService::logCierreCalificacion(
                 $currentUser['id'],
                 $currentUser['nombre'] ?? $currentUser['email'],
@@ -665,6 +728,7 @@ class AdminController
 
             $currentUser = JWTManager::getCurrentUser();
             if (!$currentUser || $currentUser['role'] !== 'admin') {
+                $this->pdo->rollBack();
                 Response::forbidden('Acceso de administrador requerido');
             }
 
@@ -672,59 +736,86 @@ class AdminController
             $confirmado = $input['confirmado'] ?? false;
 
             if (!$confirmado) {
+                $this->pdo->rollBack();
                 Response::validationError(['general' => 'Debe confirmar el cierre de fase']);
             }
 
            
-            $stmt = $this->pdo->prepare("
-                SELECT COUNT(*) as total,
-                       COUNT(*) FILTER (WHERE estado = 'cerrada') as cerradas
-                FROM cierre_fase_areas
-                WHERE nivel_competencia_id IS NULL
-            ");
-            $stmt->execute();
-            $estadoAreas = $stmt->fetch(PDO::FETCH_ASSOC);
+           
+            try {
+                $stmt = $this->pdo->prepare("
+                    SELECT 
+                        COUNT(DISTINCT ac.id) as total,
+                        COUNT(DISTINCT CASE WHEN cfa.estado = 'cerrada' AND cfa.nivel_competencia_id IS NULL THEN ac.id END) as cerradas
+                    FROM areas_competencia ac
+                    LEFT JOIN cierre_fase_areas cfa ON cfa.area_competencia_id = ac.id AND cfa.nivel_competencia_id IS NULL
+                    WHERE ac.is_active = true
+                ");
+                $stmt->execute();
+                $estadoAreas = $stmt->fetch(PDO::FETCH_ASSOC);
+            } catch (PDOException $e) {
+                error_log("ERROR SQL al contar áreas: " . $e->getMessage());
+                $this->pdo->rollBack();
+                throw $e;
+            }
 
             if ($estadoAreas['cerradas'] < $estadoAreas['total']) {
                 $pendientes = $estadoAreas['total'] - $estadoAreas['cerradas'];
+                error_log("Verificación de cierre: Total áreas={$estadoAreas['total']}, Cerradas={$estadoAreas['cerradas']}, Pendientes={$pendientes}");
+                $this->pdo->rollBack();
                 Response::validationError([
                     'general' => "No se puede cerrar la fase general. {$pendientes} área(s) aún no han cerrado su fase"
                 ]);
             }
 
            
-            $stmt = $this->pdo->prepare("
-                SELECT DISTINCT ia.id as inscripcion_area_id,
-                       ia.area_competencia_id,
-                       ia.nivel_competencia_id,
-                       ia.olimpista_id
-                FROM inscripciones_areas ia
-                WHERE ia.estado = 'clasificado'
-            ");
-            $stmt->execute();
-            $clasificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            try {
+                $stmt = $this->pdo->prepare("
+                    SELECT DISTINCT ia.id as inscripcion_area_id,
+                           ia.area_competencia_id,
+                           ia.nivel_competencia_id,
+                           ia.olimpista_id
+                    FROM inscripciones_areas ia
+                    WHERE ia.estado = 'clasificado'
+                ");
+                $stmt->execute();
+                $clasificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (PDOException $e) {
+                error_log("ERROR SQL al obtener clasificados: " . $e->getMessage());
+                $this->pdo->rollBack();
+                throw $e;
+            }
 
             $clasificadosMigrados = 0;
             $noClasificadosExcluidos = 0;
             $desclasificadosExcluidos = 0;
 
             
-            $stmt = $this->pdo->prepare("
-                SELECT 
-                    COUNT(*) FILTER (WHERE estado = 'no_clasificado') as no_clasificados,
-                    COUNT(*) FILTER (WHERE estado = 'desclasificado') as desclasificados
-                FROM inscripciones_areas
-            ");
-            $stmt->execute();
-            $excluidos = $stmt->fetch(PDO::FETCH_ASSOC);
-            $noClasificadosExcluidos = (int)$excluidos['no_clasificados'];
-            $desclasificadosExcluidos = (int)$excluidos['desclasificados'];
+            try {
+                $stmt = $this->pdo->prepare("
+                    SELECT 
+                        COUNT(*) FILTER (WHERE estado = 'no_clasificado') as no_clasificados,
+                        COUNT(*) FILTER (WHERE estado = 'desclasificado') as desclasificados
+                    FROM inscripciones_areas
+                ");
+                $stmt->execute();
+                $excluidos = $stmt->fetch(PDO::FETCH_ASSOC);
+                $noClasificadosExcluidos = (int)$excluidos['no_clasificados'];
+                $desclasificadosExcluidos = (int)$excluidos['desclasificados'];
+            } catch (PDOException $e) {
+                error_log("ERROR SQL al contar excluidos: " . $e->getMessage());
+                $this->pdo->rollBack();
+                throw $e;
+            }
 
-           
-            $coordinadorController = new \ForwardSoft\Controllers\CoordinadorController();
             
             foreach ($clasificados as $clasificado) {
                 try {
+                    
+                    if (!$this->pdo->inTransaction()) {
+                        error_log("ERROR: La transacción fue abortada, no se puede continuar");
+                        throw new Exception("Transacción abortada");
+                    }
                     
                     $stmtCheck = $this->pdo->prepare("
                         SELECT id FROM asignaciones_evaluacion
@@ -769,10 +860,11 @@ class AdminController
                         if (!empty($evaluadores)) {
                             $evaluadorId = $evaluadores[0]['evaluador_id'];
                             
+                            // No incluir fecha_asignacion ya que puede no existir en la tabla o tiene DEFAULT
                             $stmtInsert = $this->pdo->prepare("
                                 INSERT INTO asignaciones_evaluacion (
-                                    inscripcion_area_id, evaluador_id, fase, fecha_asignacion, creado_por
-                                ) VALUES (?, ?, 'final', NOW(), ?)
+                                    inscripcion_area_id, evaluador_id, fase, creado_por
+                                ) VALUES (?, ?, 'final', ?)
                                 ON CONFLICT (inscripcion_area_id, evaluador_id, fase) DO NOTHING
                             ");
                             $stmtInsert->execute([
@@ -784,11 +876,27 @@ class AdminController
                             $clasificadosMigrados++;
                         }
                     }
+                } catch (PDOException $e) {
+                   
+                    if (strpos($e->getCode(), '25P02') !== false) {
+                        error_log("ERROR CRÍTICO: Transacción abortada durante migración de clasificados");
+                        throw $e;
+                    }
+                    error_log("Error migrando clasificado {$clasificado['inscripcion_area_id']}: " . $e->getMessage());
                 } catch (Exception $e) {
                     error_log("Error migrando clasificado {$clasificado['inscripcion_area_id']}: " . $e->getMessage());
+                    // Si la transacción fue abortada, lanzar la excepción
+                    if (strpos($e->getMessage(), 'Transacción abortada') !== false) {
+                        throw $e;
+                    }
                 }
             }
 
+            
+            
+            if (!$this->pdo->inTransaction()) {
+                throw new Exception("La transacción fue abortada antes de actualizar cierre_fase_general");
+            }
             
             $stmt = $this->pdo->prepare("
                 UPDATE cierre_fase_general 
@@ -803,45 +911,108 @@ class AdminController
                     updated_at = NOW()
                 WHERE fase = 'clasificacion'
             ");
-            $stmt->execute([
-                $currentUser['id'],
-                $estadoAreas['cerradas'],
-                $clasificadosMigrados,
-                $noClasificadosExcluidos,
-                $desclasificadosExcluidos
-            ]);
-
-            
-            AuditService::logCierreCalificacion(
-                $currentUser['id'],
-                $currentUser['nombre'] ?? $currentUser['email'],
-                0, // area_id = 0 para cierre general
-                0, // nivel_id = 0 para cierre general
-                [
-                    'accion' => 'cerrar_fase_general',
-                    'areas_cerradas' => $estadoAreas['cerradas'],
-                    'clasificados_migrados' => $clasificadosMigrados,
-                    'no_clasificados_excluidos' => $noClasificadosExcluidos,
-                    'desclasificados_excluidos' => $desclasificadosExcluidos
-                ]
-            );
+            try {
+                $stmt->execute([
+                    $currentUser['id'],
+                    $estadoAreas['cerradas'],
+                    $clasificadosMigrados,
+                    $noClasificadosExcluidos,
+                    $desclasificadosExcluidos
+                ]);
+                
+               
+                if ($stmt->rowCount() === 0) {
+                    error_log("ADVERTENCIA: No se encontró registro de cierre_fase_general con fase='clasificacion' para actualizar");
+                    
+                    $stmtInsert = $this->pdo->prepare("
+                        INSERT INTO cierre_fase_general (
+                            fase, estado, fecha_cierre, usuario_cierre_id,
+                            areas_cerradas, areas_pendientes, clasificados_migrados,
+                            no_clasificados_excluidos, desclasificados_excluidos, created_at, updated_at
+                        ) VALUES ('clasificacion', 'cerrada_general', NOW(), ?, ?, 0, ?, ?, ?, NOW(), NOW())
+                        ON CONFLICT (fase) DO UPDATE SET
+                            estado = 'cerrada_general',
+                            fecha_cierre = NOW(),
+                            usuario_cierre_id = EXCLUDED.usuario_cierre_id,
+                            areas_cerradas = EXCLUDED.areas_cerradas,
+                            areas_pendientes = 0,
+                            clasificados_migrados = EXCLUDED.clasificados_migrados,
+                            no_clasificados_excluidos = EXCLUDED.no_clasificados_excluidos,
+                            desclasificados_excluidos = EXCLUDED.desclasificados_excluidos,
+                            updated_at = NOW()
+                    ");
+                    $stmtInsert->execute([
+                        $currentUser['id'],
+                        $estadoAreas['cerradas'],
+                        $clasificadosMigrados,
+                        $noClasificadosExcluidos,
+                        $desclasificadosExcluidos
+                    ]);
+                }
+            } catch (PDOException $e) {
+                error_log("ERROR SQL al actualizar cierre_fase_general: " . $e->getMessage());
+                error_log("Código de error: " . $e->getCode());
+                throw $e;
+            }
 
            
             $this->pdo->commit();
+            error_log("Transacción commit exitoso - Cierre de fase general completado");
 
-            Response::success([
+           
+            $responseData = [
                 'mensaje' => 'Fase clasificatoria cerrada exitosamente',
                 'areas_cerradas' => $estadoAreas['cerradas'],
                 'clasificados_migrados' => $clasificadosMigrados,
                 'no_clasificados_excluidos' => $noClasificadosExcluidos,
                 'desclasificados_excluidos' => $desclasificadosExcluidos,
                 'fecha_cierre' => date('Y-m-d H:i:s')
-            ], 'Fase clasificatoria cerrada exitosamente');
+            ];
+
+          
+            error_log("Enviando respuesta de éxito al cliente");
+            Response::success($responseData, 'Fase clasificatoria cerrada exitosamente');
+            
+          
+            try {
+                AuditService::logCierreCalificacion(
+                    $currentUser['id'],
+                    $currentUser['nombre'] ?? $currentUser['email'],
+                    0, 
+                    0,
+                    [
+                        'accion' => 'cerrar_fase_general',
+                        'areas_cerradas' => $estadoAreas['cerradas'],
+                        'clasificados_migrados' => $clasificadosMigrados,
+                        'no_clasificados_excluidos' => $noClasificadosExcluidos,
+                        'desclasificados_excluidos' => $desclasificadosExcluidos
+                    ]
+                );
+            } catch (Exception $e) {
+                error_log("Error al registrar en auditoría (no crítico): " . $e->getMessage());
+            }
+
+            
+            try {
+                $mailer = new Mailer();
+                $nombreAdmin = $currentUser['name'] ?? $currentUser['email'];
+                
+                $mailer->enviarNotificacionCierreFaseGeneral(
+                    $nombreAdmin,
+                    $estadoAreas['cerradas'],
+                    $clasificadosMigrados
+                );
+            } catch (Exception $e) {
+                error_log("Error enviando notificaciones (no crítico): " . $e->getMessage());
+            }
 
         } catch (Exception $e) {
             $this->pdo->rollBack();
-            error_log('Error cerrando fase general: ' . $e->getMessage());
-            Response::serverError('Error al cerrar fase general: ' . $e->getMessage());
+            $errorMessage = 'Error al cerrar fase general: ' . $e->getMessage();
+            $errorTrace = $e->getTraceAsString();
+            error_log('Error cerrando fase general: ' . $errorMessage);
+            error_log('Stack trace: ' . $errorTrace);
+            Response::serverError($errorMessage);
         }
     }
 
@@ -916,9 +1087,7 @@ class AdminController
         }
     }
 
-    /**
-     * Revertir cierre de fase general (solo dentro de 24 horas)
-     */
+  
     public function revertirCierreFase()
     {
         try {
@@ -941,7 +1110,7 @@ class AdminController
                 Response::validationError(['justificacion' => 'La justificación es requerida']);
             }
 
-            // Obtener información del cierre
+           
             $stmt = $this->pdo->prepare("
                 SELECT id, estado, fecha_cierre, usuario_cierre_id, clasificados_migrados
                 FROM cierre_fase_general 
@@ -955,12 +1124,12 @@ class AdminController
                 Response::validationError(['general' => 'No existe registro de cierre de fase']);
             }
 
-            // Verificar que esté cerrada
+           
             if (!in_array($cierreGeneral['estado'], ['cerrada_general', 'cerrada_automatica'])) {
                 Response::validationError(['general' => 'La fase no está cerrada, no se puede revertir']);
             }
 
-            // Verificar que no hayan pasado más de 24 horas
+           
             $fechaCierre = strtotime($cierreGeneral['fecha_cierre']);
             $horasTranscurridas = (time() - $fechaCierre) / 3600;
 
@@ -970,10 +1139,10 @@ class AdminController
                 ]);
             }
 
-            // Revertir asignaciones de fase final (eliminar las creadas durante el cierre)
+           
             $clasificadosMigrados = (int)$cierreGeneral['clasificados_migrados'];
             if ($clasificadosMigrados > 0) {
-                // Eliminar asignaciones de fase final creadas después de la fecha de cierre
+               
                 $stmt = $this->pdo->prepare("
                     DELETE FROM asignaciones_evaluacion
                     WHERE fase = 'final'
@@ -986,7 +1155,7 @@ class AdminController
                 $stmt->execute([$cierreGeneral['fecha_cierre']]);
             }
 
-            // Revertir estado a 'activa'
+            
             $stmt = $this->pdo->prepare("
                 UPDATE cierre_fase_general 
                 SET estado = 'activa',
@@ -997,7 +1166,7 @@ class AdminController
             ");
             $stmt->execute();
 
-            // Registrar en auditoría
+           
             AuditService::logCierreCalificacion(
                 $currentUser['id'],
                 $currentUser['nombre'] ?? $currentUser['email'],
@@ -1027,9 +1196,7 @@ class AdminController
         }
     }
 
-    /**
-     * Generar reporte consolidado del cierre de fase
-     */
+
     public function generarReporteConsolidado()
     {
         try {
@@ -1038,7 +1205,7 @@ class AdminController
                 Response::forbidden('Acceso de administrador requerido');
             }
 
-            // Obtener información del cierre general
+           
             $stmt = $this->pdo->prepare("
                 SELECT c.*, u.name as usuario_cierre_nombre
                 FROM cierre_fase_general c
@@ -1050,40 +1217,76 @@ class AdminController
             $cierreGeneral = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$cierreGeneral) {
-                Response::validationError(['general' => 'No existe registro de cierre de fase']);
+                error_log("ERROR: No se encontró registro de cierre_fase_general");
+                Response::validationError(['general' => 'No existe registro de cierre de fase. Debe cerrar la fase general primero.']);
             }
 
-            // Obtener todas las áreas con su información
-            $stmt = $this->pdo->prepare("
-                SELECT 
+            error_log("Generando reporte consolidado - Cierre general encontrado: " . json_encode($cierreGeneral));
+
+           
+            try {
+                $stmt = $this->pdo->prepare("
+                SELECT DISTINCT ON (ac.id)
                     ac.id,
                     ac.nombre as area_nombre,
-                    cfa.estado,
-                    cfa.porcentaje_completitud,
-                    cfa.cantidad_clasificados,
+                    COALESCE(cfa.estado, 'pendiente') as estado,
+                    COALESCE(cfa.porcentaje_completitud, 0) as porcentaje_completitud,
+                    COALESCE(cfa.cantidad_clasificados, 0) as cantidad_clasificados,
                     cfa.fecha_cierre,
                     u.name as coordinador_nombre,
-                    COUNT(*) FILTER (WHERE ia.estado NOT IN ('desclasificado', 'no_clasificado')) as total_participantes,
-                    COUNT(*) FILTER (
-                        WHERE ia.estado NOT IN ('desclasificado', 'no_clasificado')
-                        AND EXISTS (SELECT 1 FROM evaluaciones_clasificacion ec WHERE ec.inscripcion_area_id = ia.id)
+                    (SELECT COUNT(*) 
+                     FROM inscripciones_areas ia 
+                     WHERE ia.area_competencia_id = ac.id 
+                     AND ia.estado NOT IN ('desclasificado', 'no_clasificado')
+                    ) as total_participantes,
+                    (SELECT COUNT(*) 
+                     FROM inscripciones_areas ia 
+                     WHERE ia.area_competencia_id = ac.id 
+                     AND ia.estado NOT IN ('desclasificado', 'no_clasificado')
+                     AND EXISTS (SELECT 1 FROM evaluaciones_clasificacion ec WHERE ec.inscripcion_area_id = ia.id)
                     ) as total_evaluados,
-                    COUNT(*) FILTER (WHERE ia.estado = 'clasificado') as clasificados_real,
-                    COUNT(*) FILTER (WHERE ia.estado = 'no_clasificado') as no_clasificados,
-                    COUNT(*) FILTER (WHERE ia.estado = 'desclasificado') as desclasificados
+                    (SELECT COUNT(*) 
+                     FROM inscripciones_areas ia 
+                     WHERE ia.area_competencia_id = ac.id 
+                     AND ia.estado = 'clasificado'
+                    ) as clasificados_real,
+                    (SELECT COUNT(*) 
+                     FROM inscripciones_areas ia 
+                     WHERE ia.area_competencia_id = ac.id 
+                     AND ia.estado = 'no_clasificado'
+                    ) as no_clasificados,
+                    (SELECT COUNT(*) 
+                     FROM inscripciones_areas ia 
+                     WHERE ia.area_competencia_id = ac.id 
+                     AND ia.estado = 'desclasificado'
+                    ) as desclasificados
                 FROM areas_competencia ac
-                LEFT JOIN cierre_fase_areas cfa ON cfa.area_competencia_id = ac.id AND cfa.nivel_competencia_id IS NULL
+                LEFT JOIN LATERAL (
+                    SELECT estado, porcentaje_completitud, cantidad_clasificados, fecha_cierre, coordinador_id
+                    FROM cierre_fase_areas
+                    WHERE area_competencia_id = ac.id 
+                    AND nivel_competencia_id IS NULL
+                    ORDER BY 
+                        CASE WHEN estado = 'cerrada' THEN 1 ELSE 2 END,
+                        fecha_cierre DESC NULLS LAST,
+                        updated_at DESC NULLS LAST
+                    LIMIT 1
+                ) cfa ON true
                 LEFT JOIN users u ON u.id = cfa.coordinador_id
-                LEFT JOIN inscripciones_areas ia ON ia.area_competencia_id = ac.id
                 WHERE ac.is_active = true
-                GROUP BY ac.id, ac.nombre, cfa.estado, cfa.porcentaje_completitud, 
-                         cfa.cantidad_clasificados, cfa.fecha_cierre, u.name
-                ORDER BY ac.nombre
-            ");
-            $stmt->execute();
-            $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                ORDER BY ac.id, 
+                         CASE WHEN cfa.estado = 'cerrada' THEN 1 ELSE 2 END,
+                         cfa.fecha_cierre DESC NULLS LAST
+                ");
+                $stmt->execute();
+                $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                error_log("Áreas encontradas para el reporte: " . count($areas));
+            } catch (PDOException $e) {
+                error_log("ERROR SQL al obtener áreas para reporte: " . $e->getMessage());
+                throw $e;
+            }
 
-            // Calcular estadísticas generales
+            
             $totalAreas = count($areas);
             $areasCerradas = count(array_filter($areas, fn($a) => $a['estado'] === 'cerrada'));
             $totalParticipantes = array_sum(array_column($areas, 'total_participantes'));
@@ -1092,24 +1295,33 @@ class AdminController
             $totalNoClasificados = array_sum(array_column($areas, 'no_clasificados'));
             $totalDesclasificados = array_sum(array_column($areas, 'desclasificados'));
 
-            // Generar CSV
+           
             $filename = 'reporte_cierre_fase_' . date('Y-m-d_H-i-s') . '.csv';
+            
+            
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
             
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
             
             $output = fopen('php://output', 'w');
             
-            // BOM para UTF-8
+            if (!$output) {
+                throw new Exception('No se pudo abrir el stream de salida para el CSV');
+            }
+            
+           
             fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
             
-            // Encabezado del reporte
+           
             fputcsv($output, ['REPORTE CONSOLIDADO DE CIERRE DE FASE CLASIFICATORIA']);
             fputcsv($output, ['Fecha de generación:', date('Y-m-d H:i:s')]);
             fputcsv($output, ['Generado por:', $currentUser['name'] ?? $currentUser['email']]);
             fputcsv($output, []);
             
-            // Información general del cierre
+           
             fputcsv($output, ['INFORMACIÓN GENERAL DEL CIERRE']);
             fputcsv($output, ['Estado:', $cierreGeneral['estado']]);
             fputcsv($output, ['Fecha de inicio:', $cierreGeneral['fecha_inicio'] ?? 'N/A']);
@@ -1119,7 +1331,7 @@ class AdminController
             fputcsv($output, ['Cerrado por:', $cierreGeneral['usuario_cierre_nombre'] ?? 'N/A']);
             fputcsv($output, []);
             
-            // Resumen estadístico
+           
             fputcsv($output, ['RESUMEN ESTADÍSTICO']);
             fputcsv($output, ['Total de áreas:', $totalAreas]);
             fputcsv($output, ['Áreas cerradas:', $areasCerradas]);
@@ -1131,7 +1343,7 @@ class AdminController
             fputcsv($output, ['Clasificados migrados:', $cierreGeneral['clasificados_migrados'] ?? 0]);
             fputcsv($output, []);
             
-            // Detalle por área
+            
             fputcsv($output, ['DETALLE POR ÁREA']);
             fputcsv($output, [
                 'Área',

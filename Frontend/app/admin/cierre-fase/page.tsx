@@ -187,30 +187,60 @@ export default function CierreFasePage() {
 
     setCerrando(true)
     try {
+      
       const response = await AdminService.cerrarFaseGeneral({
         confirmado: true,
       })
 
-      if (response.success) {
+      
+
+      if (response && response.success) {
         toast({
           title: "Éxito",
           description: "Fase clasificatoria cerrada exitosamente",
         })
         setShowCerrarFase(false)
         setConfirmado(false)
-        cargarDashboard()
+       
+        setTimeout(() => {
+          cargarDashboard()
+        }, 500)
       } else {
         toast({
           title: "Error",
-          description: response.message || "Error al cerrar fase",
+          description: response?.message || "Error al cerrar fase",
           variant: "destructive",
         })
       }
     } catch (error: any) {
       console.error("Error cerrando fase:", error)
+      
+     
+      let errorMessage = "Error al cerrar fase general"
+      
+      if (error?.message) {
+        
+        const messageParts = error.message.split(':')
+        if (messageParts.length > 1) {
+         
+          errorMessage = messageParts.slice(1).join(':').trim()
+        } else {
+          errorMessage = error.message.trim()
+        }
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      }
+      
+      // Si el mensaje está vacío o es solo el código de estado, usar mensaje por defecto
+      if (!errorMessage || /^\d{3}$/.test(errorMessage)) {
+        errorMessage = "Error al cerrar fase general. Por favor, intente nuevamente."
+      }
+      
       toast({
         title: "Error",
-        description: "Error al cerrar fase general",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -266,20 +296,63 @@ export default function CierreFasePage() {
   const handleGenerarReporte = async () => {
     setGenerandoReporte(true)
     try {
+     
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token')
+      
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/admin/cierre-fase/reporte-consolidado`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}/api/admin/cierre-fase/reporte-consolidado`,
         {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Authorization': `Bearer ${token}`,
           },
         }
       )
 
+      
+      const contentType = response.headers.get('content-type') || ''
+      
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json()
+        const errorMessage = errorData.message || errorData.error || 'Error al generar el reporte'
+        throw new Error(errorMessage)
+      }
+
       if (!response.ok) {
-        throw new Error('Error al generar reporte')
+        
+        try {
+          const errorText = await response.text()
+          const errorData = JSON.parse(errorText)
+          throw new Error(errorData.message || 'Error al generar reporte')
+        } catch {
+          throw new Error(`Error ${response.status}: ${response.statusText}`)
+        }
+      }
+
+      
+      if (!contentType.includes('text/csv') && !contentType.includes('application/octet-stream')) {
+        const text = await response.text()
+        try {
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.message || 'Error al generar el reporte')
+        } catch {
+          throw new Error('La respuesta no es un archivo CSV válido')
+        }
       }
 
       const blob = await response.blob()
+      
+      
+      if (blob.size < 10) {
+        const text = await blob.text()
+        try {
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.message || 'Error al generar el reporte')
+        } catch {
+          throw new Error('El archivo CSV está vacío')
+        }
+      }
+
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -295,9 +368,10 @@ export default function CierreFasePage() {
       })
     } catch (error: any) {
       console.error("Error generando reporte:", error)
+      const errorMessage = error?.message || "Error al generar reporte consolidado"
       toast({
         title: "Error",
-        description: "Error al generar reporte consolidado",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {

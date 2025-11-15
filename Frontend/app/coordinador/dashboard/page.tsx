@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +28,7 @@ import {
   Award,
   Download,
   Eye,
+  Archive,
   AlertCircle,
   FileText,
   TrendingUp,
@@ -640,6 +641,10 @@ function ListaInscritosAreaNivel() {
 function ProgresoEvaluacionClasificatoria() {
   const [loading, setLoading] = useState<boolean>(true)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [descargandoPDF, setDescargandoPDF] = useState<boolean>(false)
+  const [descargandoExcel, setDescargandoExcel] = useState<boolean>(false)
+  const [faseCerrada, setFaseCerrada] = useState<boolean>(false)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const [progressData, setProgressData] = useState<any>({
     niveles: [],
     evaluadores: { total: 0, activos: 0 },
@@ -660,21 +665,62 @@ function ProgresoEvaluacionClasificatoria() {
         if (response.success) {
           setProgressData(response.data)
           setLastUpdate(new Date())
+          const cerrada = response.data?.estado_fase?.cerrada || false
+          const estado = response.data?.estado_fase?.estado || 'activa'
+          
+          // Verificar si la fase está cerrada (por el flag o por el estado)
+          const estaCerrada = cerrada || estado === 'cerrada'
+          setFaseCerrada(estaCerrada)
+          
+          console.log('🔄 [ProgresoEvaluacion] Estado fase:', {
+            cerrada: cerrada,
+            estado: estado,
+            estaCerrada: estaCerrada,
+            fecha_cierre: response.data?.estado_fase?.fecha_cierre
+          })
+          
+          // Si la fase está cerrada, detener la actualización automática
+          if (estaCerrada && intervalRef.current) {
+            console.log('🛑 [ProgresoEvaluacion] Fase cerrada, deteniendo actualización automática')
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+          }
+          
+          return estaCerrada
         }
       } catch (error) {
         console.error('Error cargando datos de progreso:', error)
       } finally {
         setLoading(false)
       }
+      return false
     }
 
+    // Cargar datos iniciales
+    loadData().then((estaCerrada) => {
+      // Solo actualizar automáticamente si la fase NO está cerrada
+      if (!estaCerrada) {
+        console.log('🔄 [ProgresoEvaluacion] Iniciando actualización automática cada 30 segundos')
+        intervalRef.current = setInterval(async () => {
+          const cerrada = await loadData()
+          if (cerrada && intervalRef.current) {
+            console.log('🛑 [ProgresoEvaluacion] Fase cerrada detectada, deteniendo actualización')
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+          }
+        }, 30000)
+      } else {
+        console.log('🛑 [ProgresoEvaluacion] Fase ya está cerrada, no se iniciará actualización automática')
+      }
+    })
     
-    loadData()
-
-    
-    const interval = setInterval(loadData, 30000)
-
-    return () => clearInterval(interval)
+    return () => {
+      if (intervalRef.current) {
+        console.log('🧹 [ProgresoEvaluacion] Limpiando intervalo al desmontar componente')
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
   }, [])
 
   const handleRefresh = async () => {
@@ -684,11 +730,52 @@ function ProgresoEvaluacionClasificatoria() {
       if (response.success) {
         setProgressData(response.data)
         setLastUpdate(new Date())
+        const cerrada = response.data?.estado_fase?.cerrada || false
+        const estado = response.data?.estado_fase?.estado || 'activa'
+        const estaCerrada = cerrada || estado === 'cerrada'
+        setFaseCerrada(estaCerrada)
+        
+        // Si la fase está cerrada, asegurar que no haya actualización automática
+        if (estaCerrada && intervalRef.current) {
+          console.log('🛑 [ProgresoEvaluacion] Fase cerrada detectada en refresh, deteniendo actualización')
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
       }
     } catch (error) {
       console.error('Error actualizando datos:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDescargarPDF = async () => {
+    setDescargandoPDF(true)
+    try {
+      const result = await CoordinadorService.descargarReportePDFProgreso()
+      if (!result.success) {
+        alert('Error al descargar el PDF: ' + (result.error || 'Error desconocido'))
+      }
+    } catch (error: any) {
+      console.error('Error descargando PDF:', error)
+      alert('Error al descargar el PDF: ' + (error.message || 'Error desconocido'))
+    } finally {
+      setDescargandoPDF(false)
+    }
+  }
+
+  const handleDescargarExcel = async () => {
+    setDescargandoExcel(true)
+    try {
+      const result = await CoordinadorService.descargarReporteExcelProgreso()
+      if (!result.success) {
+        alert('Error al descargar el Excel: ' + (result.error || 'Error desconocido'))
+      }
+    } catch (error: any) {
+      console.error('Error descargando Excel:', error)
+      alert('Error al descargar el Excel: ' + (error.message || 'Error desconocido'))
+    } finally {
+      setDescargandoExcel(false)
     }
   }
 
@@ -718,7 +805,7 @@ function ProgresoEvaluacionClasificatoria() {
     for (const n of source) {
       const nombre: string = (n?.nivel_nombre || '').toString().toLowerCase()
       
-      
+      // Determinar si es Primaria o Secundaria
       let key: string | undefined = undefined
       if (nombre.includes('primaria') || nombre.includes('primario')) {
         key = 'Primaria'
@@ -726,10 +813,10 @@ function ProgresoEvaluacionClasificatoria() {
         key = 'Secundaria'
       }
 
-      
+      // Si no coincide con Primaria o Secundaria, saltar
       if (!key) continue
 
-     
+      // Inicializar grupo si no existe
       if (!grupos[key]) {
         grupos[key] = {
           nivel_nombre: key,
@@ -742,12 +829,12 @@ function ProgresoEvaluacionClasificatoria() {
         }
       }
 
-      
+      // Acumular valores
       const evaluados = Number(n?.evaluados || 0)
       const pendientes = Number(n?.pendientes || 0)
       const desclasificados = Number(n?.desclasificados || 0)
       
-      
+      // Calcular promedio ponderado
       const promedioActual = Number(n?.promedio_puntuacion || 0)
       const totalEvaluadosPrev = grupos[key].evaluados
       const totalEvaluadosNew = totalEvaluadosPrev + evaluados
@@ -760,19 +847,19 @@ function ProgresoEvaluacionClasificatoria() {
       grupos[key].pendientes += pendientes
       grupos[key].desclasificados += desclasificados
 
-      
+      // Calcular porcentajes
       const total = grupos[key].evaluados + grupos[key].pendientes + grupos[key].desclasificados
       grupos[key].porcentaje = total > 0 ? Math.round((grupos[key].evaluados / total) * 100) : 0
       grupos[key].porcentaje_desclasificados = total > 0 ? Math.round((grupos[key].desclasificados / total) * 100) : 0
     }
 
-    
+    // Convertir a array, ordenar (Primaria primero, luego Secundaria) y redondear promedio
     const ordenados = Object.values(grupos).map(g => ({
       ...g,
       promedio_puntuacion: Math.round(g.promedio_puntuacion)
     }))
     
-    
+    // Ordenar: Primaria primero, luego Secundaria
     return ordenados.sort((a, b) => {
       if (a.nivel_nombre === 'Primaria') return -1
       if (b.nivel_nombre === 'Primaria') return 1
@@ -785,12 +872,30 @@ function ProgresoEvaluacionClasificatoria() {
       {/* Header con actualización en tiempo real */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">Progreso de Evaluación Clasificatoria</h2>
+          <div className="flex items-center gap-3 mb-2">
+            <h2 className="text-2xl font-bold text-foreground">Progreso de Evaluación Clasificatoria</h2>
+            {(faseCerrada || progressData?.estado_fase?.cerrada || progressData?.estado_fase?.estado === 'cerrada') && (
+              <Badge variant="default" className="bg-gray-600">
+                <Archive className="h-3 w-3 mr-1" />
+                Fase Cerrada
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">
             Última actualización: {lastUpdate.toLocaleTimeString()}
+            {(faseCerrada || progressData?.estado_fase?.cerrada || progressData?.estado_fase?.estado === 'cerrada') && progressData?.estado_fase?.fecha_cierre && (
+              <span className="ml-2 text-gray-600">
+                • Cerrada el {new Date(progressData.estado_fase.fecha_cierre).toLocaleDateString()}
+              </span>
+            )}
+            {faseCerrada && (
+              <span className="ml-2 text-gray-600 italic">
+                (Actualización automática desactivada)
+              </span>
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button 
             variant="outline" 
             size="sm" 
@@ -800,6 +905,26 @@ function ProgresoEvaluacionClasificatoria() {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Actualizar
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleDescargarPDF}
+            disabled={descargandoPDF}
+            className="flex items-center gap-2 border-red-600 text-red-600 hover:bg-red-50"
+          >
+            <FileText className={`h-4 w-4 ${descargandoPDF ? 'animate-spin' : ''}`} />
+            {descargandoPDF ? 'Generando...' : 'PDF'}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleDescargarExcel}
+            disabled={descargandoExcel}
+            className="flex items-center gap-2 border-green-600 text-green-600 hover:bg-green-50"
+          >
+            <Download className={`h-4 w-4 ${descargandoExcel ? 'animate-spin' : ''}`} />
+            {descargandoExcel ? 'Generando...' : 'Excel'}
           </Button>
           <div className="flex items-center gap-2 text-sm text-green-600">
             <Activity className="h-4 w-4" />
@@ -1147,6 +1272,228 @@ function ProgresoEvaluacionClasificatoria() {
   )
 }
 
+function ProgresoEvaluacionFinal() {
+  const [loading, setLoading] = useState<boolean>(true)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [progressData, setProgressData] = useState<any>({
+    niveles: [],
+    evaluadores: { total: 0, activos: 0 },
+    clasificados_sin_evaluar: [],
+    estadisticas_generales: {
+      total_clasificados: 0,
+      total_evaluados: 0,
+      total_premiados_oro: 0,
+      total_premiados_plata: 0,
+      total_premiados_bronce: 0,
+      total_no_premiados: 0,
+      total_pendientes: 0,
+      promedio_general: 0
+    }
+  })
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const response = await CoordinadorService.getProgresoEvaluacionFinal()
+        if (response.success) {
+          setProgressData(response.data)
+          setLastUpdate(new Date())
+        }
+      } catch (error) {
+        console.error('Error cargando datos de progreso final:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+    const interval = setInterval(loadData, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      const response = await CoordinadorService.getProgresoEvaluacionFinal()
+      if (response.success) {
+        setProgressData(response.data)
+        setLastUpdate(new Date())
+      }
+    } catch (error) {
+      console.error('Error actualizando datos:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Cargando progreso de evaluación final...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Progreso de Evaluación Final</h2>
+          <p className="text-muted-foreground">
+            Última actualización: {lastUpdate.toLocaleTimeString()}
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleRefresh}
+          disabled={loading}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Actualizar
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Progreso por Nivel
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {progressData.niveles?.map((nivel: any, index: number) => (
+                <div key={index} className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">{nivel.nivel_nombre}</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2 text-sm">
+                      <div className="text-center p-2 bg-yellow-50 rounded">
+                        <div className="font-semibold text-yellow-700">{nivel.premiados_oro || 0}</div>
+                        <div className="text-xs text-yellow-600">Oro</div>
+                      </div>
+                      <div className="text-center p-2 bg-gray-50 rounded">
+                        <div className="font-semibold text-gray-700">{nivel.premiados_plata || 0}</div>
+                        <div className="text-xs text-gray-600">Plata</div>
+                      </div>
+                      <div className="text-center p-2 bg-orange-50 rounded">
+                        <div className="font-semibold text-orange-700">{nivel.premiados_bronce || 0}</div>
+                        <div className="text-xs text-orange-600">Bronce</div>
+                      </div>
+                      <div className="text-center p-2 bg-green-50 rounded">
+                        <div className="font-semibold text-green-700">{nivel.evaluados || 0}</div>
+                        <div className="text-xs text-green-600">Evaluados</div>
+                      </div>
+                      <div className="text-center p-2 bg-red-50 rounded">
+                        <div className="font-semibold text-red-700">{nivel.pendientes || 0}</div>
+                        <div className="text-xs text-red-600">Pendientes</div>
+                      </div>
+                      <div className="text-center p-2 bg-blue-50 rounded">
+                        <div className="font-semibold text-blue-700">{nivel.promedio_puntuacion ? Math.round(nivel.promedio_puntuacion) : 0}</div>
+                        <div className="text-xs text-blue-600">Promedio</div>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Progreso: {nivel.porcentaje_evaluados || 0}%</span>
+                      </div>
+                      <Progress value={nivel.porcentaje_evaluados || 0} className="h-2" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Evaluadores Activos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {progressData.evaluadores?.con_permisos || 0}/{progressData.evaluadores?.total || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Con Permisos Activos</div>
+              </div>
+              
+              {progressData.evaluadores_lista && progressData.evaluadores_lista.length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {progressData.evaluadores_lista.map((evaluador: any) => (
+                    <div key={evaluador.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{evaluador.nombre}</div>
+                        <div className="text-xs text-muted-foreground">{evaluador.email}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">
+                          {evaluador.evaluaciones_completadas} evaluaciones
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {evaluador.asignaciones_pendientes} pendientes
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center p-4 text-muted-foreground text-sm">
+                  No hay evaluadores registrados
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trophy className="h-5 w-5" />
+            Resumen General - Fase Final
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">
+                {progressData.estadisticas_generales?.total_clasificados || 0}
+              </div>
+              <div className="text-sm text-muted-foreground">Clasificados</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">
+                {progressData.estadisticas_generales?.total_evaluados || 0}
+              </div>
+              <div className="text-sm text-muted-foreground">Evaluados</div>
+            </div>
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">
+                {progressData.estadisticas_generales?.total_premiados_oro || 0}
+              </div>
+              <div className="text-sm text-muted-foreground">Oro</div>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">
+                {progressData.estadisticas_generales?.promedio_general || 0}%
+              </div>
+              <div className="text-sm text-muted-foreground">Promedio</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 function CompetidoresPorAreaNivel() {
   const [departamentoId, setDepartamentoId] = useState<string | undefined>(undefined)
   const [nivelId, setNivelId] = useState<string | undefined>(undefined)
@@ -1421,7 +1768,7 @@ function CompetidoresPorAreaNivel() {
       return
     }
     
-    console.log('Iniciando carga de datos...')
+    console.log('⏳ Iniciando carga de datos...')
     setLoading(true)
     setError("")
     
@@ -1458,27 +1805,35 @@ function CompetidoresPorAreaNivel() {
         fase: 'clasificacion'
       })
       
-      console.log(' Respuesta de la API:', response)
+      console.log('📡 Respuesta de la API:', response)
       
       if (response.success && response.data) {
-        
-        const competidoresMapeados = response.data.participantes.map((participante: any) => ({
-          id: participante.inscripcion_area_id,
-          nombre_completo: participante.nombre_completo,
-          documento_identidad: participante.documento_identidad,
-          unidad_educativa_nombre: participante.unidad_educativa_nombre,
-          departamento_nombre: participante.departamento_nombre,
-          area_nombre: participante.area_nombre,
-          nivel_nombre: participante.nivel_nombre,
-          puntuacion: participante.puntuacion || 0,
-          inscripcion_estado: participante.estado_evaluacion,
-          observaciones: participante.observaciones,
-          fecha_evaluacion: participante.fecha_evaluacion,
-          evaluador_nombre: participante.evaluador_nombre,
-          evaluador_email: participante.evaluador_email
+        // Mapear y deduplicar por documento_identidad para evitar mostrar al mismo
+        // estudiante varias veces (p. ej., distintos grados dentro del mismo nivel)
+        const mapeados = response.data.participantes.map((p: any) => ({
+          id: p.inscripcion_area_id,
+          nombre_completo: p.nombre_completo,
+          documento_identidad: p.documento_identidad,
+          unidad_educativa_nombre: p.unidad_educativa_nombre,
+          departamento_nombre: p.departamento_nombre,
+          area_nombre: p.area_nombre,
+          nivel_nombre: p.nivel_nombre || 'Secundaria',
+          grado_escolaridad: p.grado_escolaridad,
+          puntuacion: p.puntuacion || 0,
+          inscripcion_estado: p.estado_evaluacion,
+          observaciones: p.observaciones,
+          fecha_evaluacion: p.fecha_evaluacion,
+          evaluador_nombre: p.evaluador_nombre,
+          evaluador_email: p.evaluador_email
         }))
+        const competidoresMapeados = Object.values(
+          mapeados.reduce((acc: Record<string, any>, curr: any) => {
+            acc[curr.documento_identidad] ??= curr
+            return acc
+          }, {})
+        ) as any[]
         
-        
+        // Filtrar por departamento si está seleccionado
         const filteredData = competidoresMapeados.filter((c: any) => {
           const departamentoLabel = getDepartamentoName(departamentoId)
           return c.departamento_nombre === departamentoLabel
@@ -1550,15 +1905,15 @@ function CompetidoresPorAreaNivel() {
     console.log(' nivelId:', nivelId)
     
     if (SIMULATE) {
-      console.log('🎭 Modo simulación - saltando fetchData')
+      console.log(' Modo simulación - saltando fetchData')
       return
     }
     
     if (departamentoId) {
-      console.log(' Llamando a fetchData con departamentoId:', departamentoId)
+      console.log('📡 Llamando a fetchData con departamentoId:', departamentoId)
       fetchData()
     } else {
-      console.log(' No hay departamentoId, no se puede hacer fetchData')
+      console.log('⚠️ No hay departamentoId, no se puede hacer fetchData')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departamentoId, nivelId, sortBy, estado])
@@ -1876,6 +2231,489 @@ function renderRendimientoBadge(p: any) {
   if (score >= 60) return <Badge className="bg-amber-100 text-amber-800">Regular</Badge>
   return <Badge className="bg-rose-100 text-rose-800">Bajo</Badge>
 }
+
+function CierreFaseArea() {
+  const [loading, setLoading] = useState<boolean>(true)
+  const [cierreData, setCierreData] = useState<any>(null)
+  const [showCierreModal, setShowCierreModal] = useState<boolean>(false)
+  const [cerrando, setCerrando] = useState<boolean>(false)
+  const [descargandoPDF, setDescargandoPDF] = useState<boolean>(false)
+  const [descargandoExcel, setDescargandoExcel] = useState<boolean>(false)
+  const [descargandoEstadisticas, setDescargandoEstadisticas] = useState<boolean>(false)
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const response = await CoordinadorService.getDashboardCierreFase()
+      if (response.success) {
+        console.log('Datos de cierre recibidos:', response.data)
+        console.log('Estado cierre:', response.data?.estado_cierre)
+        console.log('Vista previa clasificados:', response.data?.vista_previa_clasificados)
+        console.log('Clasificados en vista previa:', response.data?.vista_previa_clasificados?.clasificados)
+        console.log('No clasificados en vista previa:', response.data?.vista_previa_clasificados?.no_clasificados)
+        console.log('Cantidad clasificados:', response.data?.vista_previa_clasificados?.clasificados?.length || 0)
+        console.log('Cantidad no clasificados:', response.data?.vista_previa_clasificados?.no_clasificados?.length || 0)
+        setCierreData(response.data)
+      }
+    } catch (error: any) {
+      console.error('Error cargando datos de cierre:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const handleCerrarFase = async () => {
+    console.log('🔵 [FRONTEND] handleCerrarFase llamado')
+    console.log('🔵 [FRONTEND] puede_cerrar:', cierreData?.estadisticas?.puede_cerrar)
+    if (!cierreData?.estadisticas?.puede_cerrar) {
+      console.log('❌ [FRONTEND] No se puede cerrar la fase')
+      return
+    }
+    console.log('✅ [FRONTEND] Abriendo modal de cierre')
+    setShowCierreModal(true)
+  }
+
+  const confirmarCierre = async () => {
+    console.log('🟢 [FRONTEND] confirmarCierre llamado - Iniciando cierre de fase')
+    setCerrando(true)
+    try {
+      console.log('📤 [FRONTEND] Enviando petición POST a /api/coordinador/cierre-fase/cerrar')
+      const response = await CoordinadorService.cerrarFaseArea()
+      console.log('📥 [FRONTEND] Respuesta recibida:', response)
+      if (response.success) {
+        setShowCierreModal(false)
+        alert('Fase cerrada exitosamente. Los reportes PDF y Excel se están generando en segundo plano y estarán disponibles en unos momentos.')
+        
+        // Esperar un momento para que el backend procese completamente el cierre
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        // Recargar datos con múltiples intentos hasta que el estado sea 'cerrada'
+        console.log('🔄 [FRONTEND] Recargando datos después del cierre...')
+        let intentos = 0
+        const maxIntentos = 15
+        let estadoActualizado = false
+        
+        while (intentos < maxIntentos && !estadoActualizado) {
+          // Recargar datos
+          await loadData()
+          
+          // Esperar un momento para que el estado se actualice
+          await new Promise(resolve => setTimeout(resolve, 800))
+          
+          // Verificar el estado después de cargar
+          try {
+            const responseCheck = await CoordinadorService.getDashboardCierreFase()
+            const estadoCierre = responseCheck.data?.estado_cierre
+            console.log(`🔄 [FRONTEND] Intento ${intentos + 1}/${maxIntentos} - Estado cierre: ${estadoCierre}`)
+            
+            if (estadoCierre === 'cerrada') {
+              estadoActualizado = true
+              console.log('✅ [FRONTEND] Estado actualizado a "cerrada" correctamente')
+              // Recargar datos una vez más para asegurar que todo esté actualizado
+              await loadData()
+              break
+            }
+          } catch (error) {
+            console.error('Error verificando estado:', error)
+          }
+          
+          // Esperar antes del siguiente intento
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          intentos++
+        }
+        
+        if (!estadoActualizado) {
+          console.warn('⚠️ [FRONTEND] No se pudo confirmar el estado "cerrada" después de varios intentos')
+          // Recargar una vez más para mostrar el estado actual
+          await loadData()
+        }
+        
+        // Recargar la página para actualizar todos los componentes (incluyendo ProgresoEvaluacionClasificatoria)
+        console.log('🔄 [FRONTEND] Recargando página para actualizar todos los componentes')
+        setTimeout(() => {
+          window.location.reload()
+        }, 500)
+      } else {
+        console.error('❌ [FRONTEND] Error en respuesta:', response)
+        alert('Error al cerrar la fase: ' + (response.message || 'Error desconocido'))
+        setCerrando(false)
+      }
+    } catch (error: any) {
+      console.error('❌ [FRONTEND] Excepción al cerrar fase:', error)
+      console.error('❌ [FRONTEND] Stack trace:', error.stack)
+      alert('Error al cerrar la fase: ' + (error.message || 'Error desconocido'))
+      setCerrando(false)
+    }
+  }
+
+  const handleDescargarPDF = async () => {
+    setDescargandoPDF(true)
+    try {
+      const result = await CoordinadorService.descargarReportePDF()
+      if (result.success) {
+        // El PDF se descarga automáticamente
+      } else {
+        const errorMsg = result.error || 'Error al descargar el PDF. Asegúrate de que la fase esté cerrada y que el PDF se haya generado correctamente.'
+        alert(errorMsg)
+      }
+    } catch (error: any) {
+      console.error('Error descargando PDF:', error)
+      const errorMsg = error.message || 'Error desconocido al descargar el PDF'
+      alert('Error al descargar el PDF: ' + errorMsg)
+    } finally {
+      setDescargandoPDF(false)
+    }
+  }
+
+  const handleDescargarExcel = async () => {
+    setDescargandoExcel(true)
+    try {
+      const result = await CoordinadorService.descargarReporteExcelClasificados()
+      if (result.success) {
+        // El Excel se descarga automáticamente
+      } else {
+        const errorMsg = result.error || 'Error al descargar el Excel. Asegúrate de que la fase esté cerrada y que el Excel se haya generado correctamente.'
+        alert(errorMsg)
+      }
+    } catch (error: any) {
+      console.error('Error descargando Excel:', error)
+      const errorMsg = error.message || 'Error desconocido al descargar el Excel'
+      alert('Error al descargar el Excel: ' + errorMsg)
+    } finally {
+      setDescargandoExcel(false)
+    }
+  }
+
+  const handleDescargarEstadisticas = async () => {
+    setDescargandoEstadisticas(true)
+    try {
+      const result = await CoordinadorService.descargarReportePDFEstadisticasDetalladas()
+      if (result.success) {
+        // El PDF se descarga automáticamente
+      } else {
+        const errorMsg = result.error || 'Error al descargar el PDF de estadísticas. Asegúrate de que la fase esté cerrada y que el reporte se haya generado correctamente.'
+        alert(errorMsg)
+      }
+    } catch (error: any) {
+      console.error('Error descargando PDF de estadísticas:', error)
+      const errorMsg = error.message || 'Error desconocido al descargar el PDF de estadísticas'
+      alert('Error al descargar el PDF de estadísticas: ' + errorMsg)
+    } finally {
+      setDescargandoEstadisticas(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Cargando información de cierre...</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!cierreData) {
+    return (
+      <Card>
+        <CardContent className="py-8">
+          <div className="text-center text-muted-foreground">
+            No se pudo cargar la información del cierre de fase
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const { area, estadisticas, estado_cierre, fecha_cierre, vista_previa_clasificados } = cierreData
+  
+  const porcentajeCompletitud = estadisticas?.porcentaje_completitud || 0
+  const puedeCerrar = porcentajeCompletitud >= 99.9 && estado_cierre !== 'cerrada' && estadisticas?.puede_cerrar !== false
+  
+  // Debug logs
+  console.log('CierreFaseArea - Debug completo:', {
+    porcentajeCompletitud,
+    estado_cierre,
+    puede_cerrar_backend: estadisticas?.puede_cerrar,
+    puedeCerrar,
+    total_participantes: estadisticas?.total_participantes,
+    total_evaluados: estadisticas?.total_evaluados,
+    clasificados_real: estadisticas?.clasificados_real
+  })
+  console.log('CierreFaseArea - vista_previa_clasificados:', vista_previa_clasificados)
+  console.log('CierreFaseArea - clasificados:', vista_previa_clasificados?.clasificados)
+  console.log('CierreFaseArea - no_clasificados:', vista_previa_clasificados?.no_clasificados)
+  console.log('CierreFaseArea - estado_cierre:', estado_cierre)
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5" />
+            Cierre de Fase Clasificatoria
+          </CardTitle>
+          <CardDescription>
+            Gestión del cierre de la fase clasificatoria del área: {area?.nombre}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Estado de Completitud */}
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Progreso de Evaluaciones</span>
+                <span className="text-sm font-semibold">{porcentajeCompletitud.toFixed(1)}%</span>
+              </div>
+              <Progress value={porcentajeCompletitud} className="h-3" />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">{estadisticas?.total_participantes || 0}</div>
+                <div className="text-xs text-muted-foreground">Total Participantes</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">{estadisticas?.total_evaluados || 0}</div>
+                <div className="text-xs text-muted-foreground">Evaluados</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600">{estadisticas?.clasificados_real || 0}</div>
+                <div className="text-xs text-muted-foreground">Clasificados</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">
+                  {(estadisticas?.total_participantes || 0) - (estadisticas?.total_evaluados || 0)}
+                </div>
+                <div className="text-xs text-muted-foreground">Pendientes</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Estado del Cierre */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium mb-1">Estado de la Fase</div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={estado_cierre === 'cerrada' ? 'default' : estado_cierre === 'activa' ? 'secondary' : 'outline'}>
+                    {estado_cierre === 'cerrada' ? 'Cerrada' : estado_cierre === 'activa' ? 'Activa' : 'Pendiente'}
+                  </Badge>
+                  {fecha_cierre && (
+                    <span className="text-xs text-muted-foreground">
+                      Cerrada el {new Date(fecha_cierre).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {puedeCerrar && (
+                <Button onClick={handleCerrarFase} className="bg-blue-600 hover:bg-blue-700">
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Cerrar Fase de {area?.nombre}
+                </Button>
+              )}
+              {!puedeCerrar && porcentajeCompletitud >= 99.9 && estado_cierre !== 'cerrada' && (
+                <div className="text-sm text-orange-600 font-medium">
+                  <AlertCircle className="h-4 w-4 inline mr-1" />
+                  Listo para cerrar (verifica los datos arriba)
+                </div>
+              )}
+              {estado_cierre === 'cerrada' && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="text-sm text-green-600 font-medium">
+                    ✓ Fase cerrada
+                  </div>
+                  <Button 
+                    onClick={handleDescargarPDF} 
+                    disabled={descargandoPDF}
+                    variant="outline"
+                    className="border-red-600 text-red-600 hover:bg-red-50"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    {descargandoPDF ? 'Descargando...' : 'PDF'}
+                  </Button>
+                  <Button 
+                    onClick={handleDescargarExcel} 
+                    disabled={descargandoExcel}
+                    variant="outline"
+                    className="border-green-600 text-green-600 hover:bg-green-50"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {descargandoExcel ? 'Descargando...' : 'Excel Clasificados'}
+                  </Button>
+                  <Button 
+                    onClick={handleDescargarEstadisticas} 
+                    disabled={descargandoEstadisticas}
+                    variant="outline"
+                    className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    {descargandoEstadisticas ? 'Descargando...' : 'Estadísticas'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!puedeCerrar && porcentajeCompletitud < 99.9 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600" />
+                <div>
+                  <div className="text-sm font-medium text-yellow-800">
+                    No se puede cerrar la fase aún
+                  </div>
+                  <div className="text-xs text-yellow-700 mt-1">
+                    Se requiere 100% de evaluaciones completadas. Actualmente: {porcentajeCompletitud.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {porcentajeCompletitud >= 99.9 && estado_cierre !== 'cerrada' && !puedeCerrar && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-blue-600" />
+                <div>
+                  <div className="text-sm font-medium text-blue-800">
+                    Evaluaciones completadas
+                  </div>
+                  <div className="text-xs text-blue-700 mt-1">
+                    Puedes cerrar la fase ahora. Si no ves el botón, verifica que el estado no sea 'cerrada'.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Modal de Confirmación de Cierre */}
+      <Dialog open={showCierreModal} onOpenChange={setShowCierreModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Confirmar Cierre de Fase</DialogTitle>
+            <DialogDescription>
+              Estás a punto de cerrar la fase clasificatoria del área: <strong>{area?.nombre}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Resumen de Impacto */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-900 mb-3">Resumen de Impacto</h4>
+              <div className="space-y-2 text-sm text-blue-800">
+                <div>• Total de participantes: <strong>{estadisticas?.total_participantes || 0}</strong></div>
+                <div>• Total evaluados: <strong>{estadisticas?.total_evaluados || 0}</strong></div>
+                <div>• Clasificados: <strong className="text-green-700">{vista_previa_clasificados?.clasificados?.length || 0}</strong></div>
+                <div>• No clasificados: <strong className="text-orange-700">{vista_previa_clasificados?.no_clasificados?.length || 0}</strong></div>
+              </div>
+            </div>
+
+            {/* Criterios de Aceptación */}
+            <div className="bg-white border-2 border-gray-300 rounded-lg p-5 shadow-sm">
+              <h4 className="font-bold text-lg mb-4">Después de cerrar la fase de tu área:</h4>
+              <ul className="space-y-3 text-sm">
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  <span>Los <strong>{vista_previa_clasificados?.clasificados?.length || 0} clasificados</strong> quedarán registrados en el sistema</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  <span>Se generará un reporte PDF con los resultados de <strong>{area?.nombre}</strong></span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  <span>No podrás modificar las evaluaciones de esta fase</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  <span>El administrador general podrá ver que tu área completó el proceso</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  <span>La fase final se habilitará cuando el administrador cierre la fase general</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                ⚠️ Importante
+              </h4>
+              <div className="space-y-2 text-sm text-yellow-800">
+                <div>• Esta acción no se puede deshacer fácilmente</div>
+                <div>• Asegúrate de que todas las evaluaciones estén correctas antes de continuar</div>
+              </div>
+            </div>
+
+            {vista_previa_clasificados && vista_previa_clasificados.clasificados && (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-semibold mb-2 text-green-700">Vista Previa de Clasificados ({vista_previa_clasificados.clasificados.length})</h4>
+                  <div className="max-h-60 overflow-y-auto border rounded p-2 bg-green-50">
+                    <div className="space-y-1">
+                      {vista_previa_clasificados.clasificados.slice(0, 20).map((participante: any) => (
+                        <div key={participante.id} className="flex items-center justify-between text-sm p-1 hover:bg-green-100 rounded">
+                          <span>{participante.nombre_completo}</span>
+                          <span className="font-semibold text-green-700">{participante.puntuacion}</span>
+                        </div>
+                      ))}
+                      {vista_previa_clasificados.clasificados.length > 20 && (
+                        <div className="text-xs text-muted-foreground text-center mt-2">
+                          Y {vista_previa_clasificados.clasificados.length - 20} más...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {vista_previa_clasificados.no_clasificados && vista_previa_clasificados.no_clasificados.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2 text-red-700">No Clasificados ({vista_previa_clasificados.no_clasificados.length})</h4>
+                    <div className="max-h-60 overflow-y-auto border rounded p-2 bg-red-50">
+                      <div className="space-y-1">
+                        {vista_previa_clasificados.no_clasificados.slice(0, 20).map((participante: any) => (
+                          <div key={participante.id} className="flex items-center justify-between text-sm p-1 hover:bg-red-100 rounded">
+                            <span>{participante.nombre_completo}</span>
+                            <span className="font-semibold text-red-700">{participante.puntuacion}</span>
+                          </div>
+                        ))}
+                        {vista_previa_clasificados.no_clasificados.length > 20 && (
+                          <div className="text-xs text-muted-foreground text-center mt-2">
+                            Y {vista_previa_clasificados.no_clasificados.length - 20} más...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setShowCierreModal(false)} disabled={cerrando}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmarCierre} disabled={cerrando} className="bg-blue-600 hover:bg-blue-700">
+              {cerrando ? 'Cerrando...' : 'Confirmar Cierre'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; areaName: string }) {
   const [fase, setFase] = useState<'clasificacion'|'final'>('clasificacion')
   const [numEval, setNumEval] = useState<string>('2')
@@ -2539,7 +3377,19 @@ export default function CoordinatorDashboard() {
 
           {/* Progress Tab - Dashboard de Progreso de Evaluación Clasificatoria */}
           <TabsContent value="progress" className="space-y-4 sm:space-y-6">
-            <ProgresoEvaluacionClasificatoria />
+            <Tabs defaultValue="clasificacion" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="clasificacion">Fase Clasificatoria</TabsTrigger>
+                <TabsTrigger value="final">Fase Final</TabsTrigger>
+              </TabsList>
+              <TabsContent value="clasificacion" className="space-y-6">
+                <ProgresoEvaluacionClasificatoria />
+                <CierreFaseArea />
+              </TabsContent>
+              <TabsContent value="final" className="space-y-6">
+                <ProgresoEvaluacionFinal />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* Participants Tab */}

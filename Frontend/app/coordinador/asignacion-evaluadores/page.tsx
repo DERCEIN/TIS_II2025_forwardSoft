@@ -87,6 +87,7 @@ export default function AsignacionEvaluadoresPage() {
   const [error, setError] = useState("")
   
   // Parámetros del formulario
+  const [fase, setFase] = useState<'clasificacion' | 'final'>('clasificacion')
   const [areaId, setAreaId] = useState<string>("")
   const [nivelId, setNivelId] = useState<string>("")
   const [rondaId, setRondaId] = useState<string>("")
@@ -150,7 +151,7 @@ export default function AsignacionEvaluadoresPage() {
         area_id: parseInt(areaId),
         nivel_id: nivelId, 
         ronda_id: rondaId ? parseInt(rondaId) : undefined,
-        fase: "clasificacion" as const,
+        fase: fase as 'clasificacion' | 'final',
         num_evaluadores: parseInt(numEvaluadores),
         cuota_por_evaluador: parseInt(cuotaPorEvaluador),
         metodo: "simple" as const, 
@@ -236,7 +237,7 @@ export default function AsignacionEvaluadoresPage() {
         parseInt(areaId),
         {
           nivel_id: nivelId ? parseInt(nivelId) : undefined,
-          fase: "clasificacion"
+          fase: fase
         }
       )
     } catch (err: any) {
@@ -328,6 +329,25 @@ export default function AsignacionEvaluadoresPage() {
                 <CardDescription>Configura los parámetros básicos de la asignación</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Selección de fase */}
+                <div className="space-y-2">
+                  <Label htmlFor="fase">Fase *</Label>
+                  <Select value={fase} onValueChange={(value) => setFase(value as 'clasificacion' | 'final')} disabled={loading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona la fase" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="clasificacion">Fase Clasificatoria</SelectItem>
+                      <SelectItem value="final">Fase Final</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {fase === 'final' 
+                      ? 'Asignación para la fase final (solo clasificados)' 
+                      : 'Asignación para la fase clasificatoria'}
+                  </p>
+                </div>
+
                 {/* Área del conocimiento */}
                 <div className="space-y-2">
                   <Label htmlFor="area">Área del conocimiento *</Label>
