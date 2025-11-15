@@ -647,7 +647,7 @@ export default function AdminDashboard() {
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Button className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Nueva Área</span>
+                <span className="hidden sm:inline">Publicar Área</span>
                 <span className="sm:hidden">Área</span>
               </Button>
               <Button variant="outline" className="w-full sm:w-auto">
