@@ -1219,7 +1219,17 @@ export class DesclasificacionService {
     return ApiService.get(`/api/desclasificacion/estadisticas?area_id=${areaId}`)
   }
 }
-
+export class MedalleroService{
+  static async getMedallero(){
+    return ApiService.get('/api/administrador/medallero')
+  }
+  static async getAreas(){
+    return ApiService.get('/api/administrador/medallero/areas')
+  }
+  static async updateMedallero(data: any) {
+    return ApiService.put('/api/administrador/medallero', data);
+  }
+}
 interface NuevoTiempoEvaluador {
   coordinador_id: number
   evaluador_id: number
