@@ -15,7 +15,7 @@ use ForwardSoft\Controllers\ReporteController;
 use ForwardSoft\Controllers\CatalogoController;
 use ForwardSoft\Controllers\ConfiguracionOlimpiadaController;
 use ForwardSoft\Controllers\DesclasificacionController;
-
+use ForwardSoft\Controllers\MedalleroController;
 
 class Router
 {
@@ -71,7 +71,10 @@ class Router
         $this->addRoute('GET', '/api/configuracion/area', [ConfiguracionOlimpiadaController::class, 'getConfiguracionPorArea'], ['auth', 'admin']);
         $this->addRoute('PUT', '/api/configuracion/area', [ConfiguracionOlimpiadaController::class, 'updateConfiguracionPorArea'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/configuracion/validar-choques', [ConfiguracionOlimpiadaController::class, 'validarChoquesHorarios'], ['auth']);
-
+        //Rutas de configuración de medallero
+        $this->addRoute('GET','/api/administrador/medallero',[MedalleroController::class,'getMedallero'],['auth','admin']);
+        $this->addRoute('PUT','/api/administrador/medallero',[MedalleroController::class,'updateMedallero'],['auth','admin']);
+        $this->addRoute('GET','/api/administrador/medallero/areas',[MedalleroController::class,'getAreas'],['auth','admin']);
         // Rutas de desclasificación
         $this->addRoute('GET', '/api/desclasificacion/reglas', [DesclasificacionController::class, 'getReglasPorArea'], ['auth']);
         $this->addRoute('POST', '/api/desclasificacion/registrar', [DesclasificacionController::class, 'registrarDesclasificacion'], ['auth']);
@@ -81,7 +84,7 @@ class Router
         $this->addRoute('GET', '/api/desclasificacion/estadisticas', [DesclasificacionController::class, 'getEstadisticas'], ['auth']);
 
         // Rutas de coordinador
-        $this->addRoute('GET', '/api/coordinador/dashboard', [CoordinadorController::class, 'dashboard'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/dashboard', [CoordinadorController::class, 'dashboard'], middleware: ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/proyectos', [CoordinadorController::class, 'proyectos'], ['auth', 'coordinador']);
 
         // Rutas de evaluador
