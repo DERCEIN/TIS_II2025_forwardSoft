@@ -189,7 +189,7 @@ class ImportController
         foreach ($requiredHeaders as $required) {
             $found = false;
             foreach ($headers as $header) {
-                // Comparación exacta
+                
                 if (trim($header) === trim($required)) {
                     $found = true;
                     break;
@@ -248,19 +248,18 @@ class ImportController
         
         $this->validateCsvRow($rowData, $rowNumber);
 
-        // Buscar o crear unidad educativa
+        
         $unidadId = $this->findOrCreateUnidadEducativa($rowData['unidad_educativa'], $rowData['departamento']);
 
-        // Buscar departamento
+        
         $departamentoId = $this->findDepartamento($rowData['departamento']);
 
-        // Buscar área de competencia
         $areaId = $this->findAreaCompetencia($rowData['area_competencia']);
 
-        // Buscar nivel de competencia
+       
         $nivelId = $this->findNivelCompetencia($rowData['nivel_competencia']);
 
-        // Verificar si el olimpista ya existe
+       
         $existingOlimpista = $this->olimpistaModel->findByDocument($rowData['documento_identidad']);
         if ($existingOlimpista) {
             $results['warnings'][] = [
@@ -272,19 +271,19 @@ class ImportController
             return;
         }
 
-        // Crear tutor legal
+       
         $tutorLegalId = $this->findOrCreateTutorLegal($rowData);
 
-        // Crear tutor académico si se proporciona
+        
         $tutorAcademicoId = null;
         if (!empty($rowData['tutor_academico_nombre'])) {
             $tutorAcademicoId = $this->findOrCreateTutorAcademico($rowData, $unidadId);
         }
 
-        // Normalizar fecha de nacimiento (admite DD/MM/YYYY o YYYY-MM-DD)
+        
         $fechaNacimiento = !empty($rowData['fecha_nacimiento']) ? $this->normalizeDate($rowData['fecha_nacimiento']) : null;
 
-        // Validar/normalizar grado de escolaridad
+       
         $gradoNormalizado = $this->normalizeGrade($rowData['grado_escolaridad'] ?? '');
         if (!$gradoNormalizado) {
             throw new \Exception('Grado de escolaridad inválido o no reconocido: ' . ($rowData['grado_escolaridad'] ?? '')); 
@@ -510,7 +509,7 @@ class ImportController
 
     private function updateExistingOlimpista($olimpistaId, $rowData, $unidadId, $departamentoId, $areaId, $nivelId)
     {
-        // Actualizar solo datos básicos del olimpista (sin sobrescribir área/nivel)
+       
         $this->olimpistaModel->update($olimpistaId, [
             'nombre' => trim($rowData['nombre']),
             'apellido' => trim($rowData['apellido']),
@@ -531,10 +530,10 @@ class ImportController
             'updated_at' => date('Y-m-d H:i:s')
         ]);
 
-        // Verificar si ya tiene inscripción en esta área y nivel
+        
         $existingInscripcion = $this->inscripcionModel->findByOlimpistaAndAreaAndLevel($olimpistaId, $areaId, $nivelId);
         if (!$existingInscripcion) {
-            // Crear nueva inscripción
+            
             $esGrupoValue = trim($rowData['es_grupo'] ?? '');
             $esGrupo = !empty($esGrupoValue) && strtolower($esGrupoValue) === 'si';
             $inscripcionId = $this->inscripcionModel->create([
@@ -606,7 +605,7 @@ class ImportController
         // Escribir headers
         fputcsv($output, $headers, ',', '"', '\\');
         
-        // Escribir fila de ejemplo
+        
         $exampleRow = [
             'Juan',
             'Pérez García',

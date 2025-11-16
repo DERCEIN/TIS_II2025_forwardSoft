@@ -104,9 +104,15 @@ class Router
         $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-excel', [CoordinadorController::class, 'descargarReporteExcelClasificados'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-estadisticas', [CoordinadorController::class, 'descargarReportePDFEstadisticasDetalladas'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/cierre-fase/listar-pdfs', [CoordinadorController::class, 'listarReportesPDF'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/firma/guardar', [CoordinadorController::class, 'guardarFirma'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/firma/obtener', [CoordinadorController::class, 'obtenerFirma'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/listas-clasificacion', [CoordinadorController::class, 'getListasClasificacion'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/log-cambios-notas', [CoordinadorController::class, 'getLogCambiosNotas'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/evaluadores-por-area', [CoordinadorController::class, 'getEvaluadoresPorArea'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cambios-pendientes', [CoordinadorController::class, 'getCambiosPendientes'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/log-cambios-notas/{id}/aprobar', [CoordinadorController::class, 'aprobarCambio'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/log-cambios-notas/{id}/rechazar', [CoordinadorController::class, 'rechazarCambio'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/log-cambios-notas/{id}/solicitar-info', [CoordinadorController::class, 'solicitarMasInfo'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/progreso-evaluacion', [CoordinadorController::class, 'getProgresoEvaluacion'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/progreso-evaluacion-final', [CoordinadorController::class, 'getProgresoEvaluacionFinal'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/alertas-criticas', [CoordinadorController::class, 'getAlertasCriticas'], ['auth', 'coordinador']);

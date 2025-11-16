@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNotifications } from '@/components/NotificationProvider'
-import { ApiService } from '@/lib/api'
+import { ApiService, CoordinadorService } from '@/lib/api'
 import { 
   Search,
   Filter,
@@ -55,6 +55,11 @@ interface LogCambio {
   motivo_cambio: string
   fecha_cambio: string
   ip_address: string
+  estado_aprobacion?: 'pendiente' | 'aprobado' | 'rechazado'
+  coordinador_id?: number
+  fecha_revision?: string
+  observaciones_coordinador?: string
+  notificacion_enviada?: boolean
 }
 
 interface EstadisticasLog {
@@ -64,6 +69,10 @@ interface EstadisticasLog {
   promedio_diferencia: number
   primer_cambio: string
   ultimo_cambio: string
+  cambios_pendientes?: number
+  cambios_aprobados?: number
+  cambios_rechazados?: number
+  porcentaje_aprobacion?: number
 }
 
 export default function LogAuditoriaPage() {
@@ -79,18 +88,25 @@ export default function LogAuditoriaPage() {
   const [filterEvaluador, setFilterEvaluador] = useState<string>('todos')
   const [filterEstado, setFilterEstado] = useState<string>('todos')
   const [filterOperacion, setFilterOperacion] = useState<string>('todos')
+  const [cambiosPendientes, setCambiosPendientes] = useState<number>(0)
   
-  // Estados para modal de detalles
+  
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedLog, setSelectedLog] = useState<LogCambio | null>(null)
+  
+  const [isModalRevisionOpen, setIsModalRevisionOpen] = useState(false)
+  const [selectedCambioRevision, setSelectedCambioRevision] = useState<LogCambio | null>(null)
+  const [observacionesCoordinador, setObservacionesCoordinador] = useState('')
+  const [accionRevision, setAccionRevision] = useState<'aprobar' | 'rechazar' | 'solicitar_info'>('aprobar')
+  const [submitting, setSubmitting] = useState(false)
 
-  // Estados adicionales para funcionalidad avanzada
+  
   const [rangoFechas, setRangoFechas] = useState<string>('')
   const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [exportando, setExportando] = useState(false)
 
-  // Función para actualizar rango de fechas
+  
   const actualizarRangoFechas = () => {
     if (filterFechaDesde && filterFechaHasta) {
       const desde = new Date(filterFechaDesde).toLocaleDateString('es-ES')
@@ -107,28 +123,34 @@ export default function LogAuditoriaPage() {
     }
   }
 
-  // Verificar autenticación
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      console.log('❌ Usuario no autenticado, redirigiendo al login...')
+      console.log('Usuario no autenticado, redirigiendo al login...')
       window.location.href = '/login'
     }
   }, [isAuthenticated, isLoading])
 
-  // Solo cargar logs cuando el usuario esté disponible
   useEffect(() => {
     if (user) {
       fetchLogs()
+      fetchCambiosPendientes()
       actualizarRangoFechas()
     }
   }, [user])
 
-  // Actualizar rango de fechas cuando cambien los filtros
+  const fetchCambiosPendientes = async () => {
+    try {
+      const data = await CoordinadorService.getCambiosPendientes()
+      setCambiosPendientes(data.data?.total_pendientes || 0)
+    } catch (err) {
+      console.error('Error fetching cambios pendientes:', err)
+    }
+  }
+
   useEffect(() => {
     actualizarRangoFechas()
   }, [filterFechaDesde, filterFechaHasta])
 
-  // Mostrar loading mientras se verifica la autenticación
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -140,7 +162,6 @@ export default function LogAuditoriaPage() {
     )
   }
 
-  // Si no está autenticado, no mostrar nada (se redirigirá)
   if (!isAuthenticated) {
     return null
   }
@@ -241,10 +262,9 @@ export default function LogAuditoriaPage() {
   const fetchLogs = async () => {
     try {
       setLoading(true)
-      const params = new URLSearchParams()
       
-      // Usar el área específica del coordinador logueado
-      const areaId = user?.area_id || 1 // Fallback a área 1 si no hay usuario
+      
+      const areaId = user?.area_id || 1 
       console.log('User completo:', user)
       console.log('Area ID del usuario:', areaId)
       
@@ -255,23 +275,88 @@ export default function LogAuditoriaPage() {
       }
       
       console.log('Fetching logs for area_id:', areaId)
-      params.append('area_id', areaId.toString())
       
-      if (filterFechaDesde) params.append('fecha_desde', filterFechaDesde)
-      if (filterFechaHasta) params.append('fecha_hasta', filterFechaHasta)
-      if (filterEvaluador !== 'todos') params.append('evaluador_id', filterEvaluador)
-      
-      const data = await ApiService.get(`/api/coordinador/log-cambios-notas?${params}`)
+      const data = await CoordinadorService.getLogCambiosNotas({
+        area_id: areaId,
+        fecha_desde: filterFechaDesde || undefined,
+        fecha_hasta: filterFechaHasta || undefined,
+        evaluador_id: filterEvaluador !== 'todos' ? parseInt(filterEvaluador) : undefined,
+        estado_aprobacion: filterEstado !== 'todos' ? filterEstado : undefined
+      })
       console.log('Log response data:', data)
       setLogs(data.data?.cambios || [])
       setEstadisticas(data.data?.estadisticas || null)
       console.log('Logs set:', data.data?.cambios || [])
+      
+      
+      fetchCambiosPendientes()
     } catch (err: any) {
       console.error('Error fetching logs:', err)
       const errorMessage = err?.response?.data?.message || err?.message || 'No se pudieron cargar los logs de auditoría'
       error('Error', errorMessage)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleProcesarCambio = async () => {
+    if (!selectedCambioRevision) return
+
+    if (accionRevision === 'solicitar_info' && !observacionesCoordinador.trim()) {
+      error('Error', 'Las observaciones son requeridas para solicitar más información')
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      let response
+      if (accionRevision === 'aprobar') {
+        response = await CoordinadorService.aprobarCambio(selectedCambioRevision.id, observacionesCoordinador || undefined)
+      } else if (accionRevision === 'rechazar') {
+        response = await CoordinadorService.rechazarCambio(selectedCambioRevision.id, observacionesCoordinador || undefined)
+      } else {
+        response = await CoordinadorService.solicitarMasInfo(selectedCambioRevision.id, observacionesCoordinador)
+      }
+
+      if (response.success) {
+        const mensaje = accionRevision === 'aprobar' ? 'Cambio aprobado exitosamente' :
+                       accionRevision === 'rechazar' ? 'Cambio rechazado y nota revertida' :
+                       'Solicitud de información enviada'
+        success('Éxito', mensaje)
+        
+        setLogs(prev => prev.map(log => 
+          log.id === selectedCambioRevision.id 
+            ? { ...log, estado_aprobacion: accionRevision === 'aprobar' ? 'aprobado' : accionRevision === 'rechazar' ? 'rechazado' : 'pendiente',
+                     observaciones_coordinador: observacionesCoordinador,
+                     fecha_revision: new Date().toISOString() }
+            : log
+        ))
+
+        setIsModalRevisionOpen(false)
+        setSelectedCambioRevision(null)
+        setObservacionesCoordinador('')
+        fetchLogs()
+        fetchCambiosPendientes()
+      }
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.message || err?.message || 'No se pudo procesar la acción'
+      error('Error', errorMessage)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const getEstadoBadge = (estado?: string) => {
+    switch (estado) {
+      case 'pendiente':
+        return <Badge variant="secondary" className="flex items-center gap-1 bg-orange-100 text-orange-800 border-orange-300"><Clock className="h-3 w-3" />Pendiente</Badge>
+      case 'aprobado':
+        return <Badge variant="default" className="flex items-center gap-1 bg-green-100 text-green-800 border-green-300"><CheckCircle className="h-3 w-3" />Aprobado</Badge>
+      case 'rechazado':
+        return <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="h-3 w-3" />Rechazado</Badge>
+      default:
+        return <Badge variant="outline" className="flex items-center gap-1"><Info className="h-3 w-3" />Sin estado</Badge>
     }
   }
 
@@ -302,7 +387,15 @@ export default function LogAuditoriaPage() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900 mb-1">Log de Cambios</h1>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-semibold text-gray-900">Log de Cambios</h1>
+                {cambiosPendientes > 0 && (
+                  <Badge className="bg-orange-500 text-white px-3 py-1">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {cambiosPendientes} {cambiosPendientes === 1 ? 'pendiente' : 'pendientes'}
+                  </Badge>
+                )}
+              </div>
               <p className="text-sm text-gray-600">
                 Sistema de trazabilidad completa para rastrear cambios de notas en caso de reclamos o actualizaciones
               </p>
@@ -405,16 +498,16 @@ export default function LogAuditoriaPage() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 block">Operación</Label>
-                  <Select value={filterOperacion} onValueChange={setFilterOperacion}>
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">Estado de Aprobación</Label>
+                  <Select value={filterEstado} onValueChange={setFilterEstado}>
                     <SelectTrigger className="text-sm">
-                      <SelectValue placeholder="Todas las operaciones" />
+                      <SelectValue placeholder="Todos los estados" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todas las operaciones</SelectItem>
-                      <SelectItem value="INSERT">Crear</SelectItem>
-                      <SelectItem value="UPDATE">Modificar</SelectItem>
-                      <SelectItem value="DELETE">Eliminar</SelectItem>
+                      <SelectItem value="todos">Todos los estados</SelectItem>
+                      <SelectItem value="pendiente">Pendientes</SelectItem>
+                      <SelectItem value="aprobado">Aprobados</SelectItem>
+                      <SelectItem value="rechazado">Rechazados</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -594,7 +687,7 @@ export default function LogAuditoriaPage() {
                   Revisa cambios que requieren aprobación del coordinador
                 </p>
                 <div className="text-2xl font-bold text-yellow-800">
-                  {estadisticas?.evaluadores_con_cambios || 0}
+                  {estadisticas?.cambios_pendientes || cambiosPendientes || 0}
                 </div>
               </div>
               
@@ -640,6 +733,7 @@ export default function LogAuditoriaPage() {
                 <Table>
                   <TableHeader className="bg-gray-50">
                     <TableRow>
+                      <TableHead className="font-semibold text-gray-700">Estado</TableHead>
                       <TableHead className="font-semibold text-gray-700">Evaluador</TableHead>
                       <TableHead className="font-semibold text-gray-700">Fecha/Hora</TableHead>
                       <TableHead className="font-semibold text-gray-700">Participante</TableHead>
@@ -651,6 +745,9 @@ export default function LogAuditoriaPage() {
                   <TableBody>
                     {logsFiltrados.map((log) => (
                       <TableRow key={log.id} className="hover:bg-gray-50">
+                        <TableCell>
+                          {getEstadoBadge(log.estado_aprobacion)}
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
@@ -708,6 +805,22 @@ export default function LogAuditoriaPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
+                            {log.estado_aprobacion === 'pendiente' && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedCambioRevision(log)
+                                  setAccionRevision('aprobar')
+                                  setObservacionesCoordinador('')
+                                  setIsModalRevisionOpen(true)
+                                }}
+                                className="h-8 bg-orange-500 hover:bg-orange-600 text-white"
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                Revisar
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -913,6 +1026,206 @@ export default function LogAuditoriaPage() {
                   </Button>
                   <Button onClick={() => setIsModalOpen(false)}>
                     Cerrar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal de Revisión */}
+        <Dialog open={isModalRevisionOpen} onOpenChange={setIsModalRevisionOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Revisar Cambio - Registro #{selectedCambioRevision?.id}
+              </DialogTitle>
+              <DialogDescription>
+                Revisa los detalles del cambio y decide si aprobar, rechazar o solicitar más información
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedCambioRevision && (
+              <div className="space-y-6">
+                {/* Información Principal */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Participante</Label>
+                      <p className="text-sm font-medium">{selectedCambioRevision.olimpista_nombre}</p>
+                      <p className="text-xs text-gray-500">ID: {selectedCambioRevision.olimpista_id}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Evaluador Responsable</Label>
+                      <p className="text-sm font-medium">{selectedCambioRevision.evaluador_nombre}</p>
+                      <p className="text-xs text-gray-500">ID: {selectedCambioRevision.evaluador_id}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Área de Competencia</Label>
+                      <p className="text-sm">{selectedCambioRevision.area_nombre}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Nivel</Label>
+                      <p className="text-sm">{selectedCambioRevision.nivel_nombre}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Cambios de Nota */}
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium text-gray-500 mb-3 block">Cambios en la Evaluación</Label>
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-center gap-6">
+                      {selectedCambioRevision.nota_anterior && (
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 mb-1">Nota Anterior</p>
+                          <div className="text-2xl font-mono text-red-600 bg-red-100 px-4 py-2 rounded-lg">
+                            {selectedCambioRevision.nota_anterior}
+                          </div>
+                        </div>
+                      )}
+                      {selectedCambioRevision.nota_anterior && selectedCambioRevision.nota_nueva && (
+                        <div className="text-center">
+                          <div className="text-gray-400 text-2xl">→</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Diferencia: {typeof selectedCambioRevision.nota_nueva === 'number' && typeof selectedCambioRevision.nota_anterior === 'number' 
+                              ? (selectedCambioRevision.nota_nueva - selectedCambioRevision.nota_anterior).toFixed(2) 
+                              : '0.00'} puntos
+                          </div>
+                        </div>
+                      )}
+                      {selectedCambioRevision.nota_nueva && (
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 mb-1">Nota Nueva</p>
+                          <div className="text-2xl font-mono text-green-600 bg-green-100 px-4 py-2 rounded-lg">
+                            {selectedCambioRevision.nota_nueva}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Motivo del Cambio */}
+                {selectedCambioRevision.motivo_cambio && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-500">Motivo del Cambio</Label>
+                    <p className="text-sm mt-1 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      "{selectedCambioRevision.motivo_cambio}"
+                    </p>
+                  </div>
+                )}
+                
+                {/* Observaciones del Evaluador */}
+                {selectedCambioRevision.observaciones_nueva && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-500">Observaciones del Evaluador</Label>
+                    <p className="text-sm mt-1 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      {selectedCambioRevision.observaciones_nueva}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Acción a realizar */}
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium text-gray-500 mb-3 block">Acción a Realizar</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={accionRevision === 'aprobar' ? 'default' : 'outline'}
+                      onClick={() => setAccionRevision('aprobar')}
+                      className={accionRevision === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : ''}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Aprobar
+                    </Button>
+                    <Button
+                      variant={accionRevision === 'rechazar' ? 'default' : 'outline'}
+                      onClick={() => setAccionRevision('rechazar')}
+                      className={accionRevision === 'rechazar' ? 'bg-red-600 hover:bg-red-700' : ''}
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Rechazar
+                    </Button>
+                    <Button
+                      variant={accionRevision === 'solicitar_info' ? 'default' : 'outline'}
+                      onClick={() => setAccionRevision('solicitar_info')}
+                      className={accionRevision === 'solicitar_info' ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                    >
+                      <Info className="h-4 w-4 mr-2" />
+                      Solicitar Info
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Observaciones del Coordinador */}
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium text-gray-500 mb-2 block">
+                    Observaciones {accionRevision === 'solicitar_info' ? '(Requeridas)' : '(Opcionales)'}
+                  </Label>
+                  <Textarea
+                    value={observacionesCoordinador}
+                    onChange={(e) => setObservacionesCoordinador(e.target.value)}
+                    placeholder={accionRevision === 'aprobar' 
+                      ? 'Agrega observaciones sobre la aprobación (opcional)...'
+                      : accionRevision === 'rechazar'
+                      ? 'Explica el motivo del rechazo (opcional)...'
+                      : 'Describe qué información adicional necesitas (requerido)...'}
+                    rows={4}
+                    className="resize-none"
+                  />
+                </div>
+                
+                {/* Advertencia para rechazo */}
+                {accionRevision === 'rechazar' && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Advertencia:</strong> Al rechazar este cambio, la nota será revertida automáticamente a su valor anterior ({selectedCambioRevision.nota_anterior}).
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                {/* Botones de Acción */}
+                <div className="border-t pt-4 flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsModalRevisionOpen(false)
+                      setSelectedCambioRevision(null)
+                      setObservacionesCoordinador('')
+                    }}
+                    disabled={submitting}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleProcesarCambio}
+                    disabled={submitting || (accionRevision === 'solicitar_info' && !observacionesCoordinador.trim())}
+                    className={
+                      accionRevision === 'aprobar' ? 'bg-green-600 hover:bg-green-700' :
+                      accionRevision === 'rechazar' ? 'bg-red-600 hover:bg-red-700' :
+                      'bg-orange-600 hover:bg-orange-700'
+                    }
+                  >
+                    {submitting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        {accionRevision === 'aprobar' && <CheckCircle className="h-4 w-4 mr-2" />}
+                        {accionRevision === 'rechazar' && <XCircle className="h-4 w-4 mr-2" />}
+                        {accionRevision === 'solicitar_info' && <Info className="h-4 w-4 mr-2" />}
+                        {accionRevision === 'aprobar' ? 'Aprobar Cambio' :
+                         accionRevision === 'rechazar' ? 'Rechazar Cambio' :
+                         'Solicitar Información'}
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

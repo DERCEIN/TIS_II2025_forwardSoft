@@ -623,4 +623,184 @@ public function encontrarAreaPorID($areaId): mixed
             return "Error: No se pudieron enviar las notificaciones.";
         }
     }
+
+    
+    public function enviarNotificacionCambioPendiente($coordinador, $cambio)
+    {
+        try {
+            if (empty($coordinador['email']) || !filter_var($coordinador['email'], FILTER_VALIDATE_EMAIL)) {
+                error_log("Correo inválido para notificación de cambio pendiente: " . ($coordinador['email'] ?? 'vacío'));
+                return false;
+            }
+
+            $nombreCoordinador = $coordinador['name'] ?? $coordinador['nombre'] ?? 'Coordinador';
+            $nombreEvaluador = $cambio['evaluador_nombre'] ?? 'Evaluador';
+            $nombreParticipante = $cambio['olimpista_nombre'] ?? 'Participante';
+            $areaNombre = $cambio['area_nombre'] ?? 'Área';
+            $notaAnterior = $cambio['nota_anterior'] ?? 'N/A';
+            $notaNueva = $cambio['nota_nueva'] ?? 'N/A';
+            $motivo = $cambio['motivo_cambio'] ?? 'Sin motivo especificado';
+
+            $mensaje = "
+                <p>Estimado(a) <b>{$nombreCoordinador}</b>,</p>
+                <p>Se ha registrado un nuevo cambio de nota que requiere su revisión y aprobación.</p>
+                <p><strong>Detalles del cambio:</strong></p>
+                <ul>
+                    <li><strong>Evaluador:</strong> {$nombreEvaluador}</li>
+                    <li><strong>Participante:</strong> {$nombreParticipante}</li>
+                    <li><strong>Área:</strong> {$areaNombre}</li>
+                    <li><strong>Nota anterior:</strong> {$notaAnterior}</li>
+                    <li><strong>Nota nueva:</strong> {$notaNueva}</li>
+                    <li><strong>Motivo del cambio:</strong> {$motivo}</li>
+                </ul>
+                <p>Por favor, acceda al sistema para revisar y aprobar o rechazar este cambio.</p>
+                <p><a href='" . ($_ENV['FRONTEND_URL'] ?? 'http://localhost:3000') . "/coordinador/log-auditoria' style='background-color:#004aad;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;'>Ir al Log de Auditoría</a></p>
+                <br>
+                <p>Atentamente,</p>
+                <p><b>Sistema Olimpiada Oh! - SanSi</b></p>
+            ";
+
+            return $this->enviar(
+                $coordinador['email'],
+                "Nuevo cambio de nota pendiente de revisión - {$areaNombre}",
+                $mensaje
+            );
+        } catch (Exception $e) {
+            error_log("Error enviando notificación de cambio pendiente: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    
+    public function enviarNotificacionCambioAprobado($evaluador, $cambio, $observaciones = null)
+    {
+        try {
+            if (empty($evaluador['email']) || !filter_var($evaluador['email'], FILTER_VALIDATE_EMAIL)) {
+                error_log("Correo inválido para notificación de cambio aprobado: " . ($evaluador['email'] ?? 'vacío'));
+                return false;
+            }
+
+            $nombreEvaluador = $evaluador['name'] ?? $evaluador['nombre'] ?? 'Evaluador';
+            $nombreParticipante = $cambio['olimpista_nombre'] ?? 'Participante';
+            $notaAnterior = $cambio['nota_anterior'] ?? 'N/A';
+            $notaNueva = $cambio['nota_nueva'] ?? 'N/A';
+            $observacionesTexto = $observaciones ? "<p><strong>Observaciones del coordinador:</strong> {$observaciones}</p>" : "";
+
+            $mensaje = "
+                <p>Estimado(a) <b>{$nombreEvaluador}</b>,</p>
+                <p>Le informamos que su cambio de nota ha sido <strong style='color:#22c55e;'>APROBADO</strong> por el coordinador.</p>
+                <p><strong>Detalles del cambio aprobado:</strong></p>
+                <ul>
+                    <li><strong>Participante:</strong> {$nombreParticipante}</li>
+                    <li><strong>Nota anterior:</strong> {$notaAnterior}</li>
+                    <li><strong>Nota nueva:</strong> {$notaNueva}</li>
+                </ul>
+                {$observacionesTexto}
+                <p>El cambio ha sido aplicado exitosamente en el sistema.</p>
+                <br>
+                <p>Atentamente,</p>
+                <p><b>Sistema Olimpiada Oh! - SanSi</b></p>
+            ";
+
+            return $this->enviar(
+                $evaluador['email'],
+                "Cambio de nota aprobado - Olimpiada Oh! - SanSi",
+                $mensaje
+            );
+        } catch (Exception $e) {
+            error_log("Error enviando notificación de cambio aprobado: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    
+    public function enviarNotificacionCambioRechazado($evaluador, $cambio, $observaciones = null)
+    {
+        try {
+            if (empty($evaluador['email']) || !filter_var($evaluador['email'], FILTER_VALIDATE_EMAIL)) {
+                error_log("Correo inválido para notificación de cambio rechazado: " . ($evaluador['email'] ?? 'vacío'));
+                return false;
+            }
+
+            $nombreEvaluador = $evaluador['name'] ?? $evaluador['nombre'] ?? 'Evaluador';
+            $nombreParticipante = $cambio['olimpista_nombre'] ?? 'Participante';
+            $notaAnterior = $cambio['nota_anterior'] ?? 'N/A';
+            $notaNueva = $cambio['nota_nueva'] ?? 'N/A';
+            $observacionesTexto = $observaciones ? "<p><strong>Observaciones del coordinador:</strong> {$observaciones}</p>" : "<p>No se proporcionaron observaciones adicionales.</p>";
+
+            $mensaje = "
+                <p>Estimado(a) <b>{$nombreEvaluador}</b>,</p>
+                <p>Le informamos que su cambio de nota ha sido <strong style='color:#ef4444;'>RECHAZADO</strong> por el coordinador.</p>
+                <p><strong>Detalles del cambio rechazado:</strong></p>
+                <ul>
+                    <li><strong>Participante:</strong> {$nombreParticipante}</li>
+                    <li><strong>Nota anterior:</strong> {$notaAnterior}</li>
+                    <li><strong>Nota nueva solicitada:</strong> {$notaNueva}</li>
+                </ul>
+                {$observacionesTexto}
+                <p><strong>Importante:</strong> La nota ha sido revertida a su valor anterior ({$notaAnterior}).</p>
+                <br>
+                <p>Atentamente,</p>
+                <p><b>Sistema Olimpiada Oh! - SanSi</b></p>
+            ";
+
+            return $this->enviar(
+                $evaluador['email'],
+                "Cambio de nota rechazado - Olimpiada Oh! - SanSi",
+                $mensaje
+            );
+        } catch (Exception $e) {
+            error_log("Error enviando notificación de cambio rechazado: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    
+    public function enviarNotificacionSolicitudInfo($evaluador, $cambio, $observaciones)
+    {
+        try {
+            if (empty($evaluador['email']) || !filter_var($evaluador['email'], FILTER_VALIDATE_EMAIL)) {
+                error_log("Correo inválido para notificación de solicitud de info: " . ($evaluador['email'] ?? 'vacío'));
+                return false;
+            }
+
+            if (empty($observaciones)) {
+                error_log("Observaciones requeridas para solicitud de información");
+                return false;
+            }
+
+            $nombreEvaluador = $evaluador['name'] ?? $evaluador['nombre'] ?? 'Evaluador';
+            $nombreParticipante = $cambio['olimpista_nombre'] ?? 'Participante';
+            $notaAnterior = $cambio['nota_anterior'] ?? 'N/A';
+            $notaNueva = $cambio['nota_nueva'] ?? 'N/A';
+
+            $mensaje = "
+                <p>Estimado(a) <b>{$nombreEvaluador}</b>,</p>
+                <p>El coordinador ha solicitado <strong style='color:#f59e0b;'>MÁS INFORMACIÓN</strong> sobre su cambio de nota antes de tomar una decisión.</p>
+                <p><strong>Detalles del cambio:</strong></p>
+                <ul>
+                    <li><strong>Participante:</strong> {$nombreParticipante}</li>
+                    <li><strong>Nota anterior:</strong> {$notaAnterior}</li>
+                    <li><strong>Nota nueva:</strong> {$notaNueva}</li>
+                </ul>
+                <p><strong>Solicitud del coordinador:</strong></p>
+                <div style='background-color:#fef3c7;padding:15px;border-left:4px solid #f59e0b;margin:15px 0;'>
+                    <p>{$observaciones}</p>
+                </div>
+                <p>Por favor, proporcione la información solicitada o contacte al coordinador para aclarar cualquier duda.</p>
+                <br>
+                <p>Atentamente,</p>
+                <p><b>Sistema Olimpiada Oh! - SanSi</b></p>
+            ";
+
+            return $this->enviar(
+                $evaluador['email'],
+                "Solicitud de información sobre cambio de nota - Olimpiada Oh! - SanSi",
+                $mensaje
+            );
+        } catch (Exception $e) {
+            error_log("Error enviando notificación de solicitud de info: " . $e->getMessage());
+            return false;
+        }
+    }
 }

@@ -1,6 +1,6 @@
 import { id } from "date-fns/locale"
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo').replace(/\/+$/, '')
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 
 export interface ApiResponse<T = any> {
@@ -733,6 +733,7 @@ export class CoordinadorService {
     fecha_hasta?: string
     evaluador_id?: number
     olimpista_id?: number
+    estado_aprobacion?: string
   }) {
     const params = new URLSearchParams()
     if (filters?.area_id) params.append('area_id', String(filters.area_id))
@@ -741,9 +742,32 @@ export class CoordinadorService {
     if (filters?.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta)
     if (filters?.evaluador_id) params.append('evaluador_id', String(filters.evaluador_id))
     if (filters?.olimpista_id) params.append('olimpista_id', String(filters.olimpista_id))
+    if (filters?.estado_aprobacion) params.append('estado_aprobacion', filters.estado_aprobacion)
     
     const qs = params.toString()
     return ApiService.get(`/api/coordinador/log-cambios-notas${qs ? `?${qs}` : ''}`)
+  }
+
+  static async getCambiosPendientes() {
+    return ApiService.get('/api/coordinador/cambios-pendientes')
+  }
+
+  static async aprobarCambio(cambioId: number, observaciones?: string) {
+    return ApiService.post(`/api/coordinador/log-cambios-notas/${cambioId}/aprobar`, {
+      observaciones
+    })
+  }
+
+  static async rechazarCambio(cambioId: number, observaciones?: string) {
+    return ApiService.post(`/api/coordinador/log-cambios-notas/${cambioId}/rechazar`, {
+      observaciones
+    })
+  }
+
+  static async solicitarMasInfo(cambioId: number, observaciones: string) {
+    return ApiService.post(`/api/coordinador/log-cambios-notas/${cambioId}/solicitar-info`, {
+      observaciones
+    })
   }
 
   static async getEvaluadoresPorArea(areaId: number) {
@@ -857,6 +881,17 @@ export class CoordinadorService {
 
   static async listarReportesPDF() {
     return ApiService.get('/api/coordinador/cierre-fase/listar-pdfs')
+  }
+
+  static async guardarFirma(firmaImagen: string, reporteTipo: string = 'cierre_fase') {
+    return ApiService.post('/api/coordinador/firma/guardar', {
+      firma_imagen: firmaImagen,
+      reporte_tipo: reporteTipo
+    })
+  }
+
+  static async obtenerFirma(reporteTipo: string = 'cierre_fase') {
+    return ApiService.get(`/api/coordinador/firma/obtener?reporte_tipo=${reporteTipo}`)
   }
 
   static async descargarReportePDFEstadisticasDetalladas() {

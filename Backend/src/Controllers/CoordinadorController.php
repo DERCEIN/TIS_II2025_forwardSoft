@@ -1235,12 +1235,15 @@ class CoordinadorController
             $currentUser = JWTManager::getCurrentUser();
             
             
+            $estadoAprobacion = $_GET['estado_aprobacion'] ?? null;
+            
             $filtros = [
                 'nivel_id' => $nivelId,
                 'fecha_desde' => $fechaDesde,
                 'fecha_hasta' => $fechaHasta,
                 'evaluador_id' => $evaluadorId,
-                'olimpista_id' => $olimpistaId
+                'olimpista_id' => $olimpistaId,
+                'estado_aprobacion' => $estadoAprobacion
             ];
             
             
@@ -1296,6 +1299,280 @@ class CoordinadorController
         } catch (\Exception $e) {
             error_log('Error obteniendo evaluadores por área: ' . $e->getMessage());
             Response::serverError('Error al obtener evaluadores del área: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Obtener contador de cambios pendientes
+     */
+    public function getCambiosPendientes()
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            // Obtener área del coordinador
+            $sqlArea = "SELECT area_competencia_id 
+                       FROM responsables_academicos 
+                       WHERE user_id = ? AND is_active = true 
+                       LIMIT 1";
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $area = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$area) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+            
+            $totalPendientes = LogCambiosNotas::getCambiosPendientes($area['area_competencia_id']);
+            
+            Response::success([
+                'total_pendientes' => $totalPendientes,
+                'area_id' => $area['area_competencia_id']
+            ], 'Contador de cambios pendientes obtenido');
+            
+        } catch (\Exception $e) {
+            error_log('Error obteniendo cambios pendientes: ' . $e->getMessage());
+            Response::serverError('No se pudo obtener el contador de cambios pendientes');
+        }
+    }
+
+    /**
+     * Aprobar un cambio de nota
+     */
+    public function aprobarCambio($cambioId)
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            $input = json_decode(file_get_contents('php://input'), true);
+            $observaciones = $input['observaciones'] ?? null;
+            
+            // Obtener información del cambio
+            $cambio = LogCambiosNotas::getCambioPorId($cambioId);
+            
+            if (!$cambio) {
+                Response::error('Cambio no encontrado', 404);
+                return;
+            }
+            
+            // Verificar que el coordinador pertenece al área del cambio
+            $sqlArea = "SELECT area_competencia_id 
+                       FROM responsables_academicos 
+                       WHERE user_id = ? AND area_competencia_id = ? AND is_active = true 
+                       LIMIT 1";
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id'], $cambio['area_competencia_id']]);
+            $area = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$area) {
+                Response::error('No tienes permiso para aprobar cambios de este área', 403);
+                return;
+            }
+            
+            // Verificar que el cambio esté pendiente
+            if ($cambio['estado_aprobacion'] !== 'pendiente') {
+                Response::error('Este cambio ya fue procesado', 400);
+                return;
+            }
+            
+            // Aprobar el cambio
+            $resultado = LogCambiosNotas::aprobarCambio($cambioId, $currentUser['id'], $observaciones);
+            
+            if ($resultado) {
+                // Obtener datos del evaluador para notificación
+                $sqlEvaluador = "SELECT id, name, email FROM users WHERE id = ?";
+                $stmtEvaluador = $this->pdo->prepare($sqlEvaluador);
+                $stmtEvaluador->execute([$cambio['evaluador_id']]);
+                $evaluador = $stmtEvaluador->fetch(PDO::FETCH_ASSOC);
+                
+                // Enviar notificación
+                try {
+                    $mailer = new \ForwardSoft\Utils\Mailer();
+                    $mailer->enviarNotificacionCambioAprobado($evaluador, $cambio, $observaciones);
+                } catch (\Exception $e) {
+                    error_log('Error enviando notificación de aprobación: ' . $e->getMessage());
+                }
+                
+                Response::success([
+                    'cambio_id' => $cambioId,
+                    'estado' => 'aprobado'
+                ], 'Cambio aprobado exitosamente');
+            } else {
+                Response::error('No se pudo aprobar el cambio', 500);
+            }
+            
+        } catch (\Exception $e) {
+            error_log('Error aprobando cambio: ' . $e->getMessage());
+            Response::serverError('No se pudo aprobar el cambio');
+        }
+    }
+
+    /**
+     * Rechazar un cambio de nota
+     */
+    public function rechazarCambio($cambioId)
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            $input = json_decode(file_get_contents('php://input'), true);
+            $observaciones = $input['observaciones'] ?? null;
+            
+            // Obtener información del cambio
+            $cambio = LogCambiosNotas::getCambioPorId($cambioId);
+            
+            if (!$cambio) {
+                Response::error('Cambio no encontrado', 404);
+                return;
+            }
+            
+            // Verificar que el coordinador pertenece al área del cambio
+            $sqlArea = "SELECT area_competencia_id 
+                       FROM responsables_academicos 
+                       WHERE user_id = ? AND area_competencia_id = ? AND is_active = true 
+                       LIMIT 1";
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id'], $cambio['area_competencia_id']]);
+            $area = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$area) {
+                Response::error('No tienes permiso para rechazar cambios de este área', 403);
+                return;
+            }
+            
+            // Verificar que el cambio esté pendiente
+            if ($cambio['estado_aprobacion'] !== 'pendiente') {
+                Response::error('Este cambio ya fue procesado', 400);
+                return;
+            }
+            
+            // Rechazar el cambio (esto también revierte la nota)
+            $resultado = LogCambiosNotas::rechazarCambio($cambioId, $currentUser['id'], $observaciones);
+            
+            if ($resultado) {
+                // Obtener datos del evaluador para notificación
+                $sqlEvaluador = "SELECT id, name, email FROM users WHERE id = ?";
+                $stmtEvaluador = $this->pdo->prepare($sqlEvaluador);
+                $stmtEvaluador->execute([$cambio['evaluador_id']]);
+                $evaluador = $stmtEvaluador->fetch(PDO::FETCH_ASSOC);
+                
+                // Enviar notificación
+                try {
+                    $mailer = new \ForwardSoft\Utils\Mailer();
+                    $mailer->enviarNotificacionCambioRechazado($evaluador, $cambio, $observaciones);
+                } catch (\Exception $e) {
+                    error_log('Error enviando notificación de rechazo: ' . $e->getMessage());
+                }
+                
+                Response::success([
+                    'cambio_id' => $cambioId,
+                    'estado' => 'rechazado',
+                    'nota_revertida' => true
+                ], 'Cambio rechazado y nota revertida exitosamente');
+            } else {
+                Response::error('No se pudo rechazar el cambio', 500);
+            }
+            
+        } catch (\Exception $e) {
+            error_log('Error rechazando cambio: ' . $e->getMessage());
+            Response::serverError('No se pudo rechazar el cambio');
+        }
+    }
+
+    /**
+     * Solicitar más información sobre un cambio
+     */
+    public function solicitarMasInfo($cambioId)
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            $input = json_decode(file_get_contents('php://input'), true);
+            $observaciones = $input['observaciones'] ?? null;
+            
+            if (empty($observaciones)) {
+                Response::validationError(['observaciones' => 'Las observaciones son requeridas']);
+                return;
+            }
+            
+            // Obtener información del cambio
+            $cambio = LogCambiosNotas::getCambioPorId($cambioId);
+            
+            if (!$cambio) {
+                Response::error('Cambio no encontrado', 404);
+                return;
+            }
+            
+            // Verificar que el coordinador pertenece al área del cambio
+            $sqlArea = "SELECT area_competencia_id 
+                       FROM responsables_academicos 
+                       WHERE user_id = ? AND area_competencia_id = ? AND is_active = true 
+                       LIMIT 1";
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id'], $cambio['area_competencia_id']]);
+            $area = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$area) {
+                Response::error('No tienes permiso para solicitar información de cambios de este área', 403);
+                return;
+            }
+            
+            // Verificar que el cambio esté pendiente
+            if ($cambio['estado_aprobacion'] !== 'pendiente') {
+                Response::error('Este cambio ya fue procesado', 400);
+                return;
+            }
+            
+            // Solicitar más información
+            $resultado = LogCambiosNotas::solicitarMasInfo($cambioId, $currentUser['id'], $observaciones);
+            
+            if ($resultado) {
+                // Obtener datos del evaluador para notificación
+                $sqlEvaluador = "SELECT id, name, email FROM users WHERE id = ?";
+                $stmtEvaluador = $this->pdo->prepare($sqlEvaluador);
+                $stmtEvaluador->execute([$cambio['evaluador_id']]);
+                $evaluador = $stmtEvaluador->fetch(PDO::FETCH_ASSOC);
+                
+                // Enviar notificación
+                try {
+                    $mailer = new \ForwardSoft\Utils\Mailer();
+                    $mailer->enviarNotificacionSolicitudInfo($evaluador, $cambio, $observaciones);
+                } catch (\Exception $e) {
+                    error_log('Error enviando notificación de solicitud de info: ' . $e->getMessage());
+                }
+                
+                Response::success([
+                    'cambio_id' => $cambioId,
+                    'estado' => 'pendiente'
+                ], 'Solicitud de más información enviada al evaluador');
+            } else {
+                Response::error('No se pudo procesar la solicitud', 500);
+            }
+            
+        } catch (\Exception $e) {
+            error_log('Error solicitando más información: ' . $e->getMessage());
+            Response::serverError('No se pudo procesar la solicitud');
         }
     }
 
@@ -3566,7 +3843,7 @@ public function registrarTiemposEvaluadores()
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetFont('helvetica', '', 9);
                 
-                // Encabezado de tabla
+               
                 $pdf->SetFillColor(255, 200, 200);
                 $pdf->Cell(10, 6, '#', 1, 0, 'C', true);
                 $pdf->Cell(60, 6, 'Participante', 1, 0, 'L', true);
@@ -3626,10 +3903,101 @@ public function registrarTiemposEvaluadores()
             $pdf->Cell(0, 4, 'Coordinador de Área', 0, 1, 'L');
             $pdf->Ln(5);
             
-            // Línea para firma
-            $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
-            $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+            
+            $sqlFirma = "
+                SELECT firma_imagen, fecha_firma
+                FROM firmas_coordinadores
+                WHERE area_competencia_id = ? AND coordinador_id = ? AND reporte_tipo = 'cierre_fase'
+                ORDER BY fecha_firma DESC
+                LIMIT 1
+            ";
+            $stmtFirma = $this->pdo->prepare($sqlFirma);
+            $stmtFirma->execute([$areaId, $coordinador['id']]);
+            $firma = $stmtFirma->fetch(PDO::FETCH_ASSOC);
+            
+            if ($firma && !empty($firma['firma_imagen'])) {
+                
+                try {
+                   
+                    $firmaData = $firma['firma_imagen'];
+                    
+                   
+                    if (strpos($firmaData, 'data:image') === 0) {
+                       
+                        $firmaData = preg_replace('/^data:image\/\w+;base64,/', '', $firmaData);
+                    }
+                    
+                    $firmaBinaria = base64_decode($firmaData);
+                    
+                    if ($firmaBinaria !== false) {
+                        
+                        $tempFile = tempnam(sys_get_temp_dir(), 'firma_');
+                        file_put_contents($tempFile, $firmaBinaria);
+                        
+                        
+                        $imageInfo = @getimagesize($tempFile);
+                        
+                        if ($imageInfo !== false) {
+                            $imageWidth = $imageInfo[0];
+                            $imageHeight = $imageInfo[1];
+                            
+                            
+                            $maxWidth = 60; // mm
+                            $maxHeight = 25; // mm
+                            
+                            $ratio = $imageWidth / $imageHeight;
+                            $pdfWidth = min($maxWidth, $maxHeight * $ratio);
+                            $pdfHeight = $pdfWidth / $ratio;
+                            
+                            if ($pdfHeight > $maxHeight) {
+                                $pdfHeight = $maxHeight;
+                                $pdfWidth = $pdfHeight * $ratio;
+                            }
+                            
+                           
+                            $x = $pdf->GetX();
+                            $y = $pdf->GetY();
+                            $pdf->Image($tempFile, $x, $y, $pdfWidth, $pdfHeight, '', '', '', false, 300, '', false, false, 0);
+                            
+                            
+                            $pdf->SetXY($x, $y + $pdfHeight + 2);
+                            $pdf->Line($x, $pdf->GetY(), $x + $pdfWidth, $pdf->GetY());
+                            $pdf->SetFont('helvetica', 'I', 8);
+                            $pdf->Cell($pdfWidth, 4, 'Firma y sello', 0, 1, 'L');
+                            
+                            if (!empty($firma['fecha_firma'])) {
+                                $pdf->SetFont('helvetica', '', 7);
+                                $pdf->Cell($pdfWidth, 3, 'Firmado: ' . date('d/m/Y H:i', strtotime($firma['fecha_firma'])), 0, 1, 'L');
+                            }
+                            
+                           
+                            @unlink($tempFile);
+                        } else {
+                            
+                            $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
+                            $pdf->SetFont('helvetica', 'I', 8);
+                            $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+                            @unlink($tempFile);
+                        }
+                    } else {
+                        
+                        $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
+                        $pdf->SetFont('helvetica', 'I', 8);
+                        $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+                    }
+                } catch (\Exception $e) {
+                    error_log('Error insertando firma en PDF: ' . $e->getMessage());
+                    
+                    $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
+                    $pdf->SetFont('helvetica', 'I', 8);
+                    $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+                }
+            } else {
+                
+                $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 60, $pdf->GetY());
+                $pdf->SetFont('helvetica', 'I', 8);
+                $pdf->Cell(60, 4, 'Firma y sello', 0, 1, 'L');
+            }
             
            
             $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
@@ -4169,7 +4537,7 @@ public function registrarTiemposEvaluadores()
             
             $pdf->Ln(5);
             
-            // Análisis por nivel educativo
+           
             if (!empty($estadisticasPorNivel)) {
                 $pdf->AddPage();
                 $pdf->SetFont('helvetica', 'B', 14);
@@ -4316,10 +4684,94 @@ public function registrarTiemposEvaluadores()
             }
             
             $areaId = $areaCoordinador['area_id'];
+            $areaNombre = $areaCoordinador['area_nombre'];
             $uploadsDir = __DIR__ . '/../../public/uploads/reportes/';
             
-           
+            
+            $sqlFirma = "
+                SELECT fecha_firma
+                FROM firmas_coordinadores
+                WHERE area_competencia_id = ? AND coordinador_id = ? AND reporte_tipo = 'cierre_fase'
+                ORDER BY fecha_firma DESC
+                LIMIT 1
+            ";
+            $stmtFirma = $this->pdo->prepare($sqlFirma);
+            $stmtFirma->execute([$areaId, $currentUser['id']]);
+            $firma = $stmtFirma->fetch(PDO::FETCH_ASSOC);
+            
             $pattern = $uploadsDir . 'reporte_cierre_fase_' . $areaId . '_*.pdf';
+            $files = glob($pattern);
+            
+            $necesitaRegenerar = false;
+            if (!empty($files) && $firma) {
+                // Ordenar archivos por fecha
+                usort($files, function($a, $b) {
+                    return filemtime($b) - filemtime($a);
+                });
+                $latestFile = $files[0];
+                $pdfModTime = filemtime($latestFile);
+                $firmaTime = strtotime($firma['fecha_firma']);
+                
+                // Si la firma es más reciente que el PDF, regenerar
+                if ($firmaTime > $pdfModTime) {
+                    $necesitaRegenerar = true;
+                }
+            }
+            
+            // Si no hay PDF o necesita regenerarse, generarlo
+            if (empty($files) || $necesitaRegenerar) {
+                // Obtener datos del cierre de fase
+                $sqlCierre = "
+                    SELECT estado, fecha_cierre, puntuacion_minima, porcentaje_clasificados
+                    FROM cierre_fase_areas
+                    WHERE area_competencia_id = ? AND estado = 'cerrada'
+                    ORDER BY fecha_cierre DESC
+                    LIMIT 1
+                ";
+                $stmtCierre = $this->pdo->prepare($sqlCierre);
+                $stmtCierre->execute([$areaId]);
+                $cierre = $stmtCierre->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$cierre) {
+                    Response::error('La fase debe estar cerrada para generar el reporte PDF', 400);
+                    return;
+                }
+                
+                // Obtener estadísticas necesarias
+                $sqlStats = "
+                    SELECT 
+                        COUNT(DISTINCT ia.id) as total_participantes,
+                        COUNT(DISTINCT CASE WHEN EXISTS (SELECT 1 FROM evaluaciones_clasificacion ec WHERE ec.inscripcion_area_id = ia.id AND ec.puntuacion IS NOT NULL) THEN ia.id END) as total_evaluados,
+                        COUNT(DISTINCT CASE WHEN ia.estado = 'clasificado' THEN ia.id END) as cantidad_clasificados
+                    FROM inscripciones_areas ia
+                    WHERE ia.area_competencia_id = ?
+                ";
+                $stmtStats = $this->pdo->prepare($sqlStats);
+                $stmtStats->execute([$areaId]);
+                $stats = $stmtStats->fetch(PDO::FETCH_ASSOC);
+                
+                // Regenerar PDF con la firma actualizada
+                try {
+                    $this->generarReportePDFCierreFase(
+                        $areaId,
+                        $areaNombre,
+                        $stats['total_participantes'] ?? 0,
+                        $stats['total_evaluados'] ?? 0,
+                        $stats['cantidad_clasificados'] ?? 0,
+                        [],
+                        [],
+                        $cierre['puntuacion_minima'] ?? 0,
+                        $cierre['porcentaje_clasificados'] ?? 0,
+                        $cierre['fecha_cierre'],
+                        $currentUser
+                    );
+                } catch (\Exception $e) {
+                    error_log('Error regenerando PDF: ' . $e->getMessage());
+                    // Continuar con el PDF existente si hay error
+                }
+            }
+            
+            // Buscar el PDF más reciente
             $files = glob($pattern);
             
             if (empty($files)) {
@@ -5340,6 +5792,173 @@ public function registrarTiemposEvaluadores()
                 'promedio_general' => $promedioGeneral
             ]
         ];
+    }
+
+    /**
+     * Guardar firma del coordinador
+     */
+    public function guardarFirma()
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+                return;
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!isset($input['firma_imagen']) || empty($input['firma_imagen'])) {
+                Response::error('La imagen de la firma es requerida', 400);
+                return;
+            }
+
+            $firmaImagen = $input['firma_imagen'];
+            $reporteTipo = $input['reporte_tipo'] ?? 'cierre_fase';
+
+            // Validar que sea una imagen base64 válida
+            if (!preg_match('/^data:image\/(png|jpeg|jpg);base64,/', $firmaImagen)) {
+                Response::error('Formato de imagen inválido. Debe ser PNG o JPEG en base64', 400);
+                return;
+            }
+
+            // Obtener área del coordinador
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+
+            $areaId = $areaCoordinador['area_id'];
+
+            // Verificar si ya existe una firma para este coordinador, área y tipo de reporte
+            $sqlCheck = "
+                SELECT id FROM firmas_coordinadores
+                WHERE area_competencia_id = ? AND coordinador_id = ? AND reporte_tipo = ?
+            ";
+            $stmtCheck = $this->pdo->prepare($sqlCheck);
+            $stmtCheck->execute([$areaId, $currentUser['id'], $reporteTipo]);
+            $firmaExistente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+            if ($firmaExistente) {
+                // Actualizar firma existente
+                $sql = "
+                    UPDATE firmas_coordinadores
+                    SET firma_imagen = ?, fecha_firma = NOW(), updated_at = NOW()
+                    WHERE id = ?
+                ";
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute([$firmaImagen, $firmaExistente['id']]);
+            } else {
+                // Insertar nueva firma
+                $sql = "
+                    INSERT INTO firmas_coordinadores 
+                    (area_competencia_id, coordinador_id, firma_imagen, reporte_tipo, fecha_firma)
+                    VALUES (?, ?, ?, ?, NOW())
+                ";
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute([$areaId, $currentUser['id'], $firmaImagen, $reporteTipo]);
+            }
+
+            // Registrar en auditoría
+            AuditService::log(
+                $currentUser['id'],
+                $currentUser['name'] ?? $currentUser['email'],
+                'FIRMAR_REPORTE',
+                'firma_coordinador',
+                null,
+                "Firma guardada para reporte tipo: {$reporteTipo}",
+                null,
+                ['area_id' => $areaId, 'reporte_tipo' => $reporteTipo]
+            );
+
+            Response::success([
+                'mensaje' => 'Firma guardada exitosamente',
+                'fecha_firma' => date('Y-m-d H:i:s')
+            ], 'Firma guardada correctamente');
+
+        } catch (\Exception $e) {
+            error_log('Error guardando firma: ' . $e->getMessage());
+            Response::serverError('Error al guardar la firma: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Obtener firma del coordinador
+     */
+    public function obtenerFirma()
+    {
+        try {
+            $currentUser = JWTManager::getCurrentUser();
+            if (!$currentUser || $currentUser['role'] !== 'coordinador') {
+                Response::forbidden('Acceso de coordinador requerido');
+                return;
+            }
+
+            $reporteTipo = $_GET['reporte_tipo'] ?? 'cierre_fase';
+
+            // Obtener área del coordinador
+            $sqlArea = "
+                SELECT ac.id as area_id, ac.nombre as area_nombre
+                FROM responsables_academicos ra
+                JOIN areas_competencia ac ON ac.id = ra.area_competencia_id
+                WHERE ra.user_id = ? AND ra.is_active = true
+                LIMIT 1
+            ";
+            
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$currentUser['id']]);
+            $areaCoordinador = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$areaCoordinador) {
+                Response::error('No se encontró área asignada al coordinador', 400);
+                return;
+            }
+
+            $areaId = $areaCoordinador['area_id'];
+
+            // Buscar firma
+            $sql = "
+                SELECT id, firma_imagen, fecha_firma, reporte_tipo
+                FROM firmas_coordinadores
+                WHERE area_competencia_id = ? AND coordinador_id = ? AND reporte_tipo = ?
+                ORDER BY fecha_firma DESC
+                LIMIT 1
+            ";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([$areaId, $currentUser['id'], $reporteTipo]);
+            $firma = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($firma) {
+                Response::success([
+                    'tiene_firma' => true,
+                    'firma_imagen' => $firma['firma_imagen'],
+                    'fecha_firma' => $firma['fecha_firma']
+                ], 'Firma encontrada');
+            } else {
+                Response::success([
+                    'tiene_firma' => false,
+                    'firma_imagen' => null,
+                    'fecha_firma' => null
+                ], 'No se encontró firma');
+            }
+
+        } catch (\Exception $e) {
+            error_log('Error obteniendo firma: ' . $e->getMessage());
+            Response::serverError('Error al obtener la firma: ' . $e->getMessage());
+        }
     }
 
 } 

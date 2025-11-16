@@ -223,6 +223,12 @@ class EvaluacionController
             
             
             if ($existingEval) {
+                // Verificar si hay un cambio pendiente para esta evaluación
+                if (LogCambiosNotas::tieneCambioPendiente($evaluacionId)) {
+                    Response::error('No se puede modificar esta evaluación porque tiene un cambio pendiente de aprobación. Por favor, espera a que el coordinador revise el cambio anterior.', 400);
+                    return;
+                }
+                
                 error_log("Registrando cambio de nota - Evaluacion ID: $evaluacionId");
                 
                 
@@ -245,7 +251,7 @@ class EvaluacionController
                     $motivo = $input['motivo_modificacion'] ?? 'Modificación de nota';
                     error_log("Registrando cambio con motivo: $motivo");
                     
-                    LogCambiosNotas::registrarCambio(
+                    $cambioRegistrado = LogCambiosNotas::registrarCambio(
                         $evaluacionId,
                         $currentUser['id'],
                         $currentUser['nombre'] ?? $currentUser['email'],
@@ -262,6 +268,38 @@ class EvaluacionController
                         $motivo
                     );
                     error_log("Cambio registrado exitosamente");
+                    
+                    
+                    if ($cambioRegistrado) {
+                        try {
+                           
+                            $sqlCoordinador = "SELECT u.id, u.name, u.email, u.nombre
+                                             FROM responsables_academicos ra
+                                             JOIN users u ON u.id = ra.user_id
+                                             WHERE ra.area_competencia_id = ? AND ra.is_active = true AND u.is_active = true
+                                             LIMIT 1";
+                            $stmtCoord = $this->pdo->prepare($sqlCoordinador);
+                            $stmtCoord->execute([$datosOlimpista['area_id']]);
+                            $coordinador = $stmtCoord->fetch(\PDO::FETCH_ASSOC);
+                            
+                            if ($coordinador && $cambioRegistrado) {
+                               
+                                $sqlCambio = "SELECT * FROM log_cambios_notas 
+                                            WHERE id = ?";
+                                $stmtCambio = $this->pdo->prepare($sqlCambio);
+                                $stmtCambio->execute([$cambioRegistrado]);
+                                $cambio = $stmtCambio->fetch(\PDO::FETCH_ASSOC);
+                                
+                                if ($cambio) {
+                                    $mailer = new \ForwardSoft\Utils\Mailer();
+                                    $mailer->enviarNotificacionCambioPendiente($coordinador, $cambio);
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            error_log("Error enviando notificación de cambio pendiente: " . $e->getMessage());
+                           
+                        }
+                    }
                 } else {
                     error_log("No se encontraron datos del olimpista para el log");
                 }
@@ -269,7 +307,7 @@ class EvaluacionController
                 error_log("No es una modificación, no se registra en log de cambios");
             }
             
-            // Verificar si el evaluador ha completado todas sus evaluaciones y notificar al coordinador
+          
             try {
                 if ($inscripcion && isset($inscripcion['area_competencia_id'])) {
                     $this->verificarYNotificarEvaluadorCompleto(
@@ -281,7 +319,7 @@ class EvaluacionController
                 }
             } catch (\Exception $e) {
                 error_log("Error verificando si evaluador completó todas sus evaluaciones: " . $e->getMessage());
-                // No fallar el registro si la notificación falla
+               
             }
             
             Response::success($evaluacion, 'Evaluación registrada exitosamente');

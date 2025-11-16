@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Trophy, Calendar, ChevronRight, BookOpen, Target, LogIn, Search, Cog } from "lucide-react"
-import Link from "next/link"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Trophy, ChevronRight, BookOpen, LogIn } from "lucide-react";
+import Link from "next/link";
 
 export default function LandingPage() {
-  const [activeNews, setActiveNews] = useState(0)
+  const [activeNews, setActiveNews] = useState(0);
 
   const newsItems = [
     {
@@ -21,7 +21,7 @@ export default function LandingPage() {
       title: "Resultados 2024: 847 estudiantes participaron en la olimpiada más grande de Bolivia",
       category: "Resultados",
     },
-  ]
+  ];
 
   const competitionAreas = [
     { name: "Matemáticas", participants: 245, icon: "📐" },
@@ -30,7 +30,7 @@ export default function LandingPage() {
     { name: "Biología", participants: 134, icon: "🧬" },
     { name: "Informática", participants: 103, icon: "💻" },
     { name: "Robótica", participants: 89, icon: "🤖" },
-  ]
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -155,8 +155,12 @@ export default function LandingPage() {
                     país
                   </CardDescription>
                   <div className="flex items-center mt-4 text-sm text-primary">
-                    <span>Ver detalles</span>
-                    <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                    <Link href={`/resultados?area=${encodeURIComponent(area.name)}`}>
+                      <span className="flex items-center cursor-pointer">
+                        Ver resultados
+                        <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                      </span>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
@@ -229,7 +233,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-
       {/* Footer */}
       <footer className="py-12 bg-card border-t">
         <div className="container mx-auto px-6">
@@ -245,17 +248,6 @@ export default function LandingPage() {
                 Olimpiada en Ciencias y Tecnología de la Universidad Mayor de San Simón, promoviendo la excelencia
                 académica en Bolivia desde 2010.
               </p>
-              <div className="flex space-x-4">
-                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors">
-                  <span className="text-sm font-bold">FB</span>
-                </div>
-                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors">
-                  <span className="text-sm font-bold">IG</span>
-                </div>
-                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors">
-                  <span className="text-sm font-bold">YT</span>
-                </div>
-              </div>
             </div>
 
             <div>
@@ -301,5 +293,5 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
-  )
+  );
 }

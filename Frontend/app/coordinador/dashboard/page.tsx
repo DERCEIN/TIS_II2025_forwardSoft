@@ -43,6 +43,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/AuthContext"
+import FirmaDigital from "@/components/FirmaDigital"
 
 function ListaInscritosAreaNivel() {
   const [loading, setLoading] = useState<boolean>(true)
@@ -2240,6 +2241,9 @@ function CierreFaseArea() {
   const [descargandoPDF, setDescargandoPDF] = useState<boolean>(false)
   const [descargandoExcel, setDescargandoExcel] = useState<boolean>(false)
   const [descargandoEstadisticas, setDescargandoEstadisticas] = useState<boolean>(false)
+  const [firmaExistente, setFirmaExistente] = useState<string | null>(null)
+  const [fechaFirma, setFechaFirma] = useState<string | null>(null)
+  const [cargandoFirma, setCargandoFirma] = useState<boolean>(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -2266,54 +2270,98 @@ function CierreFaseArea() {
     loadData()
   }, [])
 
+  // Cargar firma solo cuando la fase está lista para cerrar (antes de cerrar)
+  useEffect(() => {
+    const cargarFirma = async () => {
+      const porcentajeCompletitud = cierreData?.estadisticas?.porcentaje_completitud || 0
+      const puedeCerrar = porcentajeCompletitud >= 99.9 && cierreData?.estado_cierre !== 'cerrada'
+      
+      // Mostrar firma solo si la fase está lista para cerrar (no después de cerrar)
+      if (puedeCerrar) {
+        setCargandoFirma(true)
+        try {
+          const response = await CoordinadorService.obtenerFirma('cierre_fase')
+          if (response.success && response.data?.tiene_firma) {
+            setFirmaExistente(response.data.firma_imagen)
+            setFechaFirma(response.data.fecha_firma)
+          }
+        } catch (error) {
+          console.error('Error cargando firma:', error)
+        } finally {
+          setCargandoFirma(false)
+        }
+      } else {
+        // Limpiar firma si la fase ya está cerrada
+        setFirmaExistente(null)
+        setFechaFirma(null)
+      }
+    }
+    cargarFirma()
+  }, [cierreData?.estado_cierre, cierreData?.estadisticas?.porcentaje_completitud])
+
+  const handleGuardarFirma = async (firmaImagen: string) => {
+    try {
+      const response = await CoordinadorService.guardarFirma(firmaImagen, 'cierre_fase')
+      if (response.success) {
+        setFirmaExistente(firmaImagen)
+        setFechaFirma(new Date().toISOString())
+        alert('Firma guardada exitosamente')
+      } else {
+        throw new Error(response.message || 'Error al guardar la firma')
+      }
+    } catch (error: any) {
+      console.error('Error guardando firma:', error)
+      throw error
+    }
+  }
+
   const handleCerrarFase = async () => {
-    console.log('🔵 [FRONTEND] handleCerrarFase llamado')
-    console.log('🔵 [FRONTEND] puede_cerrar:', cierreData?.estadisticas?.puede_cerrar)
+    console.log(' [FRONTEND] handleCerrarFase llamado')
+    console.log(' [FRONTEND] puede_cerrar:', cierreData?.estadisticas?.puede_cerrar)
     if (!cierreData?.estadisticas?.puede_cerrar) {
-      console.log('❌ [FRONTEND] No se puede cerrar la fase')
+      console.log(' [FRONTEND] No se puede cerrar la fase')
       return
     }
-    console.log('✅ [FRONTEND] Abriendo modal de cierre')
+    console.log('[FRONTEND] Abriendo modal de cierre')
     setShowCierreModal(true)
   }
 
   const confirmarCierre = async () => {
-    console.log('🟢 [FRONTEND] confirmarCierre llamado - Iniciando cierre de fase')
+    console.log(' [FRONTEND] confirmarCierre llamado - Iniciando cierre de fase')
     setCerrando(true)
     try {
-      console.log('📤 [FRONTEND] Enviando petición POST a /api/coordinador/cierre-fase/cerrar')
+      console.log('[FRONTEND] Enviando petición POST a /api/coordinador/cierre-fase/cerrar')
       const response = await CoordinadorService.cerrarFaseArea()
-      console.log('📥 [FRONTEND] Respuesta recibida:', response)
+      console.log('[FRONTEND] Respuesta recibida:', response)
       if (response.success) {
         setShowCierreModal(false)
         alert('Fase cerrada exitosamente. Los reportes PDF y Excel se están generando en segundo plano y estarán disponibles en unos momentos.')
         
-        // Esperar un momento para que el backend procese completamente el cierre
+        
         await new Promise(resolve => setTimeout(resolve, 2000))
         
-        // Recargar datos con múltiples intentos hasta que el estado sea 'cerrada'
-        console.log('🔄 [FRONTEND] Recargando datos después del cierre...')
+        console.log(' [FRONTEND] Recargando datos después del cierre...')
         let intentos = 0
         const maxIntentos = 15
         let estadoActualizado = false
         
         while (intentos < maxIntentos && !estadoActualizado) {
-          // Recargar datos
+          
           await loadData()
           
-          // Esperar un momento para que el estado se actualice
+         
           await new Promise(resolve => setTimeout(resolve, 800))
           
-          // Verificar el estado después de cargar
+          
           try {
             const responseCheck = await CoordinadorService.getDashboardCierreFase()
             const estadoCierre = responseCheck.data?.estado_cierre
-            console.log(`🔄 [FRONTEND] Intento ${intentos + 1}/${maxIntentos} - Estado cierre: ${estadoCierre}`)
+            console.log(`[FRONTEND] Intento ${intentos + 1}/${maxIntentos} - Estado cierre: ${estadoCierre}`)
             
             if (estadoCierre === 'cerrada') {
               estadoActualizado = true
-              console.log('✅ [FRONTEND] Estado actualizado a "cerrada" correctamente')
-              // Recargar datos una vez más para asegurar que todo esté actualizado
+              console.log('[FRONTEND] Estado actualizado a "cerrada" correctamente')
+              
               await loadData()
               break
             }
@@ -2321,30 +2369,30 @@ function CierreFaseArea() {
             console.error('Error verificando estado:', error)
           }
           
-          // Esperar antes del siguiente intento
+          
           await new Promise(resolve => setTimeout(resolve, 1000))
           intentos++
         }
         
         if (!estadoActualizado) {
-          console.warn('⚠️ [FRONTEND] No se pudo confirmar el estado "cerrada" después de varios intentos')
-          // Recargar una vez más para mostrar el estado actual
+          console.warn('[FRONTEND] No se pudo confirmar el estado "cerrada" después de varios intentos')
+          
           await loadData()
         }
         
-        // Recargar la página para actualizar todos los componentes (incluyendo ProgresoEvaluacionClasificatoria)
-        console.log('🔄 [FRONTEND] Recargando página para actualizar todos los componentes')
+        
+        console.log('[FRONTEND] Recargando página para actualizar todos los componentes')
         setTimeout(() => {
           window.location.reload()
         }, 500)
       } else {
-        console.error('❌ [FRONTEND] Error en respuesta:', response)
+        console.error('[FRONTEND] Error en respuesta:', response)
         alert('Error al cerrar la fase: ' + (response.message || 'Error desconocido'))
         setCerrando(false)
       }
     } catch (error: any) {
-      console.error('❌ [FRONTEND] Excepción al cerrar fase:', error)
-      console.error('❌ [FRONTEND] Stack trace:', error.stack)
+      console.error('[FRONTEND] Excepción al cerrar fase:', error)
+      console.error('[FRONTEND] Stack trace:', error.stack)
       alert('Error al cerrar la fase: ' + (error.message || 'Error desconocido'))
       setCerrando(false)
     }
@@ -2355,7 +2403,7 @@ function CierreFaseArea() {
     try {
       const result = await CoordinadorService.descargarReportePDF()
       if (result.success) {
-        // El PDF se descarga automáticamente
+        
       } else {
         const errorMsg = result.error || 'Error al descargar el PDF. Asegúrate de que la fase esté cerrada y que el PDF se haya generado correctamente.'
         alert(errorMsg)
@@ -2374,7 +2422,7 @@ function CierreFaseArea() {
     try {
       const result = await CoordinadorService.descargarReporteExcelClasificados()
       if (result.success) {
-        // El Excel se descarga automáticamente
+        
       } else {
         const errorMsg = result.error || 'Error al descargar el Excel. Asegúrate de que la fase esté cerrada y que el Excel se haya generado correctamente.'
         alert(errorMsg)
@@ -2393,7 +2441,7 @@ function CierreFaseArea() {
     try {
       const result = await CoordinadorService.descargarReportePDFEstadisticasDetalladas()
       if (result.success) {
-        // El PDF se descarga automáticamente
+        
       } else {
         const errorMsg = result.error || 'Error al descargar el PDF de estadísticas. Asegúrate de que la fase esté cerrada y que el reporte se haya generado correctamente.'
         alert(errorMsg)
@@ -2437,7 +2485,7 @@ function CierreFaseArea() {
   const porcentajeCompletitud = estadisticas?.porcentaje_completitud || 0
   const puedeCerrar = porcentajeCompletitud >= 99.9 && estado_cierre !== 'cerrada' && estadisticas?.puede_cerrar !== false
   
-  // Debug logs
+  
   console.log('CierreFaseArea - Debug completo:', {
     porcentajeCompletitud,
     estado_cierre,
@@ -2594,6 +2642,18 @@ function CierreFaseArea() {
           )}
         </CardContent>
       </Card>
+
+      {/* Sección de Firma Digital - Solo antes de cerrar la fase (cuando está lista para cerrar) */}
+      {puedeCerrar && estado_cierre !== 'cerrada' && (
+        <div className="mt-6">
+          <FirmaDigital
+            onGuardar={handleGuardarFirma}
+            firmaExistente={firmaExistente}
+            fechaFirma={fechaFirma}
+            reporteTipo="cierre_fase"
+          />
+        </div>
+      )}
 
       {/* Modal de Confirmación de Cierre */}
       <Dialog open={showCierreModal} onOpenChange={setShowCierreModal}>
@@ -2922,8 +2982,24 @@ export default function CoordinatorDashboard() {
   const [assigning, setAssigning] = useState<boolean>(false)
   const [asigLoading, setAsigLoading] = useState(false)
   const [asigPreview, setAsigPreview] = useState<any[]>([])
+  const [cambiosPendientes, setCambiosPendientes] = useState<number>(0)
 
-  // Coordinator is responsible for "Matemáticas" area
+  
+  useEffect(() => {
+    const fetchCambiosPendientes = async () => {
+      try {
+        const data = await CoordinadorService.getCambiosPendientes()
+        setCambiosPendientes(data.data?.total_pendientes || 0)
+      } catch (err) {
+        console.error('Error fetching cambios pendientes:', err)
+      }
+    }
+    if (user) {
+      fetchCambiosPendientes()
+    }
+  }, [user])
+
+  
   const defaultArea = {
     name: areaName,
     participants: 245,
@@ -3458,6 +3534,41 @@ export default function CoordinatorDashboard() {
 
           {/* Control Tab - Solo Auditoría */}
           <TabsContent value="control" className="space-y-6">
+            {/* Cambios Pendientes */}
+            <Card className="border-l-4 border-l-orange-500">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-orange-600" />
+                  Cambios Pendientes de Revisión
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  Cambios de notas que requieren tu aprobación o rechazo
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-6">
+                <div className="text-center py-6 px-4">
+                  <div className="text-4xl font-bold text-orange-600 mb-2">
+                    {cambiosPendientes || 0}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {cambiosPendientes === 0 
+                      ? 'No hay cambios pendientes de revisión'
+                      : cambiosPendientes === 1
+                      ? 'cambio pendiente de revisión'
+                      : 'cambios pendientes de revisión'}
+                  </p>
+                  <Button 
+                    onClick={() => window.location.href = '/coordinador/log-auditoria'}
+                    className="flex items-center gap-2 w-full bg-orange-600 hover:bg-orange-700"
+                    disabled={cambiosPendientes === 0}
+                  >
+                    <FileText className="h-4 w-4" />
+                    {cambiosPendientes > 0 ? 'Revisar Cambios' : 'Ir a Log de Auditoría'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Solo Log de Auditoría */}
             <Card>
               <CardHeader className="p-4 sm:p-6">
