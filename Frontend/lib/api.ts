@@ -821,7 +821,7 @@ export class CoordinadorService {
         },
       })
 
-      // Verificar el Content-Type primero
+      
       const contentType = response.headers.get('content-type') || ''
       
       
@@ -1161,7 +1161,7 @@ export class EvaluadorService {
   static async getEvaluaciones(fase?: 'clasificacion' | 'final') {
     const params = new URLSearchParams()
     if (fase) {
-      // En la BD se guarda como 'premiacion' pero conceptualmente es 'final'
+      
       params.append('fase', fase)
     }
     const queryString = params.toString()
@@ -1252,6 +1252,42 @@ export class DesclasificacionService {
 
   static async getEstadisticas(areaId: number) {
     return ApiService.get(`/api/desclasificacion/estadisticas?area_id=${areaId}`)
+  }
+}
+
+export class PublicacionResultadosService {
+  static async getAreasPublicadas() {
+    return ApiService.get('/api/publicacion-resultados/areas')
+  }
+
+  static async getResultadosPublicados(filtros: {
+    area_id: number
+    nivel_id?: number
+    departamento_id?: number
+  }) {
+    const params = new URLSearchParams({ area_id: filtros.area_id.toString() })
+    if (filtros.nivel_id) params.append('nivel_id', filtros.nivel_id.toString())
+    if (filtros.departamento_id) params.append('departamento_id', filtros.departamento_id.toString())
+    
+    return ApiService.get(`/api/publicacion-resultados/resultados?${params.toString()}`)
+  }
+
+  static async publicarResultados(data: {
+    area_competencia_id: number
+    observaciones?: string
+  }) {
+    return ApiService.post('/api/publicacion-resultados/publicar', data)
+  }
+
+  static async despublicarResultados(data: {
+    area_competencia_id: number
+    observaciones?: string
+  }) {
+    return ApiService.post('/api/publicacion-resultados/despublicar', data)
+  }
+
+  static async getEstadoPublicacion(areaId: number) {
+    return ApiService.get(`/api/publicacion-resultados/estado/${areaId}`)
   }
 }
 

@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { OlimpistaService, AuthService, ReporteService, AdminService, CoordinadorService } from "@/lib/api"
+import { OlimpistaService, AuthService, ReporteService, AdminService, CoordinadorService, PublicacionResultadosService } from "@/lib/api"
 import { Input } from "@/components/ui/input"
 import {
   Trophy,
@@ -40,6 +40,8 @@ import {
   UserX,
   CheckCircle2,
   Timer,
+  Globe,
+  EyeOff,
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/AuthContext"
@@ -392,7 +394,7 @@ function ListaInscritosAreaNivel() {
           </p>
           {participantes.length > 0 && (
             <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm">
-              ✅ <strong>{participantes.length} participantes</strong> encontrados en tu área
+               <strong>{participantes.length} participantes</strong> encontrados en tu área
             </div>
           )}
         </div>
@@ -669,11 +671,11 @@ function ProgresoEvaluacionClasificatoria() {
           const cerrada = response.data?.estado_fase?.cerrada || false
           const estado = response.data?.estado_fase?.estado || 'activa'
           
-          // Verificar si la fase está cerrada (por el flag o por el estado)
+          
           const estaCerrada = cerrada || estado === 'cerrada'
           setFaseCerrada(estaCerrada)
           
-          console.log('🔄 [ProgresoEvaluacion] Estado fase:', {
+          console.log(' [ProgresoEvaluacion] Estado fase:', {
             cerrada: cerrada,
             estado: estado,
             estaCerrada: estaCerrada,
@@ -682,7 +684,7 @@ function ProgresoEvaluacionClasificatoria() {
           
           // Si la fase está cerrada, detener la actualización automática
           if (estaCerrada && intervalRef.current) {
-            console.log('🛑 [ProgresoEvaluacion] Fase cerrada, deteniendo actualización automática')
+            console.log(' [ProgresoEvaluacion] Fase cerrada, deteniendo actualización automática')
             clearInterval(intervalRef.current)
             intervalRef.current = null
           }
@@ -697,27 +699,27 @@ function ProgresoEvaluacionClasificatoria() {
       return false
     }
 
-    // Cargar datos iniciales
+    
     loadData().then((estaCerrada) => {
-      // Solo actualizar automáticamente si la fase NO está cerrada
+      
       if (!estaCerrada) {
-        console.log('🔄 [ProgresoEvaluacion] Iniciando actualización automática cada 30 segundos')
+        console.log(' [ProgresoEvaluacion] Iniciando actualización automática cada 30 segundos')
         intervalRef.current = setInterval(async () => {
           const cerrada = await loadData()
           if (cerrada && intervalRef.current) {
-            console.log('🛑 [ProgresoEvaluacion] Fase cerrada detectada, deteniendo actualización')
+            console.log(' [ProgresoEvaluacion] Fase cerrada detectada, deteniendo actualización')
             clearInterval(intervalRef.current)
             intervalRef.current = null
           }
         }, 30000)
       } else {
-        console.log('🛑 [ProgresoEvaluacion] Fase ya está cerrada, no se iniciará actualización automática')
+        console.log(' [ProgresoEvaluacion] Fase ya está cerrada, no se iniciará actualización automática')
       }
     })
     
     return () => {
       if (intervalRef.current) {
-        console.log('🧹 [ProgresoEvaluacion] Limpiando intervalo al desmontar componente')
+        console.log(' [ProgresoEvaluacion] Limpiando intervalo al desmontar componente')
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
@@ -736,9 +738,9 @@ function ProgresoEvaluacionClasificatoria() {
         const estaCerrada = cerrada || estado === 'cerrada'
         setFaseCerrada(estaCerrada)
         
-        // Si la fase está cerrada, asegurar que no haya actualización automática
+       
         if (estaCerrada && intervalRef.current) {
-          console.log('🛑 [ProgresoEvaluacion] Fase cerrada detectada en refresh, deteniendo actualización')
+          console.log(' [ProgresoEvaluacion] Fase cerrada detectada en refresh, deteniendo actualización')
           clearInterval(intervalRef.current)
           intervalRef.current = null
         }
@@ -789,7 +791,7 @@ function ProgresoEvaluacionClasificatoria() {
     )
   }
 
-  // Agrupar niveles por Primaria y Secundaria
+  
   const nivelesAgrupados = (() => {
     const grupos: Record<string, {
       nivel_nombre: string,
@@ -806,7 +808,7 @@ function ProgresoEvaluacionClasificatoria() {
     for (const n of source) {
       const nombre: string = (n?.nivel_nombre || '').toString().toLowerCase()
       
-      // Determinar si es Primaria o Secundaria
+      
       let key: string | undefined = undefined
       if (nombre.includes('primaria') || nombre.includes('primario')) {
         key = 'Primaria'
@@ -814,10 +816,10 @@ function ProgresoEvaluacionClasificatoria() {
         key = 'Secundaria'
       }
 
-      // Si no coincide con Primaria o Secundaria, saltar
+      
       if (!key) continue
 
-      // Inicializar grupo si no existe
+      
       if (!grupos[key]) {
         grupos[key] = {
           nivel_nombre: key,
@@ -830,12 +832,12 @@ function ProgresoEvaluacionClasificatoria() {
         }
       }
 
-      // Acumular valores
+      
       const evaluados = Number(n?.evaluados || 0)
       const pendientes = Number(n?.pendientes || 0)
       const desclasificados = Number(n?.desclasificados || 0)
       
-      // Calcular promedio ponderado
+      
       const promedioActual = Number(n?.promedio_puntuacion || 0)
       const totalEvaluadosPrev = grupos[key].evaluados
       const totalEvaluadosNew = totalEvaluadosPrev + evaluados
@@ -848,19 +850,19 @@ function ProgresoEvaluacionClasificatoria() {
       grupos[key].pendientes += pendientes
       grupos[key].desclasificados += desclasificados
 
-      // Calcular porcentajes
+      
       const total = grupos[key].evaluados + grupos[key].pendientes + grupos[key].desclasificados
       grupos[key].porcentaje = total > 0 ? Math.round((grupos[key].evaluados / total) * 100) : 0
       grupos[key].porcentaje_desclasificados = total > 0 ? Math.round((grupos[key].desclasificados / total) * 100) : 0
     }
 
-    // Convertir a array, ordenar (Primaria primero, luego Secundaria) y redondear promedio
+
     const ordenados = Object.values(grupos).map(g => ({
       ...g,
       promedio_puntuacion: Math.round(g.promedio_puntuacion)
     }))
     
-    // Ordenar: Primaria primero, luego Secundaria
+    
     return ordenados.sort((a, b) => {
       if (a.nivel_nombre === 'Primaria') return -1
       if (b.nivel_nombre === 'Primaria') return 1
@@ -1889,11 +1891,11 @@ function CompetidoresPorAreaNivel() {
           console.log(' Departamento establecido:', String(dId))
         } else {
           console.log(' No se encontró departamento_id en el perfil, usando por defecto')
-          setDepartamentoId('1') // Usar Cochabamba por defecto
+          setDepartamentoId('1') 
         }
       } catch (error) {
         console.error(' Error obteniendo perfil:', error)
-        setDepartamentoId('1') // Usar Cochabamba por defecto
+        setDepartamentoId('1')
       }
     }
     init()
@@ -1911,12 +1913,12 @@ function CompetidoresPorAreaNivel() {
     }
     
     if (departamentoId) {
-      console.log('📡 Llamando a fetchData con departamentoId:', departamentoId)
+      console.log(' Llamando a fetchData con departamentoId:', departamentoId)
       fetchData()
     } else {
-      console.log('⚠️ No hay departamentoId, no se puede hacer fetchData')
+      console.log(' No hay departamentoId, no se puede hacer fetchData')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [departamentoId, nivelId, sortBy, estado])
 
   return (
@@ -2150,12 +2152,12 @@ function applyClientFilters(
       return haystack.includes(text)
     })
   }
-  // Filtro por estado si se seleccionó (clasificado, no_clasificado, desclasificado, premiado)
+  
   if (opts.estado) {
     const estadoSel = opts.estado
     rows = rows.filter((c) => String(c.inscripcion_estado || c.estado || '').toLowerCase() === estadoSel)
   }
-  // Filtro por departamento si está seleccionado (usa id si existe, si no, compara por nombre)
+  
   if (opts.departamentoId) {
     rows = rows.filter((c) => {
       const departamentoId = String(opts.departamentoId)
@@ -2163,12 +2165,12 @@ function applyClientFilters(
       if (byId !== undefined && byId !== null && byId !== '') {
         return String(byId) === departamentoId
       }
-      // Fallback por nombre (modo simulación)
+      
       const departamentoLabel = (departamentoId === '1' ? 'Cochabamba' : departamentoId === '2' ? 'La Paz' : departamentoId === '3' ? 'Santa Cruz' : departamentoId === '4' ? 'Oruro' : departamentoId === '5' ? 'Potosí' : departamentoId === '6' ? 'Chuquisaca' : departamentoId === '7' ? 'Tarija' : departamentoId === '8' ? 'Beni' : departamentoId === '9' ? 'Pando' : '')
       return String(c.departamento_nombre || '').toLowerCase() === String(departamentoLabel).toLowerCase()
     })
   }
-  // Filtro por nivel si está seleccionado (y distinto de 'all'); usa id si existe, o nombre como fallback
+ 
   if (opts.nivelId && opts.nivelId !== 'all') {
     rows = rows.filter((c) => {
       const nivelId = String(opts.nivelId)
@@ -2244,6 +2246,9 @@ function CierreFaseArea() {
   const [firmaExistente, setFirmaExistente] = useState<string | null>(null)
   const [fechaFirma, setFechaFirma] = useState<string | null>(null)
   const [cargandoFirma, setCargandoFirma] = useState<boolean>(false)
+  const [estadoPublicacion, setEstadoPublicacion] = useState<any>(null)
+  const [publicando, setPublicando] = useState<boolean>(false)
+  const [despublicando, setDespublicando] = useState<boolean>(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -2258,6 +2263,11 @@ function CierreFaseArea() {
         console.log('Cantidad clasificados:', response.data?.vista_previa_clasificados?.clasificados?.length || 0)
         console.log('Cantidad no clasificados:', response.data?.vista_previa_clasificados?.no_clasificados?.length || 0)
         setCierreData(response.data)
+        
+        
+        if (response.data?.estado_cierre === 'cerrada' && response.data?.area?.id) {
+          cargarEstadoPublicacion(response.data.area.id)
+        }
       }
     } catch (error: any) {
       console.error('Error cargando datos de cierre:', error)
@@ -2266,17 +2276,82 @@ function CierreFaseArea() {
     }
   }
 
+  const cargarEstadoPublicacion = async (areaId: number) => {
+    try {
+      const response = await PublicacionResultadosService.getEstadoPublicacion(areaId)
+      if (response.success) {
+        setEstadoPublicacion(response.data)
+      }
+    } catch (error) {
+      console.error('Error cargando estado de publicación:', error)
+    }
+  }
+
+  const handlePublicar = async () => {
+    if (!cierreData?.area?.id) return
+    
+    if (!confirm('¿Estás seguro de publicar los resultados? Los resultados serán visibles públicamente.')) {
+      return
+    }
+    
+    setPublicando(true)
+    try {
+      const response = await PublicacionResultadosService.publicarResultados({
+        area_competencia_id: cierreData.area.id
+      })
+      
+      if (response.success) {
+        alert('Resultados publicados exitosamente')
+        await cargarEstadoPublicacion(cierreData.area.id)
+      } else {
+        alert('Error al publicar: ' + (response.message || 'Error desconocido'))
+      }
+    } catch (error: any) {
+      console.error('Error publicando resultados:', error)
+      alert('Error al publicar resultados: ' + (error.message || 'Error desconocido'))
+    } finally {
+      setPublicando(false)
+    }
+  }
+
+  const handleDespublicar = async () => {
+    if (!cierreData?.area?.id) return
+    
+    if (!confirm('¿Estás seguro de despublicar los resultados? Los resultados dejarán de ser visibles públicamente.')) {
+      return
+    }
+    
+    setDespublicando(true)
+    try {
+      const response = await PublicacionResultadosService.despublicarResultados({
+        area_competencia_id: cierreData.area.id
+      })
+      
+      if (response.success) {
+        alert('Resultados despublicados exitosamente')
+        await cargarEstadoPublicacion(cierreData.area.id)
+      } else {
+        alert('Error al despublicar: ' + (response.message || 'Error desconocido'))
+      }
+    } catch (error: any) {
+      console.error('Error despublicando resultados:', error)
+      alert('Error al despublicar resultados: ' + (error.message || 'Error desconocido'))
+    } finally {
+      setDespublicando(false)
+    }
+  }
+
   useEffect(() => {
     loadData()
   }, [])
 
-  // Cargar firma solo cuando la fase está lista para cerrar (antes de cerrar)
+  
   useEffect(() => {
     const cargarFirma = async () => {
       const porcentajeCompletitud = cierreData?.estadisticas?.porcentaje_completitud || 0
       const puedeCerrar = porcentajeCompletitud >= 99.9 && cierreData?.estado_cierre !== 'cerrada'
       
-      // Mostrar firma solo si la fase está lista para cerrar (no después de cerrar)
+      
       if (puedeCerrar) {
         setCargandoFirma(true)
         try {
@@ -2291,7 +2366,7 @@ function CierreFaseArea() {
           setCargandoFirma(false)
         }
       } else {
-        // Limpiar firma si la fase ya está cerrada
+        
         setFirmaExistente(null)
         setFechaFirma(null)
       }
@@ -2578,6 +2653,12 @@ function CierreFaseArea() {
                   <div className="text-sm text-green-600 font-medium">
                     ✓ Fase cerrada
                   </div>
+                  {estadoPublicacion?.publicado && (
+                    <Badge variant="default" className="bg-green-600">
+                      <Globe className="h-3 w-3 mr-1" />
+                      Publicado
+                    </Badge>
+                  )}
                   <Button 
                     onClick={handleDescargarPDF} 
                     disabled={descargandoPDF}
@@ -2605,6 +2686,26 @@ function CierreFaseArea() {
                     <FileText className="h-4 w-4 mr-2" />
                     {descargandoEstadisticas ? 'Descargando...' : 'Estadísticas'}
                   </Button>
+                  {!estadoPublicacion?.publicado ? (
+                    <Button 
+                      onClick={handlePublicar} 
+                      disabled={publicando}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      <Globe className="h-4 w-4 mr-2" />
+                      {publicando ? 'Publicando...' : 'Publicar Resultados'}
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={handleDespublicar} 
+                      disabled={despublicando}
+                      variant="outline"
+                      className="border-purple-600 text-purple-600 hover:bg-purple-50"
+                    >
+                      <EyeOff className="h-4 w-4 mr-2" />
+                      {despublicando ? 'Despublicando...' : 'Despublicar'}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

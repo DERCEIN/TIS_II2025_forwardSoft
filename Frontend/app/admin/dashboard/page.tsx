@@ -32,12 +32,14 @@ import {
   CheckCircle2,
   Save,
   RefreshCw,
+  Globe,
+  EyeOff,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import Link from "next/link"
-import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService } from "@/lib/api"
+import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService, PublicacionResultadosService } from "@/lib/api"
 
 // Importar la URL base para logs
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
@@ -70,14 +72,108 @@ export default function AdminDashboard() {
   const { toast } = useToast()
   const { logout } = useAuth()
   const [isSubmittingUser, setIsSubmittingUser] = useState(false)
+  const [estadosPublicacion, setEstadosPublicacion] = useState<Record<number, any>>({})
+  const [publicando, setPublicando] = useState<Record<number, boolean>>({})
 
-  // Función para obtener olimpistas recientes
+  
+  const cargarEstadosPublicacion = async () => {
+    try {
+      const estados: Record<number, any> = {}
+      for (const area of areas) {
+        try {
+          const response = await PublicacionResultadosService.getEstadoPublicacion(area.id)
+          if (response.success) {
+            estados[area.id] = response.data
+          }
+        } catch (error) {
+          console.error(`Error cargando estado de publicación para área ${area.id}:`, error)
+        }
+      }
+      setEstadosPublicacion(estados)
+    } catch (error) {
+      console.error('Error cargando estados de publicación:', error)
+    }
+  }
+
+  const handlePublicar = async (areaId: number) => {
+    if (!confirm('¿Estás seguro de publicar los resultados de esta área? Los resultados serán visibles públicamente.')) {
+      return
+    }
+    
+    setPublicando({ ...publicando, [areaId]: true })
+    try {
+      const response = await PublicacionResultadosService.publicarResultados({
+        area_competencia_id: areaId
+      })
+      
+      if (response.success) {
+        toast({
+          title: "Éxito",
+          description: "Resultados publicados exitosamente",
+        })
+        await cargarEstadosPublicacion()
+      } else {
+        toast({
+          title: "Error",
+          description: response.message || "Error al publicar resultados",
+          variant: "destructive"
+        })
+      }
+    } catch (error: any) {
+      console.error('Error publicando resultados:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Error al publicar resultados",
+        variant: "destructive"
+      })
+    } finally {
+      setPublicando({ ...publicando, [areaId]: false })
+    }
+  }
+
+  const handleDespublicar = async (areaId: number) => {
+    if (!confirm('¿Estás seguro de despublicar los resultados de esta área? Los resultados dejarán de ser visibles públicamente.')) {
+      return
+    }
+    
+    setPublicando({ ...publicando, [areaId]: true })
+    try {
+      const response = await PublicacionResultadosService.despublicarResultados({
+        area_competencia_id: areaId
+      })
+      
+      if (response.success) {
+        toast({
+          title: "Éxito",
+          description: "Resultados despublicados exitosamente",
+        })
+        await cargarEstadosPublicacion()
+      } else {
+        toast({
+          title: "Error",
+          description: response.message || "Error al despublicar resultados",
+          variant: "destructive"
+        })
+      }
+    } catch (error: any) {
+      console.error('Error despublicando resultados:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Error al despublicar resultados",
+        variant: "destructive"
+      })
+    } finally {
+      setPublicando({ ...publicando, [areaId]: false })
+    }
+  }
+
+  
   const fetchRecentInscriptions = async () => {
     setLoadingInscriptions(true)
     try {
       const response = await OlimpistaService.getAll()
       if (response.success && response.data) {
-        // Obtener los 5 olimpistas más recientes
+
         const recentOlimpistas = response.data
           .sort((a: any, b: any) => new Date(b.fecha_registro).getTime() - new Date(a.fecha_registro).getTime())
           .slice(0, 5)
@@ -94,7 +190,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener estadísticas de inscripciones
+  
   const fetchInscriptionStats = async () => {
     setLoadingStats(true)
     try {
@@ -117,7 +213,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener usuarios registrados
+  
   const fetchUsers = async () => {
     setLoadingUsers(true)
     try {
@@ -132,13 +228,13 @@ export default function AdminDashboard() {
         return
       }
       
-      // Probar primero con el endpoint de admin
+      
       console.log('Intentando con /api/admin/users...')
       console.log('URL completa:', API_BASE_URL + '/api/admin/users')
       let response = await ApiService.get('/api/admin/users')
       console.log('Respuesta admin/users:', response)
       
-      // Si falla, probar con el endpoint general
+      
       if (!response.success) {
         console.log('Probando con /api/users...')
         console.log('URL completa:', API_BASE_URL + '/api/users')
@@ -148,7 +244,7 @@ export default function AdminDashboard() {
       
       if (response.success && response.data) {
         setUsers(response.data)
-        setCurrentPage(1) // Resetear a la primera página cuando se cargan nuevos usuarios
+        setCurrentPage(1) 
         console.log('Usuarios cargados:', response.data)
         console.log('Número de usuarios:', response.data.length)
       } else {
@@ -168,7 +264,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para verificar el estado del backend
+ 
   const checkBackendHealth = async () => {
     try {
       console.log('Verificando estado del backend...')
@@ -182,19 +278,19 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener áreas de competencia y sus configuraciones
+ 
   const fetchAreas = async () => {
     setLoadingAreas(true)
     try {
       console.log('Obteniendo áreas de competencia con estadísticas...')
       
-      // Cargar áreas con estadísticas reales
+      
       const areasRes = await CatalogoService.areasCompetenciaConEstadisticas()
       if (areasRes.success && areasRes.data) {
         setAreas(areasRes.data || [])
         console.log('Áreas con estadísticas cargadas:', areasRes.data)
       } else {
-        // Fallback: cargar áreas básicas si falla el endpoint de estadísticas
+        
         const areasBasicasRes = await CatalogoService.areasCompetencia()
         if (areasBasicasRes.success && areasBasicasRes.data) {
           setAreas(areasBasicasRes.data || [])
@@ -202,13 +298,13 @@ export default function AdminDashboard() {
         }
       }
       
-      // Cargar configuración general para obtener tiempo por defecto
+      
       const configRes = await ConfiguracionService.getConfiguracion()
       if (configRes.success && configRes.data) {
         setConfigGeneral(configRes.data)
       }
       
-      // Cargar configuraciones por área
+      
       const configAreasRes = await ConfiguracionService.getConfiguracionesPorArea()
       if (configAreasRes.success && configAreasRes.data) {
         const configMap: Record<number, any> = {}
@@ -217,6 +313,7 @@ export default function AdminDashboard() {
         })
         setConfiguracionesAreas(configMap)
       }
+      
     } catch (error: any) {
       console.error('Error al obtener áreas:', error)
       setAreas([])
@@ -225,7 +322,28 @@ export default function AdminDashboard() {
     }
   }
 
-  // Exportar participantes a CSV
+  
+  useEffect(() => {
+    if (areas.length > 0) {
+      const cargar = async () => {
+        const estados: Record<number, any> = {}
+        for (const area of areas) {
+          try {
+            const response = await PublicacionResultadosService.getEstadoPublicacion(area.id)
+            if (response.success) {
+              estados[area.id] = response.data
+            }
+          } catch (error) {
+            console.error(`Error cargando estado de publicación para área ${area.id}:`, error)
+          }
+        }
+        setEstadosPublicacion(estados)
+      }
+      cargar()
+    }
+  }, [areas])
+
+  
   const handleExportParticipantsCSV = async () => {
     try {
       const res = await OlimpistaService.getAll()
@@ -279,7 +397,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Funciones de paginación
+  
   const getCurrentPageUsers = () => {
     const startIndex = (currentPage - 1) * usersPerPage
     const endIndex = startIndex + usersPerPage
@@ -302,7 +420,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Cargar datos al montar el componente
+  
   useEffect(() => {
     console.log('Iniciando carga de datos...')
     checkBackendHealth()
@@ -372,15 +490,15 @@ export default function AdminDashboard() {
       if (mappedRole === 'evaluador' || mappedRole === 'coordinador') {
         if (userArea) {
           const selectedArea = areas.find(area => area.id.toString() === userArea)
-          console.log('🔍 Debug - Área seleccionada (ID):', userArea)
-          console.log('🔍 Debug - Áreas disponibles:', areas)
-          console.log('🔍 Debug - Área encontrada:', selectedArea)
+          console.log(' Debug - Área seleccionada (ID):', userArea)
+          console.log(' Debug - Áreas disponibles:', areas)
+          console.log(' Debug - Área encontrada:', selectedArea)
           if (selectedArea) {
             payload.area_id = selectedArea.id
             payload.area = selectedArea.nombre
-            console.log('🔍 Debug - Payload final:', payload)
+            console.log(' Debug - Payload final:', payload)
           } else {
-            console.error('❌ Error - No se encontró el área con ID:', userArea)
+            console.error('Error - No se encontró el área con ID:', userArea)
           }
         }
       }
@@ -754,6 +872,12 @@ export default function AdminDashboard() {
                               >
                                 {estaLlena ? "Lleno" : "Activo"}
                               </Badge>
+                              {estadosPublicacion[area.id]?.publicado && (
+                                <Badge variant="default" className="bg-green-600">
+                                  <Globe className="h-3 w-3 mr-1" />
+                                  Publicado
+                                </Badge>
+                              )}
                             </div>
                             
                             <div className="grid grid-cols-3 gap-6 mb-4">
@@ -789,26 +913,50 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           
-                          <div className="ml-4">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedArea(area)
-                                setTempConfig(configArea || {
-                                  area_competencia_id: area.id,
-                                  tiempo_evaluacion_minutos: configGeneral?.tiempo_evaluacion || 120,
-                                  periodo_evaluacion_inicio: '',
-                                  periodo_evaluacion_fin: '',
-                                  periodo_publicacion_inicio: '',
-                                  periodo_publicacion_fin: '',
-                                })
-                                setIsModalOpen(true)
-                              }}
-                              className="h-8 w-8 p-0 text-slate-600 hover:text-slate-800 hover:bg-slate-100"
-                            >
-                              <MoreHorizontal className="h-5 w-5" />
-                            </Button>
+                          <div className="ml-4 flex flex-col gap-2">
+                            <div className="flex gap-2">
+                              {!estadosPublicacion[area.id]?.publicado ? (
+                                <Button
+                                  onClick={() => handlePublicar(area.id)}
+                                  disabled={publicando[area.id]}
+                                  size="sm"
+                                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                                >
+                                  <Globe className="h-4 w-4 mr-1" />
+                                  {publicando[area.id] ? 'Publicando...' : 'Publicar'}
+                                </Button>
+                              ) : (
+                                <Button
+                                  onClick={() => handleDespublicar(area.id)}
+                                  disabled={publicando[area.id]}
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-purple-600 text-purple-600 hover:bg-purple-50"
+                                >
+                                  <EyeOff className="h-4 w-4 mr-1" />
+                                  {publicando[area.id] ? 'Despublicando...' : 'Despublicar'}
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedArea(area)
+                                  setTempConfig(configArea || {
+                                    area_competencia_id: area.id,
+                                    tiempo_evaluacion_minutos: configGeneral?.tiempo_evaluacion || 120,
+                                    periodo_evaluacion_inicio: '',
+                                    periodo_evaluacion_fin: '',
+                                    periodo_publicacion_inicio: '',
+                                    periodo_publicacion_fin: '',
+                                  })
+                                  setIsModalOpen(true)
+                                }}
+                                className="h-8 w-8 p-0 text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                              >
+                                <MoreHorizontal className="h-5 w-5" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </CardContent>

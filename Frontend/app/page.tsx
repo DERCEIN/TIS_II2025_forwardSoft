@@ -53,6 +53,12 @@ export default function LandingPage() {
               >
                 Áreas de Competencia
               </a>
+              <Link
+                href="/resultados"
+                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                Resultados
+              </Link>
               <a
                 href="#noticias"
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
@@ -269,9 +275,9 @@ export default function LandingPage() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-primary transition-colors">
+                  <Link href="/resultados" className="hover:text-primary transition-colors">
                     Resultados
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
