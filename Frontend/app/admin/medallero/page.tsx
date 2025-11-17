@@ -42,6 +42,24 @@ interface MedalleroData {
   bronce_max: number
 }
 
+const areaIcons: Record<string, string> = {
+  matemáticas: "📐",
+  matematica: "📐",
+  física: "⚛️",
+  fisica: "⚛️",
+  química: "🧪",
+  quimica: "🧪",
+  biología: "🧬",
+  biologia: "🧬",
+  informática: "💻",
+  informatica: "💻",
+}
+
+const getAreaIcon = (nombre: string) => {
+  const key = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  return areaIcons[key] || "📚"
+}
+
 export default function MedalleroPage() {
   const [selectedArea, setSelectedArea] = useState<number | null>(null)
   const [areas, setAreas] = useState<Area[]>([])
@@ -63,77 +81,75 @@ export default function MedalleroPage() {
     const fetchData = async () => {
       try {
         setLoading(true)
-        
-        // Obtener áreas
+
         const areasRes = await MedalleroService.getAreas()
-        try {
-      const areasRes = await MedalleroService.getAreas();
-      if (Array.isArray(areasRes)) {
-        const structuredAreas: Area[] = areasRes.map((item: any) => ({
-          id: item.id,
-          nombre: item.nombre,
-        }));
-        setAreas(structuredAreas);
-        console.log("Áreas cargadas:", structuredAreas);
-      } else {
-        console.warn("Respuesta de áreas no es válida:", areasRes);
-      }
-    } catch (error) {
-      console.error("Error al cargar áreas:", error);
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las áreas",
-        variant: "destructive",
-      });
-    }
-        
-        // Obtener configuración de medallero
-        const medalleroRes = await MedalleroService.getMedallero()
-        if (Array.isArray(medalleroRes)) {
-      setMedalleroData(medalleroRes);
-
-      const structuredConfig: Record<number, Record<string, MedalConfig>> = {};
-
-      medalleroRes.forEach((item: MedalleroData) => {
-        if (!structuredConfig[item.area_id]) {
-          structuredConfig[item.area_id] = {};
+        if (areasRes?.success && Array.isArray(areasRes.data)) {
+          const structuredAreas: Area[] = areasRes.data.map((item: any) => ({
+            id: item.id,
+            nombre: item.nombre,
+          }))
+          setAreas(structuredAreas)
+        } else {
+          console.warn("Respuesta de áreas no es válida:", areasRes)
+          toast({
+            title: "Error",
+            description: "No se pudieron cargar las áreas",
+            variant: "destructive",
+          })
         }
 
-        structuredConfig[item.area_id][item.nivel_nombre] = {
-          oro: {
-            min: item.oro_min,
-            max: item.oro_max,
-            cantidad: item.oro,
-          },
-          plata: {
-            min: item.plata_min,
-            max: item.plata_max,
-            cantidad: item.plata,
-          },
-          bronce: {
-            min: item.bronce_min,
-            max: item.bronce_max,
-            cantidad: item.bronce,
-          },
-        };
-      });
+        const medalleroRes = await MedalleroService.getMedallero()
+        if (medalleroRes?.success && Array.isArray(medalleroRes.data)) {
+          const medalleroRows: MedalleroData[] = medalleroRes.data
+          setMedalleroData(medalleroRows)
 
-      setConfig(structuredConfig);
-    } else {
-      console.warn("Respuesta de medallero no es válida:", medalleroRes);
+          const structuredConfig: Record<number, Record<string, MedalConfig>> = {}
+
+          medalleroRows.forEach((item) => {
+            if (!structuredConfig[item.area_id]) {
+              structuredConfig[item.area_id] = {}
+            }
+
+            structuredConfig[item.area_id][item.nivel_nombre] = {
+              oro: {
+                min: item.oro_min,
+                max: item.oro_max,
+                cantidad: item.oro,
+              },
+              plata: {
+                min: item.plata_min,
+                max: item.plata_max,
+                cantidad: item.plata,
+              },
+              bronce: {
+                min: item.bronce_min,
+                max: item.bronce_max,
+                cantidad: item.bronce,
+              },
+            }
+          })
+
+          setConfig(structuredConfig)
+        } else {
+          console.warn("Respuesta de medallero no es válida:", medalleroRes)
+          toast({
+            title: "Error",
+            description: "No se pudo cargar la configuración del medallero",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("Error loading medallero:", error)
+        toast({
+          title: "Error",
+          description: "No se pudo cargar los datos del medallero",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
     }
-  } catch (error) {
-    console.error("Error loading data:", error);
-    toast({
-      title: "Error",
-      description: "No se pudo cargar los datos del medallero",
-      variant: "destructive",
-    });
-  } finally {
-    setLoading(false);
-};
-    }
-    
+
     fetchData()
   }, [toast])
 
@@ -389,7 +405,9 @@ export default function MedalleroPage() {
                 onClick={() => setSelectedArea(area.id)}
                 className="group p-8 rounded-xl border-2 border-blue-200 bg-white hover:border-blue-500 hover:shadow-xl transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95"
               >
-                <div className="text-6xl mb-4 transition-transform group-hover:scale-110">📚</div>
+                <div className="text-6xl mb-4 transition-transform group-hover:scale-110">
+                  {getAreaIcon(area.nombre)}
+                </div>
                 <div className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
                   {area.nombre}
                 </div>
@@ -418,7 +436,7 @@ export default function MedalleroPage() {
             </button>
             <div>
               <div className="flex items-center gap-3">
-                <span className="text-5xl">📚</span>
+                <span className="text-5xl">{currentArea ? getAreaIcon(currentArea.nombre) : "📚"}</span>
                 <h1 className="text-4xl font-bold text-gray-900">{currentArea?.nombre}</h1>
               </div>
               <p className="text-gray-600 mt-1">Configura medallas para cada nivel</p>
