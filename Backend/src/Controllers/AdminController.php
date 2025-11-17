@@ -64,12 +64,12 @@ class AdminController
         foreach ($users as &$user) {
             unset($user['password']);
             
-            // Determinar el estado basado en is_active y si tiene credenciales enviadas
+            
             if (isset($user['is_active']) && $user['is_active']) {
                 $user['estado'] = 'activo';
                 $user['status'] = 'active';
             } else {
-                // Verificar si se enviaron credenciales
+               
                 $stmt = $this->pdo->prepare("
                     SELECT COUNT(*) as count 
                     FROM credenciales_enviadas 
@@ -151,10 +151,10 @@ class AdminController
 
        
         if ($userId && isset($input['area_id']) && $input['area_id']) {
-            error_log("🔍 Debug - Asignando área al usuario: UserID=$userId, AreaID={$input['area_id']}, Role={$input['role']}");
+            error_log(" Debug - Asignando área al usuario: UserID=$userId, AreaID={$input['area_id']}, Role={$input['role']}");
             $this->asignarAreaUsuario($userId, $input['area_id'], $input['role']);
         } else {
-            error_log("🔍 Debug - No se asignó área: UserID=$userId, AreaID=" . ($input['area_id'] ?? 'no definido') . ", Role={$input['role']}");
+            error_log(" Debug - No se asignó área: UserID=$userId, AreaID=" . ($input['area_id'] ?? 'no definido') . ", Role={$input['role']}");
         }
 
         if ($userId) {
@@ -198,7 +198,7 @@ class AdminController
             $errorEmail = $mailer->getLastError();
             
             if ($emailEnviado) {
-                // Actualizar el estado del usuario a activo cuando se envía el email
+                
                 try {
                     $this->userModel->update($userId, [
                         'is_active' => true,
@@ -438,7 +438,7 @@ class AdminController
                     ];
                 }
             } else {
-                // Sincronizar fechas si hay discrepancia (solo si no está cerrada y no hay fecha extendida)
+                
                 $puedeSincronizar = !in_array($cierreGeneral['estado'], ['cerrada_general', 'cerrada_automatica']) && empty($cierreGeneral['fecha_fin_extendida']);
                 
                 if ($puedeSincronizar) {
@@ -446,14 +446,14 @@ class AdminController
                     $updateFields = [];
                     $params = [];
                     
-                    // Verificar fecha de inicio
+                    
                     $fechaInicioConfig = isset($config['clasificacion_fecha_inicio']) ? $config['clasificacion_fecha_inicio'] : null;
                     if ($fechaInicioConfig && $cierreGeneral['fecha_inicio'] !== $fechaInicioConfig) {
                         $updateFields[] = "fecha_inicio = ?";
                         $params[] = $fechaInicioConfig;
                         $necesitaActualizacion = true;
                         
-                        // Actualizar estado según fecha de inicio
+                        
                         $estado = $fechaInicioConfig && strtotime($fechaInicioConfig) <= time() ? 'activa' : 'pendiente';
                         if ($cierreGeneral['estado'] !== $estado) {
                             $updateFields[] = "estado = ?";
@@ -461,12 +461,12 @@ class AdminController
                         }
                     }
                     
-                    // Verificar fecha de fin original
+                   
                     $fechaFinConfig = isset($config['clasificacion_fecha_fin']) ? $config['clasificacion_fecha_fin'] : null;
                     if ($fechaFinConfig && $cierreGeneral['fecha_fin_original'] !== $fechaFinConfig) {
                         $updateFields[] = "fecha_fin_original = ?";
                         $params[] = $fechaFinConfig;
-                        // Si no hay fecha extendida, también actualizar fecha_fin_extendida
+                        
                         $updateFields[] = "fecha_fin_extendida = ?";
                         $params[] = $fechaFinConfig;
                         $necesitaActualizacion = true;
@@ -478,7 +478,7 @@ class AdminController
                         $stmt = $this->pdo->prepare($sql);
                         $stmt->execute($params);
                         
-                        // Recargar el registro actualizado
+                        
                         $stmt = $this->pdo->prepare("
                             SELECT * FROM cierre_fase_general 
                             WHERE id = ?
@@ -947,7 +947,7 @@ class AdminController
                         if (!empty($evaluadores)) {
                             $evaluadorId = $evaluadores[0]['evaluador_id'];
                             
-                            // No incluir fecha_asignacion ya que puede no existir en la tabla o tiene DEFAULT
+                            
                             $stmtInsert = $this->pdo->prepare("
                                 INSERT INTO asignaciones_evaluacion (
                                     inscripcion_area_id, evaluador_id, fase, creado_por
@@ -972,7 +972,7 @@ class AdminController
                     error_log("Error migrando clasificado {$clasificado['inscripcion_area_id']}: " . $e->getMessage());
                 } catch (Exception $e) {
                     error_log("Error migrando clasificado {$clasificado['inscripcion_area_id']}: " . $e->getMessage());
-                    // Si la transacción fue abortada, lanzar la excepción
+                   
                     if (strpos($e->getMessage(), 'Transacción abortada') !== false) {
                         throw $e;
                     }
@@ -1535,7 +1535,7 @@ class AdminController
         $optionalHeaders = ['institucion', 'telefono'];
         $headerMapping = [];
         
-        // Mapear headers requeridos
+       
         foreach ($requiredHeaders as $required) {
             $found = false;
             foreach ($headers as $index => $header) {
@@ -1553,7 +1553,7 @@ class AdminController
             }
         }
         
-        // Mapear headers opcionales
+        
         foreach ($optionalHeaders as $optional) {
             foreach ($headers as $index => $header) {
                 $headerClean = strtolower(preg_replace('/[^a-z]/', '', $header));
@@ -1595,7 +1595,7 @@ class AdminController
         $rol = strtolower(trim($data[$headerMapping['rol']] ?? ''));
         $areaNombre = trim($data[$headerMapping['area']] ?? '');
         
-        // Campos opcionales
+       
         $institucion = '';
         $telefono = '';
         if (isset($headerMapping['institucion'])) {
@@ -1690,7 +1690,7 @@ class AdminController
             </p>
         ";
 
-        // Reinicializar el mailer para cada email
+       
         $mailer->reinicializarMailer();
         $emailEnviado = $mailer->enviar($email, "Credenciales de acceso", $contenido);
         $errorEmail = $mailer->getLastError();
@@ -1699,7 +1699,7 @@ class AdminController
             $results['emails_sent']++;
             error_log("Email enviado exitosamente a: {$email}");
             
-            // Actualizar el estado del usuario a activo cuando se envía el email
+           
             try {
                 $this->userModel->update($userId, [
                     'is_active' => true,

@@ -66,22 +66,21 @@ export default function ConfiguracionPage() {
         if (response.success && response.data) {
           const data = response.data
           
-          // Convertir fechas de PostgreSQL a formato datetime-local
+          
           const convertirFechaParaInput = (fecha: string) => {
             if (!fecha) return ''
-            // PostgreSQL devuelve: "YYYY-MM-DD HH:mm:ss" o "YYYY-MM-DDTHH:mm:ss"
-            // datetime-local necesita: "YYYY-MM-DDTHH:mm"
+            
             let fechaLimpia = fecha.trim()
-            // Reemplazar espacio por T
+            
             fechaLimpia = fechaLimpia.replace(' ', 'T')
-            // Si tiene segundos (formato: YYYY-MM-DDTHH:mm:ss), removerlos
+           
             if (fechaLimpia.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
-              fechaLimpia = fechaLimpia.substring(0, 16) // Tomar solo YYYY-MM-DDTHH:mm
+              fechaLimpia = fechaLimpia.substring(0, 16)
             }
             return fechaLimpia
           }
           
-          // Verificar si hay fecha extendida
+         
           const tieneExtendida = data.tiene_fecha_extendida || false
           setTieneFechaExtendida(tieneExtendida)
           
@@ -92,7 +91,7 @@ export default function ConfiguracionPage() {
               fecha_extension: data.fecha_extension,
               justificacion: data.justificacion_extension
             })
-            // Usar la fecha extendida en lugar de la original
+            
             const fechaFinClasificacion = convertirFechaParaInput(data.fecha_fin_extendida || data.clasificacion_fecha_fin || '')
             setConfig(prev => ({
               ...prev,
@@ -144,14 +143,14 @@ export default function ConfiguracionPage() {
   }, [])
 
   const handleSave = async (section: string) => {
-    // Limpiar errores previos
+   
     setErrores({})
     setErrorGeneral(null)
     
     setIsSaving(true)
     try {
       if (section === "General") {
-        // Validar fechas antes de enviar
+        
         let fechaInicioGeneral: Date | null = null
         let fechaFinGeneral: Date | null = null
         const nuevosErrores: Record<string, string> = {}
@@ -163,7 +162,7 @@ export default function ConfiguracionPage() {
             nuevosErrores.fechaFin = "La fecha de fin debe ser posterior a la fecha de inicio"
             setErrores(nuevosErrores)
             toast({
-              title: "❌ Error de validación",
+              title: " Error de validación",
               description: "La fecha de fin debe ser posterior a la fecha de inicio",
               variant: "destructive",
             })
@@ -179,7 +178,7 @@ export default function ConfiguracionPage() {
             nuevosErrores.clasificacion_fecha_fin = "La fecha de fin debe ser posterior a la fecha de inicio"
             setErrores(nuevosErrores)
             toast({
-              title: "❌ Error de validación",
+              title: " Error de validación",
               description: "La fecha de fin de clasificación debe ser posterior a la fecha de inicio",
               variant: "destructive",
             })
@@ -187,13 +186,13 @@ export default function ConfiguracionPage() {
             return
           }
 
-          // Validar que las fechas de clasificación estén dentro del rango general
+          
           if (fechaInicioGeneral && fechaFinGeneral) {
             if (clasifInicio < fechaInicioGeneral) {
               nuevosErrores.clasificacion_fecha_inicio = "La fecha de inicio debe estar dentro del periodo general de la olimpiada"
               setErrores(nuevosErrores)
               toast({
-                title: "❌ Error de validación",
+                title: " Error de validación",
                 description: "La fecha de inicio de clasificación debe estar dentro del periodo general de la olimpiada",
                 variant: "destructive",
               })
@@ -204,7 +203,7 @@ export default function ConfiguracionPage() {
               nuevosErrores.clasificacion_fecha_fin = "La fecha de fin debe estar dentro del periodo general de la olimpiada"
               setErrores(nuevosErrores)
               toast({
-                title: "❌ Error de validación",
+                title: " Error de validación",
                 description: "La fecha de fin de clasificación debe estar dentro del periodo general de la olimpiada",
                 variant: "destructive",
               })
@@ -221,7 +220,7 @@ export default function ConfiguracionPage() {
             nuevosErrores.final_fecha_fin = "La fecha de fin debe ser posterior a la fecha de inicio"
             setErrores(nuevosErrores)
             toast({
-              title: "❌ Error de validación",
+              title: "Error de validación",
               description: "La fecha de fin de la fase final debe ser posterior a la fecha de inicio",
               variant: "destructive",
             })
@@ -229,13 +228,13 @@ export default function ConfiguracionPage() {
             return
           }
 
-          // Validar que las fechas de fase final estén dentro del rango general
+          
           if (fechaInicioGeneral && fechaFinGeneral) {
             if (finalInicio < fechaInicioGeneral) {
               nuevosErrores.final_fecha_inicio = "La fecha de inicio debe estar dentro del periodo general de la olimpiada"
               setErrores(nuevosErrores)
               toast({
-                title: "❌ Error de validación",
+                title: "Error de validación",
                 description: "La fecha de inicio de la fase final debe estar dentro del periodo general de la olimpiada",
                 variant: "destructive",
               })
@@ -246,7 +245,7 @@ export default function ConfiguracionPage() {
               nuevosErrores.final_fecha_fin = "La fecha de fin debe estar dentro del periodo general de la olimpiada"
               setErrores(nuevosErrores)
               toast({
-                title: "❌ Error de validación",
+                title: "Error de validación",
                 description: "La fecha de fin de la fase final debe estar dentro del periodo general de la olimpiada",
                 variant: "destructive",
               })
@@ -289,18 +288,18 @@ export default function ConfiguracionPage() {
         })
       }
       
-      // Limpiar errores al guardar exitosamente
+      
       setErrores({})
       setErrorGeneral(null)
       
       toast({
-        title: "✅ Configuración guardada",
+        title: " Configuración guardada",
         description: `La configuración de ${section} se ha guardado exitosamente.`,
       })
     } catch (error: any) {
       console.error("Error al guardar configuración:", error)
       
-      // Extraer mensaje de error más específico
+      
       let errorMessage = "No se pudo guardar la configuración. Inténtalo de nuevo."
       const nuevosErrores: Record<string, string> = {}
       
@@ -311,14 +310,14 @@ export default function ConfiguracionPage() {
         errorMessage = error.response.data.message
         setErrorGeneral(errorMessage)
       } else if (error?.response?.data?.errors) {
-        // Si hay errores de validación, mapearlos por campo
+        
         Object.entries(error.response.data.errors).forEach(([campo, mensajes]: [string, any]) => {
           const msgs = Array.isArray(mensajes) ? mensajes : [mensajes]
           nuevosErrores[campo] = msgs.join(', ')
         })
         setErrores(nuevosErrores)
         
-        // Construir mensaje general
+        
         const mensajeGeneral = Object.entries(nuevosErrores)
           .map(([campo, msg]) => `${campo}: ${msg}`)
           .join('; ')
@@ -329,7 +328,7 @@ export default function ConfiguracionPage() {
       }
       
       toast({
-        title: "❌ Error al guardar",
+        title: " Error al guardar",
         description: errorMessage,
         variant: "destructive",
       })
@@ -548,7 +547,7 @@ export default function ConfiguracionPage() {
                               ...prev,
                               olimpiada: { ...prev.olimpiada, clasificacion_fecha_inicio: e.target.value }
                             }))
-                            // Limpiar error al cambiar
+                            
                             if (errores.clasificacion_fecha_inicio) {
                               setErrores(prev => {
                                 const newErrores = { ...prev }
@@ -620,7 +619,7 @@ export default function ConfiguracionPage() {
                               ...prev,
                               olimpiada: { ...prev.olimpiada, final_fecha_inicio: e.target.value }
                             }))
-                            // Limpiar error al cambiar
+                            
                             if (errores.final_fecha_inicio) {
                               setErrores(prev => {
                                 const newErrores = { ...prev }
@@ -649,7 +648,7 @@ export default function ConfiguracionPage() {
                               ...prev,
                               olimpiada: { ...prev.olimpiada, final_fecha_fin: e.target.value }
                             }))
-                            // Limpiar error al cambiar
+                            
                             if (errores.final_fecha_fin) {
                               setErrores(prev => {
                                 const newErrores = { ...prev }
