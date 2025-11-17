@@ -594,6 +594,10 @@ export class AdminService {
     return ApiService.post(`/api/admin/users/${userId}/resend-credentials`)
   }
 
+  static async importUsers(file: File) {
+    return ApiService.uploadFile('/api/admin/users/import', file)
+  }
+
   static async getDashboardCierreFase() {
     return ApiService.get('/api/admin/cierre-fase/dashboard')
   }
@@ -821,7 +825,7 @@ export class CoordinadorService {
         },
       })
 
-      // Verificar el Content-Type primero
+      
       const contentType = response.headers.get('content-type') || ''
       
       
@@ -1161,7 +1165,7 @@ export class EvaluadorService {
   static async getEvaluaciones(fase?: 'clasificacion' | 'final') {
     const params = new URLSearchParams()
     if (fase) {
-      // En la BD se guarda como 'premiacion' pero conceptualmente es 'final'
+      
       params.append('fase', fase)
     }
     const queryString = params.toString()
@@ -1188,6 +1192,10 @@ export class ConfiguracionService {
 
   static async getConfiguracionesPorArea() {
     return ApiService.get('/api/configuracion/areas')
+  }
+
+  static async getCronogramaPublico() {
+    return ApiService.get('/api/public/cronograma')
   }
 
   static async getConfiguracionPorArea(areaId: number) {
@@ -1252,6 +1260,53 @@ export class DesclasificacionService {
 
   static async getEstadisticas(areaId: number) {
     return ApiService.get(`/api/desclasificacion/estadisticas?area_id=${areaId}`)
+  }
+}
+export class MedalleroService{
+  static async getMedallero(){
+    return ApiService.get('/api/administrador/medallero')
+  }
+  static async getAreas(){
+    return ApiService.get('/api/administrador/medallero/areas')
+  }
+  static async updateMedallero(data: any) {
+    return ApiService.put('/api/administrador/medallero', data);
+  }
+}
+
+export class PublicacionResultadosService {
+  static async getAreasPublicadas() {
+    return ApiService.get('/api/publicacion-resultados/areas')
+  }
+
+  static async getResultadosPublicados(filtros: {
+    area_id: number
+    nivel_id?: number
+    departamento_id?: number
+  }) {
+    const params = new URLSearchParams({ area_id: filtros.area_id.toString() })
+    if (filtros.nivel_id) params.append('nivel_id', filtros.nivel_id.toString())
+    if (filtros.departamento_id) params.append('departamento_id', filtros.departamento_id.toString())
+    
+    return ApiService.get(`/api/publicacion-resultados/resultados?${params.toString()}`)
+  }
+
+  static async publicarResultados(data: {
+    area_competencia_id: number
+    observaciones?: string
+  }) {
+    return ApiService.post('/api/publicacion-resultados/publicar', data)
+  }
+
+  static async despublicarResultados(data: {
+    area_competencia_id: number
+    observaciones?: string
+  }) {
+    return ApiService.post('/api/publicacion-resultados/despublicar', data)
+  }
+
+  static async getEstadoPublicacion(areaId: number) {
+    return ApiService.get(`/api/publicacion-resultados/estado/${areaId}`)
   }
 }
 

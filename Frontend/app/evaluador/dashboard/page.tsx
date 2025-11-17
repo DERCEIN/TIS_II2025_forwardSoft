@@ -8,29 +8,14 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AuthService } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Trophy,
-  Users,
-  Settings,
   Clock,
   CheckCircle,
   FileText,
   Star,
-  Bell,
   LogOut,
-  BookOpen,
-  Save,
-  Eye,
-  Award,
-  Target,
   UserCheck,
-  Edit,
-  AlertCircle,
-  CheckCircle2,
-  Timer,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -44,8 +29,7 @@ export default function EvaluatorDashboard() {
   const avatarSrc = toAbsolute(avatarUrl)
   const userName: string = user?.name || user?.nombre || ""
   const initials = userName ? userName.split(' ').map((p: string)=>p[0]).slice(0,2).join('').toUpperCase() : 'U'
-  const [activeTab, setActiveTab] = useState("overview")
-  const [selectedParticipant, setSelectedParticipant] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState("registro-notas")
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loadingProfile, setLoadingProfile] = useState<boolean>(true)
   const [evaluationStats, setEvaluationStats] = useState<any>({
@@ -103,97 +87,6 @@ export default function EvaluatorDashboard() {
     },
   ]
 
-  const assignedParticipants = [
-    {
-      id: 1,
-      name: "Juan Pérez Mamani",
-      institution: "Colegio San Simón",
-      area: "Matemáticas",
-      submissionDate: "2025-03-15",
-      status: "pending",
-      score: null,
-      priority: "high",
-    },
-    {
-      id: 2,
-      name: "María González Quispe",
-      institution: "U.E. Bolivar",
-      area: "Matemáticas",
-      submissionDate: "2025-03-14",
-      status: "completed",
-      score: 85,
-      priority: "normal",
-    },
-    {
-      id: 3,
-      name: "Carlos López Vargas",
-      institution: "Colegio Técnico",
-      area: "Física",
-      submissionDate: "2025-03-13",
-      status: "in-review",
-      score: null,
-      priority: "normal",
-    },
-    {
-      id: 4,
-      name: "Ana Martínez Condori",
-      institution: "Colegio Nacional",
-      area: "Matemáticas",
-      submissionDate: "2025-03-12",
-      status: "completed",
-      score: 92,
-      priority: "normal",
-    },
-    {
-      id: 5,
-      name: "Luis Rodríguez Choque",
-      institution: "U.E. Central",
-      area: "Física",
-      submissionDate: "2025-03-11",
-      status: "pending",
-      score: null,
-      priority: "high",
-    },
-  ]
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return {backgroundColor: '#fce7f3', color: '#be185d'}
-      case "in-review":
-        return {backgroundColor: '#dbeafe', color: '#1e40af'}
-      case "pending":
-        return {backgroundColor: '#dbeafe', color: '#1e40af'}
-      default:
-        return {backgroundColor: '#f3f4f6', color: '#374151'}
-    }
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "Completada"
-      case "in-review":
-        return "En Revisión"
-      case "pending":
-        return "Pendiente"
-      default:
-        return "Desconocido"
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return {backgroundColor: '#fce7f3', color: '#be185d'}
-      case "normal":
-        return {backgroundColor: '#dbeafe', color: '#1e40af'}
-      case "low":
-        return {backgroundColor: '#f3f4f6', color: '#374151'}
-      default:
-        return {backgroundColor: '#f3f4f6', color: '#374151'}
-    }
-  }
 
   // Obtener perfil del usuario
   useEffect(() => {
@@ -345,14 +238,6 @@ export default function EvaluatorDashboard() {
 
             {/* Desktop Navigation */}
             <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
-              <Button variant="outline" size="sm" className="hidden lg:flex" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
-                <Bell className="h-4 w-4 mr-2" />
-                Notificaciones
-              </Button>
-              <Button variant="outline" size="sm" className="hidden md:flex" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
-                <Settings className="h-4 w-4 mr-2" />
-                <span className="hidden lg:inline">Configuración</span>
-              </Button>
               <Link href="/evaluador/perfil" className="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border">
                 {avatarSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -379,9 +264,6 @@ export default function EvaluatorDashboard() {
 
             {/* Mobile Navigation */}
             <div className="flex sm:hidden items-center space-x-2">
-              <Button variant="outline" size="sm" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
-                <Bell className="h-4 w-4" />
-              </Button>
               <Link href="/evaluador/perfil" className="inline-flex items-center justify-center h-8 w-8 rounded-full overflow-hidden border">
                 {avatarSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -489,33 +371,7 @@ export default function EvaluatorDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
-            <TabsTrigger 
-              value="overview" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              <span className="hidden sm:inline">Resumen</span>
-              <span className="sm:hidden">Inicio</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="pending" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              Pendientes
-            </TabsTrigger>
-            <TabsTrigger 
-              value="evaluate" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              Evaluar
-            </TabsTrigger>
-            <TabsTrigger 
-              value="completed" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              <span className="hidden sm:inline">Completadas</span>
-              <span className="sm:hidden">Hechas</span>
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-1 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="registro-notas" 
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
@@ -524,115 +380,6 @@ export default function EvaluatorDashboard() {
               <span className="sm:hidden">Notas</span>
             </TabsTrigger>
           </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
-            <div className="text-center py-8 sm:py-12 px-4">
-              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de resumen de evaluaciones con métricas de rendimiento y análisis estadístico</p>
-            </div>
-          </TabsContent>
-
-
-          {/* Pending Tab */}
-          <TabsContent value="pending" className="space-y-4 sm:space-y-6">
-            <div className="text-center py-8 sm:py-12 px-4">
-              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de gestión de evaluaciones pendientes con filtros avanzados y asignación automática</p>
-            </div>
-          </TabsContent>
-
-          {/* Evaluate Tab */}
-          <TabsContent value="evaluate" className="space-y-4 sm:space-y-6">
-            <Card>
-              <CardHeader className="p-4 sm:p-6">
-                <CardTitle className="text-lg sm:text-xl">Centro de Evaluación</CardTitle>
-                <CardDescription className="text-sm">Evalúa el trabajo de los participantes</CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6">
-                {selectedParticipant ? (
-                  <div className="space-y-4 sm:space-y-6">
-                    {/* Participant Info */}
-                    <div className="p-3 sm:p-4 bg-muted/50 rounded-lg">
-                      <h3 className="font-semibold text-foreground mb-2 text-sm sm:text-base">
-                        {assignedParticipants.find((p) => p.id === selectedParticipant)?.name}
-                      </h3>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs sm:text-sm text-muted-foreground">
-                        <span>{assignedParticipants.find((p) => p.id === selectedParticipant)?.institution}</span>
-                        <span>Área: {assignedParticipants.find((p) => p.id === selectedParticipant)?.area}</span>
-                      </div>
-                    </div>
-
-                    {/* Evaluation Form */}
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="score" className="text-sm">Puntuación (0-100)</Label>
-                          <Input id="score" type="number" min="0" max="100" placeholder="85" className="mt-1" />
-                        </div>
-                        <div>
-                          <Label htmlFor="category" className="text-sm">Categoría</Label>
-                          <Input id="category" placeholder="Excelente" className="mt-1" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="feedback" className="text-sm">Retroalimentación</Label>
-                        <Textarea
-                          id="feedback"
-                          placeholder="Proporciona comentarios detallados sobre el desempeño del participante..."
-                          rows={4}
-                          className="mt-1 text-sm"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="recommendations" className="text-sm">Recomendaciones</Label>
-                        <Textarea
-                          id="recommendations"
-                          placeholder="Sugerencias para mejorar o áreas de fortaleza..."
-                          rows={3}
-                          className="mt-1 text-sm"
-                        />
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <Button className="flex-1 w-full sm:w-auto" style={{backgroundColor: '#ec4899', color: 'white'}}>
-                          <Save className="h-4 w-4 mr-2" />
-                          Guardar Evaluación
-                        </Button>
-                        <Button variant="outline" className="w-full sm:w-auto" onClick={() => setSelectedParticipant(null)}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 sm:py-12 px-4">
-                    <BookOpen className="h-8 w-8 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">Selecciona un Participante</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Elige un participante de la lista de pendientes para comenzar la evaluación
-                    </p>
-                    <Button onClick={() => setActiveTab("pending")} className="w-full sm:w-auto" style={{backgroundColor: '#2563eb', color: 'white'}}>
-                      <Users className="h-4 w-4 mr-2" />
-                      Ver Pendientes
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Completed Tab */}
-          <TabsContent value="completed" className="space-y-4 sm:space-y-6">
-            <div className="text-center py-8 sm:py-12 px-4">
-              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de historial de evaluaciones con análisis de tendencias y reportes detallados</p>
-            </div>
-          </TabsContent>
-
-
 
           {/* Registro de Notas Tab */}
           <TabsContent value="registro-notas" className="space-y-4 sm:space-y-6">

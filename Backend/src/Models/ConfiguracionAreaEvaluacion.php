@@ -41,6 +41,33 @@ class ConfiguracionAreaEvaluacion
         return $stmt->fetchAll();
     }
 
+    public function getCronogramaPublico()
+    {
+        $sql = "
+            SELECT 
+                ac.id AS area_competencia_id,
+                ac.nombre AS area_nombre,
+                ac.descripcion AS area_descripcion,
+                ac.orden_display,
+                cae.periodo_evaluacion_inicio,
+                cae.periodo_evaluacion_fin,
+                cae.periodo_publicacion_inicio,
+                cae.periodo_publicacion_fin,
+                cae.tiempo_evaluacion_minutos
+            FROM areas_competencia ac
+            LEFT JOIN {$this->table} cae ON cae.area_competencia_id = ac.id
+            WHERE ac.is_active = true
+            ORDER BY 
+                CASE WHEN cae.periodo_evaluacion_inicio IS NULL THEN 1 ELSE 0 END,
+                cae.periodo_evaluacion_inicio,
+                ac.orden_display,
+                ac.nombre
+        ";
+
+        $stmt = $this->db->query($sql);
+        return $stmt->fetchAll();
+    }
+
    
     public function createOrUpdate($areaId, $data)
     {
@@ -109,14 +136,20 @@ class ConfiguracionAreaEvaluacion
             return $this->getByAreaId($areaId);
         }
         
+        // Agregar updated_at
+        $setParts[] = "updated_at = CURRENT_TIMESTAMP";
+        
         $params[] = $areaId;
         $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts) . " WHERE area_competencia_id = ?";
 
         try {
+            error_log("SQL Update: " . $sql);
+            error_log("Params: " . json_encode($params));
             $stmt = $this->db->query($sql, $params);
             return $this->getByAreaId($areaId);
         } catch (\Exception $e) {
             error_log("Error al actualizar configuración de área: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
             throw $e;
         }
     }

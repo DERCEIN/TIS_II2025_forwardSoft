@@ -29,6 +29,41 @@ class ConfiguracionOlimpiadaController
                 return;
             }
 
+            // Verificar si hay fecha extendida para la fase clasificatoria y obtener fecha de inicio
+            $db = \ForwardSoft\Config\Database::getInstance();
+            $stmt = $db->query("
+                SELECT fecha_inicio, fecha_fin_extendida, fecha_fin_original, fecha_extension, justificacion_extension
+                FROM cierre_fase_general 
+                WHERE fase = 'clasificacion'
+                ORDER BY id DESC LIMIT 1
+            ");
+            $cierreFase = $stmt->fetch();
+            
+            if ($cierreFase) {
+                // Usar la fecha de inicio de cierre_fase_general si existe (es la fuente de verdad)
+                if (!empty($cierreFase['fecha_inicio'])) {
+                    $config['clasificacion_fecha_inicio'] = $cierreFase['fecha_inicio'];
+                }
+                
+                if (!empty($cierreFase['fecha_fin_extendida'])) {
+                    $config['tiene_fecha_extendida'] = true;
+                    $config['fecha_fin_extendida'] = $cierreFase['fecha_fin_extendida'];
+                    $config['fecha_fin_original'] = $cierreFase['fecha_fin_original'];
+                    $config['fecha_extension'] = $cierreFase['fecha_extension'];
+                    $config['justificacion_extension'] = $cierreFase['justificacion_extension'];
+                    // Usar la fecha extendida como fecha de fin
+                    $config['clasificacion_fecha_fin'] = $cierreFase['fecha_fin_extendida'];
+                } else {
+                    $config['tiene_fecha_extendida'] = false;
+                    // Si no hay fecha extendida, usar la fecha original
+                    if (!empty($cierreFase['fecha_fin_original'])) {
+                        $config['clasificacion_fecha_fin'] = $cierreFase['fecha_fin_original'];
+                    }
+                }
+            } else {
+                $config['tiene_fecha_extendida'] = false;
+            }
+
             Response::success($config, 'Configuración obtenida');
         } catch (\Exception $e) {
             error_log('Error en getConfiguracion: ' . $e->getMessage());
@@ -57,12 +92,182 @@ class ConfiguracionOlimpiadaController
                 }
             }
 
+            // Obtener fechas generales (del input o de la configuración existente)
+            $fechaInicioGeneral = null;
+            $fechaFinGeneral = null;
+            
+            if (isset($input['fecha_inicio']) && isset($input['fecha_fin'])) {
+                $fechaInicioGeneral = new \DateTime($input['fecha_inicio']);
+                $fechaFinGeneral = new \DateTime($input['fecha_fin']);
+                
+                if ($fechaInicioGeneral >= $fechaFinGeneral) {
+                    Response::validationError(['fecha_fin' => 'La fecha de fin debe ser posterior a la fecha de inicio']);
+                    return;
+                }
+            } else {
+                // Si no vienen en el input, obtener de la configuración existente
+                $configExistente = $this->configModel->getConfiguracion();
+                if ($configExistente) {
+                    if (!empty($configExistente['fecha_inicio'])) {
+                        $fechaInicioGeneral = new \DateTime($configExistente['fecha_inicio']);
+                    }
+                    if (!empty($configExistente['fecha_fin'])) {
+                        $fechaFinGeneral = new \DateTime($configExistente['fecha_fin']);
+                    }
+                }
+            }
+
+            // Verificar si hay fecha extendida para la fase clasificatoria
+            $db = \ForwardSoft\Config\Database::getInstance();
+            $stmt = $db->query("
+                SELECT fecha_fin_extendida
+                FROM cierre_fase_general 
+                WHERE fase = 'clasificacion'
+                ORDER BY id DESC LIMIT 1
+            ");
+            $cierreFase = $stmt->fetch();
+            $tieneFechaExtendida = $cierreFase && !empty($cierreFase['fecha_fin_extendida']);
+
+            // Validar fechas de clasificación
+            if (isset($input['clasificacion_fecha_inicio']) && isset($input['clasificacion_fecha_fin'])) {
+                if (!empty($input['clasificacion_fecha_inicio']) && !empty($input['clasificacion_fecha_fin'])) {
+                    // Si hay fecha extendida, no permitir modificar la fecha de fin desde configuración
+                    if ($tieneFechaExtendida && isset($input['clasificacion_fecha_fin'])) {
+                        $fechaExtendida = new \DateTime($cierreFase['fecha_fin_extendida']);
+                        $fechaNueva = new \DateTime($input['clasificacion_fecha_fin']);
+                        
+                        // Solo permitir si la nueva fecha es igual a la extendida (sincronización)
+                        if ($fechaExtendida->format('Y-m-d H:i:s') !== $fechaNueva->format('Y-m-d H:i:s')) {
+                            Response::validationError(['clasificacion_fecha_fin' => 'No se puede modificar la fecha de fin de clasificación porque existe una fecha extendida. Use la opción "Extender Fecha de Cierre" en la página de Cierre de Fase.']);
+                            return;
+                        }
+                    }
+                    
+                    $clasifInicio = new \DateTime($input['clasificacion_fecha_inicio']);
+                    $clasifFin = new \DateTime($input['clasificacion_fecha_fin']);
+                    
+                    if ($clasifInicio >= $clasifFin) {
+                        Response::validationError(['clasificacion_fecha_fin' => 'La fecha de fin de clasificación debe ser posterior a la fecha de inicio']);
+                        return;
+                    }
+                    
+                    // Validar que las fechas de clasificación estén dentro del rango general
+                    if ($fechaInicioGeneral && $fechaFinGeneral) {
+                        if ($clasifInicio < $fechaInicioGeneral) {
+                            Response::validationError(['clasificacion_fecha_inicio' => 'La fecha de inicio de clasificación debe estar dentro del periodo general de la olimpiada']);
+                            return;
+                        }
+                        if ($clasifFin > $fechaFinGeneral) {
+                            Response::validationError(['clasificacion_fecha_fin' => 'La fecha de fin de clasificación debe estar dentro del periodo general de la olimpiada']);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Validar fechas de fase final
+            if (isset($input['final_fecha_inicio']) && isset($input['final_fecha_fin'])) {
+                if (!empty($input['final_fecha_inicio']) && !empty($input['final_fecha_fin'])) {
+                    $finalInicio = new \DateTime($input['final_fecha_inicio']);
+                    $finalFin = new \DateTime($input['final_fecha_fin']);
+                    
+                    if ($finalInicio >= $finalFin) {
+                        Response::validationError(['final_fecha_fin' => 'La fecha de fin de la fase final debe ser posterior a la fecha de inicio']);
+                        return;
+                    }
+                    
+                    // Validar que las fechas de fase final estén dentro del rango general
+                    if ($fechaInicioGeneral && $fechaFinGeneral) {
+                        if ($finalInicio < $fechaInicioGeneral) {
+                            Response::validationError(['final_fecha_inicio' => 'La fecha de inicio de la fase final debe estar dentro del periodo general de la olimpiada']);
+                            return;
+                        }
+                        if ($finalFin > $fechaFinGeneral) {
+                            Response::validationError(['final_fecha_fin' => 'La fecha de fin de la fase final debe estar dentro del periodo general de la olimpiada']);
+                            return;
+                        }
+                    }
+                }
+            }
+
             $id = $this->configModel->updateConfiguracion($input);
+
+            // Sincronizar fechas con cierre_fase_general si se actualizaron fechas de clasificación
+            if (isset($input['clasificacion_fecha_inicio']) || isset($input['clasificacion_fecha_fin'])) {
+                $db = \ForwardSoft\Config\Database::getInstance();
+                
+                // Verificar si existe registro de cierre_fase_general
+                $stmt = $db->query("
+                    SELECT id, fecha_fin_extendida, estado
+                    FROM cierre_fase_general 
+                    WHERE fase = 'clasificacion'
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $cierreFase = $stmt->fetch();
+                
+                if ($cierreFase) {
+                    // Si existe, actualizar solo si no está cerrada y no hay fecha extendida
+                    $puedeActualizar = !in_array($cierreFase['estado'], ['cerrada_general', 'cerrada_automatica']) && empty($cierreFase['fecha_fin_extendida']);
+                    
+                    if ($puedeActualizar) {
+                        $updateFields = [];
+                        $params = [];
+                        
+                        if (isset($input['clasificacion_fecha_inicio'])) {
+                            $updateFields[] = "fecha_inicio = ?";
+                            $params[] = $input['clasificacion_fecha_inicio'];
+                            
+                            // Actualizar estado según fecha de inicio
+                            $fechaInicio = new \DateTime($input['clasificacion_fecha_inicio']);
+                            $estado = $fechaInicio->getTimestamp() <= time() ? 'activa' : 'pendiente';
+                            $updateFields[] = "estado = ?";
+                            $params[] = $estado;
+                        }
+                        
+                        if (isset($input['clasificacion_fecha_fin'])) {
+                            $updateFields[] = "fecha_fin_original = ?";
+                            $params[] = $input['clasificacion_fecha_fin'];
+                            // Si no hay fecha extendida, también actualizar fecha_fin_extendida
+                            $updateFields[] = "fecha_fin_extendida = ?";
+                            $params[] = $input['clasificacion_fecha_fin'];
+                        }
+                        
+                        if (!empty($updateFields)) {
+                            $params[] = $cierreFase['id'];
+                            $sql = "UPDATE cierre_fase_general SET " . implode(', ', $updateFields) . ", updated_at = NOW() WHERE id = ?";
+                            $db->query($sql, $params);
+                            error_log("Sincronizado cierre_fase_general con configuración - Fechas actualizadas");
+                        }
+                    } else {
+                        error_log("No se sincronizó cierre_fase_general: fase cerrada o tiene fecha extendida");
+                    }
+                } else {
+                    // Si no existe, crear registro
+                    $fechaInicio = isset($input['clasificacion_fecha_inicio']) ? $input['clasificacion_fecha_inicio'] : null;
+                    $fechaFin = isset($input['clasificacion_fecha_fin']) ? $input['clasificacion_fecha_fin'] : null;
+                    
+                    if ($fechaInicio && $fechaFin) {
+                        $estado = (new \DateTime($fechaInicio))->getTimestamp() <= time() ? 'activa' : 'pendiente';
+                        $db->query("
+                            INSERT INTO cierre_fase_general (
+                                fase, estado, fecha_inicio, fecha_fin_original, 
+                                fecha_fin_extendida, created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                        ", ['clasificacion', $estado, $fechaInicio, $fechaFin, $fechaFin]);
+                        error_log("Creado registro cierre_fase_general desde configuración");
+                    }
+                }
+            }
 
             Response::success(['id' => $id], 'Configuración actualizada');
         } catch (\Exception $e) {
             error_log('Error en updateConfiguracionGeneral: ' . $e->getMessage());
-            Response::serverError('Error al actualizar configuración: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            
+            // Extraer mensaje de error más específico
+            $errorMessage = $e->getMessage();
+            
+            Response::serverError('Error al actualizar configuración: ' . $errorMessage);
         }
     }
 
@@ -82,6 +287,31 @@ class ConfiguracionOlimpiadaController
         } catch (\Exception $e) {
             error_log('Error en getConfiguracionesPorArea: ' . $e->getMessage());
             Response::serverError('Error al obtener configuraciones por área: ' . $e->getMessage());
+        }
+    }
+
+    public function getCronogramaPublico()
+    {
+        try {
+            $cronograma = $this->configAreaModel->getCronogramaPublico();
+
+            $formatted = array_map(function ($item) {
+                return [
+                    'area_competencia_id' => $item['area_competencia_id'],
+                    'area_nombre' => $item['area_nombre'],
+                    'area_descripcion' => $item['area_descripcion'],
+                    'periodo_evaluacion_inicio' => $item['periodo_evaluacion_inicio'],
+                    'periodo_evaluacion_fin' => $item['periodo_evaluacion_fin'],
+                    'periodo_publicacion_inicio' => $item['periodo_publicacion_inicio'],
+                    'periodo_publicacion_fin' => $item['periodo_publicacion_fin'],
+                    'tiempo_evaluacion_minutos' => $item['tiempo_evaluacion_minutos'],
+                ];
+            }, $cronograma);
+
+            Response::success($formatted, 'Cronograma público obtenido');
+        } catch (\Exception $e) {
+            error_log('Error en getCronogramaPublico: ' . $e->getMessage());
+            Response::serverError('Error al obtener cronograma público: ' . $e->getMessage());
         }
     }
 
@@ -158,18 +388,24 @@ class ConfiguracionOlimpiadaController
             }
 
             
-            if ($input['periodo_evaluacion_inicio'] >= $input['periodo_evaluacion_fin']) {
-                Response::validationError(['periodo_evaluacion' => 'La fecha de inicio debe ser anterior a la fecha de fin']);
+            // Validar fechas usando DateTime para comparación correcta
+            $evalInicio = new \DateTime($input['periodo_evaluacion_inicio']);
+            $evalFin = new \DateTime($input['periodo_evaluacion_fin']);
+            $pubInicio = new \DateTime($input['periodo_publicacion_inicio']);
+            $pubFin = new \DateTime($input['periodo_publicacion_fin']);
+
+            if ($evalInicio >= $evalFin) {
+                Response::validationError(['periodo_evaluacion_fin' => 'La fecha de fin de evaluación debe ser posterior a la fecha de inicio']);
                 return;
             }
 
-            if ($input['periodo_publicacion_inicio'] >= $input['periodo_publicacion_fin']) {
-                Response::validationError(['periodo_publicacion' => 'La fecha de inicio de publicación debe ser anterior a la fecha de fin']);
+            if ($pubInicio >= $pubFin) {
+                Response::validationError(['periodo_publicacion_fin' => 'La fecha de fin de publicación debe ser posterior a la fecha de inicio']);
                 return;
             }
 
-            if ($input['periodo_evaluacion_fin'] > $input['periodo_publicacion_inicio']) {
-                Response::validationError(['periodos' => 'El periodo de evaluación debe terminar antes del periodo de publicación']);
+            if ($evalFin > $pubInicio) {
+                Response::validationError(['periodo_publicacion_inicio' => 'El periodo de evaluación debe terminar antes del periodo de publicación']);
                 return;
             }
 
@@ -178,7 +414,16 @@ class ConfiguracionOlimpiadaController
             Response::success($result, 'Configuración del área actualizada exitosamente');
         } catch (\Exception $e) {
             error_log('Error en updateConfiguracionPorArea: ' . $e->getMessage());
-            Response::serverError('Error al actualizar configuración del área: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            
+            // Extraer mensaje de error más específico
+            $errorMessage = $e->getMessage();
+            if (strpos($errorMessage, 'Error en la consulta') !== false) {
+                // Si el error viene de la base de datos, intentar extraer el mensaje de PostgreSQL
+                $errorMessage = $e->getMessage();
+            }
+            
+            Response::serverError('Error al actualizar configuración del área: ' . $errorMessage);
         }
     }
 

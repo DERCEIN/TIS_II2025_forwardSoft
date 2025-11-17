@@ -64,6 +64,28 @@ class AdminController
         foreach ($users as &$user) {
             unset($user['password']);
             
+            // Determinar el estado basado en is_active y si tiene credenciales enviadas
+            if (isset($user['is_active']) && $user['is_active']) {
+                $user['estado'] = 'activo';
+                $user['status'] = 'active';
+            } else {
+                // Verificar si se enviaron credenciales
+                $stmt = $this->pdo->prepare("
+                    SELECT COUNT(*) as count 
+                    FROM credenciales_enviadas 
+                    WHERE usuario_id = ?
+                ");
+                $stmt->execute([$user['id']]);
+                $credenciales = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($credenciales && $credenciales['count'] > 0) {
+                    $user['estado'] = 'activo';
+                    $user['status'] = 'active';
+                } else {
+                    $user['estado'] = 'pendiente';
+                    $user['status'] = 'pending';
+                }
+            }
            
             if ($user['role'] === 'evaluador') {
                 $stmt = $this->pdo->prepare("
@@ -173,8 +195,20 @@ class AdminController
                 ";
             
             $emailEnviado = $mailer->enviar($correo, "Credenciales de acceso", $contenido);
+            $errorEmail = $mailer->getLastError();
             
             if ($emailEnviado) {
+                // Actualizar el estado del usuario a activo cuando se envía el email
+                try {
+                    $this->userModel->update($userId, [
+                        'is_active' => true,
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ]);
+                    error_log("Usuario {$userId} actualizado a activo después de enviar email");
+                } catch (\Exception $e) {
+                    error_log("Error al actualizar estado del usuario {$userId}: " . $e->getMessage());
+                }
+                
                 unset($newUser['password']);
                 Response::success([
                     'user' => $newUser,
@@ -182,13 +216,14 @@ class AdminController
                     'temporary_password' => $passwordTemporal 
                 ], 'Usuario creado exitosamente y credenciales enviadas por email', 201);
             } else {
-                
+                error_log("Error al enviar email de credenciales: " . ($errorEmail ?? 'Error desconocido'));
                 unset($newUser['password']);
                 Response::success([
                     'user' => $newUser,
                     'credentials_sent' => false,
                     'temporary_password' => $passwordTemporal,
-                    'warning' => 'Usuario creado pero no se pudo enviar el email. Usa la contraseña temporal mostrada.'
+                    'warning' => 'Usuario creado pero no se pudo enviar el email. Usa la contraseña temporal mostrada.',
+                    'email_error' => $errorEmail ?? 'Error desconocido al enviar el email'
                 ], 'Usuario creado pero error al enviar credenciales por email', 201);
             }
         } else {
@@ -401,6 +436,58 @@ class AdminController
                         'no_clasificados_excluidos' => 0,
                         'desclasificados_excluidos' => 0,
                     ];
+                }
+            } else {
+                // Sincronizar fechas si hay discrepancia (solo si no está cerrada y no hay fecha extendida)
+                $puedeSincronizar = !in_array($cierreGeneral['estado'], ['cerrada_general', 'cerrada_automatica']) && empty($cierreGeneral['fecha_fin_extendida']);
+                
+                if ($puedeSincronizar) {
+                    $necesitaActualizacion = false;
+                    $updateFields = [];
+                    $params = [];
+                    
+                    // Verificar fecha de inicio
+                    $fechaInicioConfig = isset($config['clasificacion_fecha_inicio']) ? $config['clasificacion_fecha_inicio'] : null;
+                    if ($fechaInicioConfig && $cierreGeneral['fecha_inicio'] !== $fechaInicioConfig) {
+                        $updateFields[] = "fecha_inicio = ?";
+                        $params[] = $fechaInicioConfig;
+                        $necesitaActualizacion = true;
+                        
+                        // Actualizar estado según fecha de inicio
+                        $estado = $fechaInicioConfig && strtotime($fechaInicioConfig) <= time() ? 'activa' : 'pendiente';
+                        if ($cierreGeneral['estado'] !== $estado) {
+                            $updateFields[] = "estado = ?";
+                            $params[] = $estado;
+                        }
+                    }
+                    
+                    // Verificar fecha de fin original
+                    $fechaFinConfig = isset($config['clasificacion_fecha_fin']) ? $config['clasificacion_fecha_fin'] : null;
+                    if ($fechaFinConfig && $cierreGeneral['fecha_fin_original'] !== $fechaFinConfig) {
+                        $updateFields[] = "fecha_fin_original = ?";
+                        $params[] = $fechaFinConfig;
+                        // Si no hay fecha extendida, también actualizar fecha_fin_extendida
+                        $updateFields[] = "fecha_fin_extendida = ?";
+                        $params[] = $fechaFinConfig;
+                        $necesitaActualizacion = true;
+                    }
+                    
+                    if ($necesitaActualizacion && !empty($updateFields)) {
+                        $params[] = $cierreGeneral['id'];
+                        $sql = "UPDATE cierre_fase_general SET " . implode(', ', $updateFields) . ", updated_at = NOW() WHERE id = ?";
+                        $stmt = $this->pdo->prepare($sql);
+                        $stmt->execute($params);
+                        
+                        // Recargar el registro actualizado
+                        $stmt = $this->pdo->prepare("
+                            SELECT * FROM cierre_fase_general 
+                            WHERE id = ?
+                        ");
+                        $stmt->execute([$cierreGeneral['id']]);
+                        $cierreGeneral = $stmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        error_log("Sincronizado cierre_fase_general con configuración - Fechas actualizadas desde getDashboardCierreFase");
+                    }
                 }
             }
 
@@ -1379,6 +1466,273 @@ class AdminController
         } catch (Exception $e) {
             error_log('Error generando reporte consolidado: ' . $e->getMessage());
             Response::serverError('Error al generar reporte consolidado: ' . $e->getMessage());
+        }
+    }
+
+    public function importUsers()
+    {
+        if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
+            Response::validationError(['csv_file' => 'Debe seleccionar un archivo CSV válido']);
+        }
+
+        $file = $_FILES['csv_file'];
+        $filePath = $file['tmp_name'];
+
+        $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($fileExtension !== 'csv') {
+            Response::validationError(['csv_file' => 'El archivo debe ser de tipo CSV']);
+        }
+
+        if ($file['size'] > 5 * 1024 * 1024) {
+            Response::validationError(['csv_file' => 'El archivo no puede ser mayor a 5MB']);
+        }
+
+        try {
+            $results = $this->processUsersCsvFile($filePath);
+            
+            Response::success([
+                'total_rows' => $results['total_rows'],
+                'successful_imports' => $results['successful_imports'],
+                'emails_sent' => $results['emails_sent'],
+                'emails_failed' => $results['emails_failed'],
+                'errors' => $results['errors'],
+                'warnings' => $results['warnings']
+            ], 'Importación de usuarios completada');
+            
+        } catch (\Exception $e) {
+            error_log("Error en importación CSV de usuarios: " . $e->getMessage());
+            Response::serverError('Error al procesar el archivo CSV: ' . $e->getMessage());
+        }
+    }
+
+    private function processUsersCsvFile($filePath)
+    {
+        $results = [
+            'total_rows' => 0,
+            'successful_imports' => 0,
+            'emails_sent' => 0,
+            'emails_failed' => 0,
+            'errors' => [],
+            'warnings' => []
+        ];
+
+        $handle = fopen($filePath, 'r');
+        if (!$handle) {
+            throw new \Exception('No se pudo abrir el archivo CSV');
+        }
+
+        $headers = fgetcsv($handle, 0, ',', '"', '\\');
+        if (!$headers) {
+            fclose($handle);
+            throw new \Exception('El archivo CSV está vacío');
+        }
+
+        $headers = array_map(function($header) {
+            return trim($header);
+        }, $headers);
+
+        $requiredHeaders = ['nombre', 'apellido', 'email', 'rol', 'area'];
+        $optionalHeaders = ['institucion', 'telefono'];
+        $headerMapping = [];
+        
+        // Mapear headers requeridos
+        foreach ($requiredHeaders as $required) {
+            $found = false;
+            foreach ($headers as $index => $header) {
+                $headerClean = strtolower(preg_replace('/[^a-z]/', '', $header));
+                $requiredClean = strtolower(preg_replace('/[^a-z]/', '', $required));
+                if ($headerClean === $requiredClean) {
+                    $headerMapping[$required] = $index;
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                fclose($handle);
+                throw new \Exception('Falta el encabezado requerido: ' . $required);
+            }
+        }
+        
+        // Mapear headers opcionales
+        foreach ($optionalHeaders as $optional) {
+            foreach ($headers as $index => $header) {
+                $headerClean = strtolower(preg_replace('/[^a-z]/', '', $header));
+                $optionalClean = strtolower(preg_replace('/[^a-z]/', '', $optional));
+                if ($headerClean === $optionalClean) {
+                    $headerMapping[$optional] = $index;
+                    break;
+                }
+            }
+        }
+
+        $rowNumber = 1;
+        $mailer = new Mailer();
+
+        while (($data = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
+            $rowNumber++;
+            $results['total_rows']++;
+
+            try {
+                $this->processUserCsvRow($data, $headerMapping, $rowNumber, $results, $mailer);
+                $results['successful_imports']++;
+            } catch (\Exception $e) {
+                $results['errors'][] = [
+                    'row' => $rowNumber,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+
+        fclose($handle);
+        return $results;
+    }
+
+    private function processUserCsvRow($data, $headerMapping, $rowNumber, &$results, $mailer)
+    {
+        $nombre = trim($data[$headerMapping['nombre']] ?? '');
+        $apellido = trim($data[$headerMapping['apellido']] ?? '');
+        $email = trim($data[$headerMapping['email']] ?? '');
+        $rol = strtolower(trim($data[$headerMapping['rol']] ?? ''));
+        $areaNombre = trim($data[$headerMapping['area']] ?? '');
+        
+        // Campos opcionales
+        $institucion = '';
+        $telefono = '';
+        if (isset($headerMapping['institucion'])) {
+            $institucion = trim($data[$headerMapping['institucion']] ?? '');
+        }
+        if (isset($headerMapping['telefono'])) {
+            $telefono = trim($data[$headerMapping['telefono']] ?? '');
+        }
+
+        if (empty($nombre) || empty($apellido) || empty($email) || empty($rol) || empty($areaNombre)) {
+            throw new \Exception("Fila {$rowNumber}: Faltan campos requeridos (nombre, apellido, email, rol, area)");
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \Exception("Fila {$rowNumber}: Email inválido: {$email}");
+        }
+
+        $rolMap = [
+            'evaluador' => 'evaluador',
+            'evaluador' => 'evaluador',
+            'coordinador' => 'coordinador',
+            'coordinador de área' => 'coordinador',
+            'coordinator' => 'coordinador'
+        ];
+
+        $rolNormalizado = $rolMap[$rol] ?? $rol;
+        if (!in_array($rolNormalizado, ['evaluador', 'coordinador'])) {
+            throw new \Exception("Fila {$rowNumber}: Rol inválido. Debe ser 'evaluador' o 'coordinador'");
+        }
+
+        $existingUser = $this->userModel->findByEmail($email);
+        if ($existingUser) {
+            $results['warnings'][] = [
+                'row' => $rowNumber,
+                'warning' => "Usuario con email {$email} ya existe, se omite",
+                'email' => $email
+            ];
+            return;
+        }
+
+        $areaId = $this->encontrarAreaPorNombre($areaNombre);
+        if (!$areaId) {
+            throw new \Exception("Fila {$rowNumber}: Área '{$areaNombre}' no encontrada");
+        }
+
+        $passwordTemporal = $this->generarPasswordTemporal();
+        $name = trim($nombre . ' ' . $apellido);
+
+        $userData = [
+            'name' => $name,
+            'email' => $email,
+            'password' => password_hash($passwordTemporal, PASSWORD_DEFAULT),
+            'role' => $rolNormalizado,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        $userId = $this->userModel->create($userData);
+
+        if (!$userId) {
+            throw new \Exception("Fila {$rowNumber}: Error al crear el usuario");
+        }
+
+        if ($areaId) {
+            $this->asignarAreaUsuario($userId, $areaId, $rolNormalizado);
+        }
+
+        $newUser = $this->userModel->findById($userId);
+        $currentAdmin = JWTManager::getCurrentUser();
+        
+        $areaName = $areaNombre;
+        $contenido = "
+            <p>Hola <strong>" . htmlspecialchars($name) . "</strong>,</p>
+            <p>Se ha creado tu cuenta en el sistema <strong>Olimpiada Oh! SanSi</strong>.</p>
+            <p>Tu rol asignado es: <strong>" . htmlspecialchars($rolNormalizado === 'coordinador' ? 'Coordinador de Área' : 'Evaluador') . "</strong></p>
+            " . ($areaName ? "<p>Área de competencia asignada: <strong>" . htmlspecialchars($areaName) . "</strong></p>" : "") . "
+            <p>
+                <strong>Correo:</strong> " . htmlspecialchars($email) . "<br>
+                <strong>Contraseña temporal:</strong> " . htmlspecialchars($passwordTemporal) . "
+            </p>
+            <p>Por favor, cambia tu contraseña al iniciar sesión.</p>
+            <p><em>No olvides tu nueva contraseña, ya que no podrás recuperarla.</em></p>
+            <p>
+                <a href='http://forwardsoft.tis.cs.umss.edu.bo/login' 
+                    style='background-color:#004aad;
+                        color:#ffffff;
+                        padding:10px 15px;
+                        text-decoration:none;
+                        border-radius:5px;
+                        font-weight:bold;'>
+                    Iniciar sesión
+                </a>
+            </p>
+        ";
+
+        // Reinicializar el mailer para cada email
+        $mailer->reinicializarMailer();
+        $emailEnviado = $mailer->enviar($email, "Credenciales de acceso", $contenido);
+        $errorEmail = $mailer->getLastError();
+        
+        if ($emailEnviado) {
+            $results['emails_sent']++;
+            error_log("Email enviado exitosamente a: {$email}");
+            
+            // Actualizar el estado del usuario a activo cuando se envía el email
+            try {
+                $this->userModel->update($userId, [
+                    'is_active' => true,
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                error_log("Usuario {$userId} actualizado a activo después de enviar email");
+            } catch (\Exception $e) {
+                error_log("Error al actualizar estado del usuario {$userId}: " . $e->getMessage());
+            }
+        } else {
+            $results['emails_failed']++;
+            $errorMsg = $errorEmail ? "Error: {$errorEmail}" : "Error desconocido";
+            error_log("Error al enviar email a {$email}: {$errorMsg}");
+            $results['warnings'][] = [
+                'row' => $rowNumber,
+                'warning' => "Usuario creado pero no se pudo enviar el email a {$email}. {$errorMsg}",
+                'email' => $email,
+                'password' => $passwordTemporal,
+                'error' => $errorEmail
+            ];
+        }
+    }
+
+    private function encontrarAreaPorNombre($areaNombre)
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT id FROM areas_competencia WHERE LOWER(nombre) = LOWER(?)");
+            $stmt->execute([trim($areaNombre)]);
+            $area = $stmt->fetch();
+            return $area ? $area['id'] : null;
+        } catch (\Exception $e) {
+            error_log("Error al encontrar área por nombre: " . $e->getMessage());
+            return null;
         }
     }
 }

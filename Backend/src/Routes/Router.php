@@ -15,6 +15,8 @@ use ForwardSoft\Controllers\ReporteController;
 use ForwardSoft\Controllers\CatalogoController;
 use ForwardSoft\Controllers\ConfiguracionOlimpiadaController;
 use ForwardSoft\Controllers\DesclasificacionController;
+use ForwardSoft\Controllers\PublicacionResultadosController;
+use ForwardSoft\Controllers\MedalleroController;
 
 
 class Router
@@ -52,6 +54,7 @@ class Router
         $this->addRoute('GET', '/api/admin/dashboard', [AdminController::class, 'dashboard'], ['auth', 'admin']);
         $this->addRoute('GET', '/api/admin/users', [AdminController::class, 'users'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/users', [AdminController::class, 'createUser'], ['auth', 'admin']);
+        $this->addRoute('POST', '/api/admin/users/import', [AdminController::class, 'importUsers'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/admin/users/{id}/resend-credentials', [AdminController::class, 'reenviarCredenciales'], ['auth', 'admin']);
         
         // Rutas de cierre de fase (administrador)
@@ -62,12 +65,18 @@ class Router
         $this->addRoute('GET', '/api/admin/cierre-fase/verificar-automatico', [AdminController::class, 'verificarCierreAutomatico'], ['auth', 'admin']);
         $this->addRoute('GET', '/api/admin/cierre-fase/reporte-consolidado', [AdminController::class, 'generarReporteConsolidado'], ['auth', 'admin']);
         
+        // Rutas de medallero (administrador)
+        $this->addRoute('GET', '/api/administrador/medallero', [MedalleroController::class, 'getMedallero'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/administrador/medallero/areas', [MedalleroController::class, 'getAreas'], ['auth', 'admin']);
+        $this->addRoute('PUT', '/api/administrador/medallero', [MedalleroController::class, 'updateMedallero'], ['auth', 'admin']);
+        
         // Rutas de configuración general
         $this->addRoute('GET', '/api/configuracion', [ConfiguracionOlimpiadaController::class, 'getConfiguracion'], ['auth']);
         $this->addRoute('PUT', '/api/configuracion/general', [ConfiguracionOlimpiadaController::class, 'updateConfiguracionGeneral'], ['auth', 'admin']);
         
         // Rutas de configuración por área
         $this->addRoute('GET', '/api/configuracion/areas', [ConfiguracionOlimpiadaController::class, 'getConfiguracionesPorArea'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/public/cronograma', [ConfiguracionOlimpiadaController::class, 'getCronogramaPublico']);
         $this->addRoute('GET', '/api/configuracion/area', [ConfiguracionOlimpiadaController::class, 'getConfiguracionPorArea'], ['auth', 'admin']);
         $this->addRoute('PUT', '/api/configuracion/area', [ConfiguracionOlimpiadaController::class, 'updateConfiguracionPorArea'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/configuracion/validar-choques', [ConfiguracionOlimpiadaController::class, 'validarChoquesHorarios'], ['auth']);
@@ -166,22 +175,29 @@ class Router
         $this->addRoute('GET', '/api/catalogo/niveles', [CatalogoController::class, 'niveles'], ['auth']);
         $this->addRoute('GET', '/api/catalogo/areas-competencia', [CatalogoController::class, 'areasCompetencia'], ['auth']);
         $this->addRoute('GET', '/api/catalogo/areas-competencia-estadisticas', [CatalogoController::class, 'areasCompetenciaConEstadisticas'], ['auth']);
+
+        // Rutas de publicación de resultados
+        $this->addRoute('POST', '/api/publicacion-resultados/publicar', [PublicacionResultadosController::class, 'publicarResultados'], ['auth']);
+        $this->addRoute('POST', '/api/publicacion-resultados/despublicar', [PublicacionResultadosController::class, 'despublicarResultados'], ['auth']);
+        $this->addRoute('GET', '/api/publicacion-resultados/estado/{areaId}', [PublicacionResultadosController::class, 'getEstadoPublicacion'], ['auth']);
+        $this->addRoute('GET', '/api/publicacion-resultados/areas', [PublicacionResultadosController::class, 'getAreasPublicadas']); // Público
+        $this->addRoute('GET', '/api/publicacion-resultados/resultados', [PublicacionResultadosController::class, 'getResultadosPublicados']); // Público
         
         // Ruta para servir imágenes de avatar (debe ir antes de otras rutas dinámicas)
         $this->addRoute('GET', '/api/avatar/{filename}', function($filename) {
-            error_log("🔍 Avatar Route - Handler ejecutado con filename: " . $filename);
+            error_log(" Avatar Route - Handler ejecutado con filename: " . $filename);
             
             // Validar que el nombre del archivo sea seguro (solo números, guiones y extensiones de imagen)
             if (!preg_match('/^[0-9]+-[0-9]+\.(png|jpg|jpeg|gif|webp)$/i', $filename)) {
-                error_log("❌ Avatar - Nombre de archivo no válido: " . $filename);
+                error_log("Avatar - Nombre de archivo no válido: " . $filename);
                 Response::notFound('Archivo no válido');
             }
             
             $filePath = __DIR__ . '/../../public/uploads/avatars/' . $filename;
-            error_log("🔍 Avatar - Buscando archivo en: " . $filePath);
+            error_log("Avatar - Buscando archivo en: " . $filePath);
             
             if (file_exists($filePath) && is_file($filePath)) {
-                error_log("✅ Avatar - Archivo encontrado: " . $filePath);
+                error_log(" Avatar - Archivo encontrado: " . $filePath);
                 
                 
                 $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
@@ -206,7 +222,7 @@ class Router
                 readfile($filePath);
                 exit();
             } else {
-                error_log("❌ Avatar - Archivo no encontrado: " . $filePath);
+                error_log(" Avatar - Archivo no encontrado: " . $filePath);
                 Response::notFound('Avatar no encontrado');
             }
         });
@@ -262,14 +278,14 @@ class Router
         
         // Log especial para la ruta de cerrar fase
         if ($path === '/api/coordinador/cierre-fase/cerrar' && $method === 'POST') {
-            error_log("🎯🎯🎯 RUTA DE CERRAR FASE DETECTADA 🎯🎯🎯");
+            error_log(" RUTA DE CERRAR FASE DETECTADA ");
         }
 
         foreach ($this->routes as $route) {
             if ($this->matchRoute($route, $method, $path)) {
-                error_log("✅ Router - Ruta encontrada: {$method} {$route['path']}");
+                error_log("Router - Ruta encontrada: {$method} {$route['path']}");
                 if ($path === '/api/coordinador/cierre-fase/cerrar') {
-                    error_log("🎯🎯🎯 EJECUTANDO RUTA DE CERRAR FASE 🎯🎯🎯");
+                    error_log(" EJECUTANDO RUTA DE CERRAR FASE ");
                 }
                 $this->executeRoute($route, $path);
                 return;
@@ -315,14 +331,14 @@ class Router
             $method = $handler[1];
             
             if ($method === 'cerrarFaseArea') {
-                error_log("🎯🎯🎯 EJECUTANDO CONTROLADOR: {$handler[0]}::{$method} 🎯🎯🎯");
+                error_log("EJECUTANDO CONTROLADOR: {$handler[0]}::{$method} ");
             }
             
             if (method_exists($controller, $method)) {
-                error_log("✅ Router - Llamando método: {$handler[0]}::{$method}");
+                error_log(" Router - Llamando método: {$handler[0]}::{$method}");
                 call_user_func_array([$controller, $method], $params);
             } else {
-                error_log("❌ Router - Método no encontrado: {$handler[0]}::{$method}");
+                error_log("Router - Método no encontrado: {$handler[0]}::{$method}");
                 Response::serverError('Método no encontrado en el controlador');
             }
         } else {
@@ -350,13 +366,13 @@ class Router
         $middlewares = [
             'auth' => function() {
                 $user = \ForwardSoft\Utils\JWTManager::getCurrentUser();
-                error_log("🔍 Debug Auth Middleware - User: " . json_encode($user));
+                error_log(" Debug Auth Middleware - User: " . json_encode($user));
                 if (!$user) {
-                    error_log("❌ Debug Auth Middleware - No user found, token may be invalid or missing");
+                    error_log("Debug Auth Middleware - No user found, token may be invalid or missing");
                     \ForwardSoft\Utils\Response::unauthorized('Token de autenticación requerido');
                     return false;
                 }
-                error_log("✅ Debug Auth Middleware - User authenticated successfully");
+                error_log("Debug Auth Middleware - User authenticated successfully");
                 return true;
             },
             'admin' => function() {

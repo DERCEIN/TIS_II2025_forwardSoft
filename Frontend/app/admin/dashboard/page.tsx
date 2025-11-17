@@ -19,7 +19,6 @@ import {
   Plus,
   Search,
   MoreHorizontal,
-  Bell,
   LogOut,
   UserCheck,
   AlertTriangle,
@@ -32,12 +31,16 @@ import {
   CheckCircle2,
   Save,
   RefreshCw,
+  Globe,
+  EyeOff,
+  Copy,
+  X,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import Link from "next/link"
-import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService } from "@/lib/api"
+import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService, PublicacionResultadosService } from "@/lib/api"
 
 // Importar la URL base para logs
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
@@ -45,7 +48,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/AuthContext"
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("overview")
+  const [activeTab, setActiveTab] = useState("areas")
   const [recentInscriptions, setRecentInscriptions] = useState<any[]>([])
   const [loadingInscriptions, setLoadingInscriptions] = useState(false)
   const [inscriptionStats, setInscriptionStats] = useState({
@@ -70,14 +73,110 @@ export default function AdminDashboard() {
   const { toast } = useToast()
   const { logout } = useAuth()
   const [isSubmittingUser, setIsSubmittingUser] = useState(false)
+  const [estadosPublicacion, setEstadosPublicacion] = useState<Record<number, any>>({})
+  const [publicando, setPublicando] = useState<Record<number, boolean>>({})
+  const [importingUsers, setImportingUsers] = useState(false)
+  const [importResult, setImportResult] = useState<any>(null)
 
-  // Función para obtener olimpistas recientes
+  
+  const cargarEstadosPublicacion = async () => {
+    try {
+      const estados: Record<number, any> = {}
+      for (const area of areas) {
+        try {
+          const response = await PublicacionResultadosService.getEstadoPublicacion(area.id)
+          if (response.success) {
+            estados[area.id] = response.data
+          }
+        } catch (error) {
+          console.error(`Error cargando estado de publicación para área ${area.id}:`, error)
+        }
+      }
+      setEstadosPublicacion(estados)
+    } catch (error) {
+      console.error('Error cargando estados de publicación:', error)
+    }
+  }
+
+  const handlePublicar = async (areaId: number) => {
+    if (!confirm('¿Estás seguro de publicar los resultados de esta área? Los resultados serán visibles públicamente.')) {
+      return
+    }
+    
+    setPublicando({ ...publicando, [areaId]: true })
+    try {
+      const response = await PublicacionResultadosService.publicarResultados({
+        area_competencia_id: areaId
+      })
+      
+      if (response.success) {
+        toast({
+          title: "Éxito",
+          description: "Resultados publicados exitosamente",
+        })
+        await cargarEstadosPublicacion()
+      } else {
+        toast({
+          title: "Error",
+          description: response.message || "Error al publicar resultados",
+          variant: "destructive"
+        })
+      }
+    } catch (error: any) {
+      console.error('Error publicando resultados:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Error al publicar resultados",
+        variant: "destructive"
+      })
+    } finally {
+      setPublicando({ ...publicando, [areaId]: false })
+    }
+  }
+
+  const handleDespublicar = async (areaId: number) => {
+    if (!confirm('¿Estás seguro de despublicar los resultados de esta área? Los resultados dejarán de ser visibles públicamente.')) {
+      return
+    }
+    
+    setPublicando({ ...publicando, [areaId]: true })
+    try {
+      const response = await PublicacionResultadosService.despublicarResultados({
+        area_competencia_id: areaId
+      })
+      
+      if (response.success) {
+        toast({
+          title: "Éxito",
+          description: "Resultados despublicados exitosamente",
+        })
+        await cargarEstadosPublicacion()
+      } else {
+        toast({
+          title: "Error",
+          description: response.message || "Error al despublicar resultados",
+          variant: "destructive"
+        })
+      }
+    } catch (error: any) {
+      console.error('Error despublicando resultados:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Error al despublicar resultados",
+        variant: "destructive"
+      })
+    } finally {
+      setPublicando({ ...publicando, [areaId]: false })
+    }
+  }
+
+  
   const fetchRecentInscriptions = async () => {
     setLoadingInscriptions(true)
     try {
       const response = await OlimpistaService.getAll()
       if (response.success && response.data) {
-        // Obtener los 5 olimpistas más recientes
+
         const recentOlimpistas = response.data
           .sort((a: any, b: any) => new Date(b.fecha_registro).getTime() - new Date(a.fecha_registro).getTime())
           .slice(0, 5)
@@ -94,7 +193,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener estadísticas de inscripciones
+  
   const fetchInscriptionStats = async () => {
     setLoadingStats(true)
     try {
@@ -117,7 +216,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener usuarios registrados
+  
   const fetchUsers = async () => {
     setLoadingUsers(true)
     try {
@@ -132,13 +231,13 @@ export default function AdminDashboard() {
         return
       }
       
-      // Probar primero con el endpoint de admin
+      
       console.log('Intentando con /api/admin/users...')
       console.log('URL completa:', API_BASE_URL + '/api/admin/users')
       let response = await ApiService.get('/api/admin/users')
       console.log('Respuesta admin/users:', response)
       
-      // Si falla, probar con el endpoint general
+      
       if (!response.success) {
         console.log('Probando con /api/users...')
         console.log('URL completa:', API_BASE_URL + '/api/users')
@@ -148,7 +247,7 @@ export default function AdminDashboard() {
       
       if (response.success && response.data) {
         setUsers(response.data)
-        setCurrentPage(1) // Resetear a la primera página cuando se cargan nuevos usuarios
+        setCurrentPage(1) 
         console.log('Usuarios cargados:', response.data)
         console.log('Número de usuarios:', response.data.length)
       } else {
@@ -168,7 +267,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para verificar el estado del backend
+ 
   const checkBackendHealth = async () => {
     try {
       console.log('Verificando estado del backend...')
@@ -182,19 +281,19 @@ export default function AdminDashboard() {
     }
   }
 
-  // Función para obtener áreas de competencia y sus configuraciones
+ 
   const fetchAreas = async () => {
     setLoadingAreas(true)
     try {
       console.log('Obteniendo áreas de competencia con estadísticas...')
       
-      // Cargar áreas con estadísticas reales
+      
       const areasRes = await CatalogoService.areasCompetenciaConEstadisticas()
       if (areasRes.success && areasRes.data) {
         setAreas(areasRes.data || [])
         console.log('Áreas con estadísticas cargadas:', areasRes.data)
       } else {
-        // Fallback: cargar áreas básicas si falla el endpoint de estadísticas
+        
         const areasBasicasRes = await CatalogoService.areasCompetencia()
         if (areasBasicasRes.success && areasBasicasRes.data) {
           setAreas(areasBasicasRes.data || [])
@@ -202,13 +301,13 @@ export default function AdminDashboard() {
         }
       }
       
-      // Cargar configuración general para obtener tiempo por defecto
+      
       const configRes = await ConfiguracionService.getConfiguracion()
       if (configRes.success && configRes.data) {
         setConfigGeneral(configRes.data)
       }
       
-      // Cargar configuraciones por área
+      
       const configAreasRes = await ConfiguracionService.getConfiguracionesPorArea()
       if (configAreasRes.success && configAreasRes.data) {
         const configMap: Record<number, any> = {}
@@ -217,6 +316,7 @@ export default function AdminDashboard() {
         })
         setConfiguracionesAreas(configMap)
       }
+      
     } catch (error: any) {
       console.error('Error al obtener áreas:', error)
       setAreas([])
@@ -225,7 +325,28 @@ export default function AdminDashboard() {
     }
   }
 
-  // Exportar participantes a CSV
+  
+  useEffect(() => {
+    if (areas.length > 0) {
+      const cargar = async () => {
+        const estados: Record<number, any> = {}
+        for (const area of areas) {
+          try {
+            const response = await PublicacionResultadosService.getEstadoPublicacion(area.id)
+            if (response.success) {
+              estados[area.id] = response.data
+            }
+          } catch (error) {
+            console.error(`Error cargando estado de publicación para área ${area.id}:`, error)
+          }
+        }
+        setEstadosPublicacion(estados)
+      }
+      cargar()
+    }
+  }, [areas])
+
+  
   const handleExportParticipantsCSV = async () => {
     try {
       const res = await OlimpistaService.getAll()
@@ -279,7 +400,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Funciones de paginación
+  
   const getCurrentPageUsers = () => {
     const startIndex = (currentPage - 1) * usersPerPage
     const endIndex = startIndex + usersPerPage
@@ -302,7 +423,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // Cargar datos al montar el componente
+  
   useEffect(() => {
     console.log('Iniciando carga de datos...')
     checkBackendHealth()
@@ -321,13 +442,47 @@ export default function AdminDashboard() {
   const [userArea, setUserArea] = useState("")
   const [userInstitution, setUserInstitution] = useState("")
   const [userExperience, setUserExperience] = useState("")
-  const [createdUser, setCreatedUser] = useState<{email: string, password: string} | null>(null)
+  const [createdUser, setCreatedUser] = useState<{email: string, password: string, credentialsSent?: boolean, emailError?: string} | null>(null)
 
   const validateNewUserForm = () => {
     if (!userFirstName.trim() || !userLastName.trim()) {
       toast({ title: "Nombre requerido", description: "Ingrese nombres y apellidos." })
       return false
     }
+    
+    // Validar nombres: solo letras, espacios, guiones y apostrofes
+    const nombreRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]+$/
+    if (!nombreRegex.test(userFirstName.trim())) {
+      toast({ 
+        title: "Nombres inválidos", 
+        description: "Los nombres solo pueden contener letras, espacios, guiones y apostrofes.", 
+        variant: "destructive" 
+      })
+      return false
+    }
+    
+    if (!nombreRegex.test(userLastName.trim())) {
+      toast({ 
+        title: "Apellidos inválidos", 
+        description: "Los apellidos solo pueden contener letras, espacios, guiones y apostrofes.", 
+        variant: "destructive" 
+      })
+      return false
+    }
+    
+    // Validar institución: solo letras y espacios, no números
+    if (userInstitution.trim()) {
+      const institucionRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s.,-]+$/
+      if (!institucionRegex.test(userInstitution.trim())) {
+        toast({ 
+          title: "Institución inválida", 
+          description: "La institución solo puede contener letras, espacios, puntos, comas y guiones. No se permiten números.", 
+          variant: "destructive" 
+        })
+        return false
+      }
+    }
+    
     if (!userEmail.trim()) {
       toast({ title: "Email requerido", description: "Ingrese un correo válido.", variant: "destructive" })
       return false
@@ -372,15 +527,15 @@ export default function AdminDashboard() {
       if (mappedRole === 'evaluador' || mappedRole === 'coordinador') {
         if (userArea) {
           const selectedArea = areas.find(area => area.id.toString() === userArea)
-          console.log('🔍 Debug - Área seleccionada (ID):', userArea)
-          console.log('🔍 Debug - Áreas disponibles:', areas)
-          console.log('🔍 Debug - Área encontrada:', selectedArea)
+          console.log(' Debug - Área seleccionada (ID):', userArea)
+          console.log(' Debug - Áreas disponibles:', areas)
+          console.log(' Debug - Área encontrada:', selectedArea)
           if (selectedArea) {
             payload.area_id = selectedArea.id
             payload.area = selectedArea.nombre
-            console.log('🔍 Debug - Payload final:', payload)
+            console.log(' Debug - Payload final:', payload)
           } else {
-            console.error('❌ Error - No se encontró el área con ID:', userArea)
+            console.error('Error - No se encontró el área con ID:', userArea)
           }
         }
       }
@@ -391,25 +546,19 @@ export default function AdminDashboard() {
         const createdEmail = res.data?.user?.email || userEmail
         const credentialsSent = !!res.data?.credentials_sent
         const tempPass = res.data?.temporary_password as string | undefined
-
+        const emailError = res.data?.email_error as string | undefined
 
         if (tempPass) {
-          setCreatedUser({ email: createdEmail, password: tempPass })
+          setCreatedUser({ 
+            email: createdEmail, 
+            password: tempPass,
+            credentialsSent: credentialsSent,
+            emailError: emailError
+          })
         }
 
+        // Limpiar formulario solo si el email se envió correctamente
         if (credentialsSent) {
-          toast({
-            title: "Usuario registrado",
-            description: `Se creó ${createdEmail}. Se enviaron credenciales por email.`,
-          })
-        } else {
-          toast({
-            title: "Usuario creado (correo no enviado)",
-            description: tempPass ? `Contraseña temporal: ${tempPass}` : `No se pudo enviar el correo.`,
-            variant: "destructive",
-          })
-        }
-        
         setUserFirstName("")
         setUserLastName("")
         setUserEmail("")
@@ -418,8 +567,18 @@ export default function AdminDashboard() {
         setUserArea("")
         setUserInstitution("")
         setUserExperience("")
-        setCreatedUser(null)
-        
+          
+          toast({
+            title: "✅ Usuario registrado",
+            description: `Se creó ${createdEmail}. Las credenciales se enviaron por email.`,
+          })
+        } else {
+          toast({
+            title: "⚠️ Usuario creado",
+            description: `El usuario se creó pero no se pudo enviar el email. Las credenciales se muestran abajo.`,
+            variant: "destructive",
+          })
+        }
        
         fetchUsers()
       } else {
@@ -439,6 +598,82 @@ export default function AdminDashboard() {
     } finally {
       setIsSubmittingUser(false)
     }
+  }
+
+  const handleImportUsers = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+      toast({ 
+        title: "Archivo inválido", 
+        description: "Por favor, seleccione un archivo CSV válido.", 
+        variant: "destructive" 
+      })
+      return
+    }
+
+    setImportingUsers(true)
+    setImportResult(null)
+
+    try {
+      const res = await AdminService.importUsers(file)
+      
+      if (res.success && res.data) {
+        setImportResult(res.data)
+        toast({
+          title: "✅ Importación completada",
+          description: `Se importaron ${res.data.successful_imports} de ${res.data.total_rows} usuarios. ${res.data.emails_sent} emails enviados.`,
+        })
+        
+        // Recargar lista de usuarios
+        fetchUsers()
+      } else {
+        toast({
+          title: "Error en importación",
+          description: res.message || "Error al importar usuarios",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      const message: string = error?.message || "Error inesperado."
+      toast({
+        title: "Error al importar",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setImportingUsers(false)
+      // Limpiar el input
+      event.target.value = ''
+    }
+  }
+
+  const handleDownloadTemplate = () => {
+    // Obtener nombres de áreas para el ejemplo
+    const areasEjemplo = areas.length > 0 
+      ? areas.slice(0, 2).map(a => a.nombre).join(',')
+      : 'Matemáticas,Física'
+    
+    const csvContent = `nombre,apellido,email,rol,area,institucion,telefono
+Juan,Pérez,juan.perez@gmail.com,evaluador,${areas.length > 0 ? areas[0].nombre : 'Matemáticas'},Universidad Nacional,12345678
+María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].nombre : 'Física'},Universidad Nacional,87654321`
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', 'plantilla_usuarios.csv')
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    toast({
+      title: "✅ Plantilla descargada",
+      description: "Se descargó la plantilla CSV. Completa los datos y vuelve a importar.",
+    })
   }
 
   const stats = [
@@ -571,10 +806,6 @@ export default function AdminDashboard() {
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 <span className="hidden lg:inline">Cerrar Fase</span>
               </Button>
-              <Button variant="outline" size="sm" className="hidden lg:flex">
-                <Bell className="h-4 w-4 mr-2" />
-                Notificaciones
-              </Button>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -603,9 +834,6 @@ export default function AdminDashboard() {
 
             {/* Mobile Navigation */}
             <div className="flex sm:hidden items-center space-x-2">
-              <Button variant="outline" size="sm">
-                <Bell className="h-4 w-4" />
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -644,32 +872,13 @@ export default function AdminDashboard() {
                 </p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <Button className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Publicar Área</span>
-                <span className="sm:hidden">Área</span>
-              </Button>
-              <Button variant="outline" className="w-full sm:w-auto">
-                <Upload className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Importar CSV</span>
-                <span className="sm:hidden">Importar</span>
-              </Button>
-            </div>
           </div>
         </div>
 
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
-            <TabsTrigger 
-              value="overview" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              <span className="hidden sm:inline">Resumen</span>
-              <span className="sm:hidden">Inicio</span>
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="areas" 
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
@@ -678,32 +887,25 @@ export default function AdminDashboard() {
             </TabsTrigger>
             <TabsTrigger 
               value="participants" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r sm:border-r border-white/20 rounded-none py-2 sm:py-3"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               <span className="hidden sm:inline">Participantes</span>
               <span className="sm:hidden">Olimpistas</span>
             </TabsTrigger>
             <TabsTrigger 
               value="users" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r lg:border-r border-white/20 rounded-none py-2 sm:py-3"
+              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Usuarios
             </TabsTrigger>
             <TabsTrigger 
-              value="reports" 
+              value="calendario" 
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent rounded-none py-2 sm:py-3"
             >
-              Reportes
+              <Calendar className="h-4 w-4 sm:mr-2 inline" />
+              <span className="hidden sm:inline">Calendario</span>
             </TabsTrigger>
           </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
-            <div className="text-center py-8 sm:py-12 px-4">
-              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 2</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Dashboard de resumen con métricas y KPIs del sistema</p>
-            </div>
-          </TabsContent>
 
           {/* Areas Tab - Configuración de Tiempos y Periodos */}
           <TabsContent value="areas" className="space-y-4 sm:space-y-6">
@@ -754,6 +956,12 @@ export default function AdminDashboard() {
                               >
                                 {estaLlena ? "Lleno" : "Activo"}
                               </Badge>
+                              {estadosPublicacion[area.id]?.publicado && (
+                                <Badge variant="default" className="bg-green-600">
+                                  <Globe className="h-3 w-3 mr-1" />
+                                  Publicado
+                                </Badge>
+                              )}
                             </div>
                             
                             <div className="grid grid-cols-3 gap-6 mb-4">
@@ -789,7 +997,30 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           
-                          <div className="ml-4">
+                          <div className="ml-4 flex flex-col gap-2">
+                            <div className="flex gap-2">
+                              {!estadosPublicacion[area.id]?.publicado ? (
+                                <Button
+                                  onClick={() => handlePublicar(area.id)}
+                                  disabled={publicando[area.id]}
+                                  size="sm"
+                                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                                >
+                                  <Globe className="h-4 w-4 mr-1" />
+                                  {publicando[area.id] ? 'Publicando...' : 'Publicar'}
+                                </Button>
+                              ) : (
+                                <Button
+                                  onClick={() => handleDespublicar(area.id)}
+                                  disabled={publicando[area.id]}
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-purple-600 text-purple-600 hover:bg-purple-50"
+                                >
+                                  <EyeOff className="h-4 w-4 mr-1" />
+                                  {publicando[area.id] ? 'Despublicando...' : 'Despublicar'}
+                                </Button>
+                              )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -809,6 +1040,7 @@ export default function AdminDashboard() {
                             >
                               <MoreHorizontal className="h-5 w-5" />
                             </Button>
+                            </div>
                           </div>
                         </div>
                       </CardContent>
@@ -1006,11 +1238,54 @@ export default function AdminDashboard() {
                           setIsSavingArea(false)
                           return
                         }
+
+                        // Validar fechas antes de enviar
+                        const evalInicio = new Date(tempConfig.periodo_evaluacion_inicio)
+                        const evalFin = new Date(tempConfig.periodo_evaluacion_fin)
+                        const pubInicio = new Date(tempConfig.periodo_publicacion_inicio)
+                        const pubFin = new Date(tempConfig.periodo_publicacion_fin)
+
+                        if (evalInicio >= evalFin) {
+                          toast({
+                            title: "Error de validación",
+                            description: "La fecha de fin de evaluación debe ser posterior a la fecha de inicio",
+                            variant: "destructive",
+                          })
+                          setIsSavingArea(false)
+                          return
+                        }
+
+                        if (pubInicio >= pubFin) {
+                          toast({
+                            title: "Error de validación",
+                            description: "La fecha de fin de publicación debe ser posterior a la fecha de inicio",
+                            variant: "destructive",
+                          })
+                          setIsSavingArea(false)
+                          return
+                        }
+
+                        if (evalFin > pubInicio) {
+                          toast({
+                            title: "Error de validación",
+                            description: "El periodo de evaluación debe terminar antes del periodo de publicación",
+                            variant: "destructive",
+                          })
+                          setIsSavingArea(false)
+                          return
+                        }
                         
                         // Convertir formato datetime-local a TIMESTAMP para PostgreSQL
                         const convertirFecha = (fechaLocal: string) => {
                           if (!fechaLocal) return ''
-                          return fechaLocal.replace('T', ' ') + ':00'
+                          // Formato datetime-local: "YYYY-MM-DDTHH:mm"
+                          // PostgreSQL necesita: "YYYY-MM-DD HH:mm:ss"
+                          const fechaFormateada = fechaLocal.replace('T', ' ')
+                          // Asegurar que tenga segundos
+                          if (fechaFormateada.split(':').length === 2) {
+                            return fechaFormateada + ':00'
+                          }
+                          return fechaFormateada
                         }
                         
                         await ConfiguracionService.updateConfiguracionPorArea({
@@ -1041,10 +1316,24 @@ export default function AdminDashboard() {
                       } catch (error: any) {
                         console.error("Error al guardar configuración:", error)
                         
-                        let mensajeError = "No se pudo guardar la configuración"
-                        if (error.message) {
+                        // Extraer mensaje de error más específico
+                        let mensajeError = "No se pudo guardar la configuración. Inténtalo de nuevo."
+                        
+                        if (error?.message) {
+                          // Si el mensaje tiene formato "código:mensaje", extraer solo el mensaje
                           const match = error.message.match(/^\d+:(.+)$/)
-                          mensajeError = match ? match[1] : error.message
+                          mensajeError = match ? match[1].trim() : error.message
+                        } else if (error?.response?.data?.message) {
+                          mensajeError = error.response.data.message
+                        } else if (error?.response?.data?.errors) {
+                          // Si hay errores de validación, construir mensaje
+                          const errores = Object.entries(error.response.data.errors)
+                            .map(([campo, mensajes]: [string, any]) => {
+                              const msgs = Array.isArray(mensajes) ? mensajes : [mensajes]
+                              return msgs.join(', ')
+                            })
+                            .join('; ')
+                          mensajeError = errores || mensajeError
                         }
                         
                         toast({
@@ -1215,8 +1504,19 @@ export default function AdminDashboard() {
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="Nombres completos"
                             value={userFirstName}
-                            onChange={(e) => setUserFirstName(e.target.value)}
+                            onChange={(e) => {
+                              // Solo permitir letras, espacios, guiones y apostrofes
+                              const value = e.target.value
+                              const validValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]/g, '')
+                              setUserFirstName(validValue)
+                            }}
+                            onBlur={(e) => {
+                              // Limpiar espacios múltiples
+                              const cleaned = e.target.value.trim().replace(/\s+/g, ' ')
+                              setUserFirstName(cleaned)
+                            }}
                           />
+                          <p className="text-xs text-muted-foreground mt-1">Solo letras, espacios, guiones y apostrofes</p>
                         </div>
                         <div>
                           <label className="text-sm font-medium text-foreground">Apellidos</label>
@@ -1225,8 +1525,19 @@ export default function AdminDashboard() {
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="Apellidos completos"
                             value={userLastName}
-                            onChange={(e) => setUserLastName(e.target.value)}
+                            onChange={(e) => {
+                              // Solo permitir letras, espacios, guiones y apostrofes
+                              const value = e.target.value
+                              const validValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]/g, '')
+                              setUserLastName(validValue)
+                            }}
+                            onBlur={(e) => {
+                              // Limpiar espacios múltiples
+                              const cleaned = e.target.value.trim().replace(/\s+/g, ' ')
+                              setUserLastName(cleaned)
+                            }}
                           />
+                          <p className="text-xs text-muted-foreground mt-1">Solo letras, espacios, guiones y apostrofes</p>
                         </div>
                         <div>
                           <label className="text-sm font-medium text-foreground">Email</label>
@@ -1288,8 +1599,19 @@ export default function AdminDashboard() {
                             className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
                             placeholder="Universidad/Institución"
                             value={userInstitution}
-                            onChange={(e) => setUserInstitution(e.target.value)}
+                            onChange={(e) => {
+                              // Solo permitir letras, espacios, puntos, comas y guiones (NO números)
+                              const value = e.target.value
+                              const validValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s.,-]/g, '')
+                              setUserInstitution(validValue)
+                            }}
+                            onBlur={(e) => {
+                              // Limpiar espacios múltiples
+                              const cleaned = e.target.value.trim().replace(/\s+/g, ' ')
+                              setUserInstitution(cleaned)
+                            }}
                           />
+                          <p className="text-xs text-muted-foreground mt-1">Solo letras, espacios, puntos, comas y guiones. No se permiten números.</p>
                         </div>
                         <div>
                           <label className="text-sm font-medium text-foreground">Nivel de Experiencia</label>
@@ -1328,26 +1650,212 @@ export default function AdminDashboard() {
                       >
                         Limpiar Formulario
                       </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleDownloadTemplate}
+                          title="Descargar plantilla CSV"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <label>
+                          <input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleImportUsers}
+                            disabled={importingUsers}
+                            className="hidden"
+                            id="csv-import-input"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={importingUsers}
+                            onClick={() => document.getElementById('csv-import-input')?.click()}
+                            title="Importar usuarios desde CSV"
+                          >
+                            <Upload className="h-4 w-4" />
+                          </Button>
+                        </label>
+                      </div>
                     </div>
                     {createdUser && (
-                      <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                        <h4 className="font-semibold text-green-800 mb-2">✅ Usuario Creado Exitosamente</h4>
-                        <div className="space-y-2 text-sm">
-                          <div><strong>Email:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{createdUser.email}</code></div>
-                          <div><strong>Contraseña temporal:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{createdUser.password}</code></div>
-                          <div><strong>Rol:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{userRole === 'coordinator' ? 'Coordinador' : 'Evaluador'}</code></div>
+                      <div className="mt-6 fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 animate-in slide-in-from-bottom-4 duration-300">
+                          {/* Header con checkmark animado */}
+                          <div className="relative bg-gradient-to-br from-green-50 to-emerald-50 px-6 pt-8 pb-6 rounded-t-2xl">
+                            <button
+                              onClick={() => setCreatedUser(null)}
+                              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                              aria-label="Cerrar"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                            
+                            {/* Checkmark animado */}
+                            <div className="flex justify-center mb-4">
+                              <div className="relative">
+                                <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center animate-in zoom-in duration-500">
+                                  <CheckCircle2 className="h-10 w-10 text-white" />
                         </div>
-                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                          <p className="text-xs text-yellow-700">
-                            <strong>⚠️ Importante:</strong> Para iniciar sesión, el usuario debe:
-                            <br />1. Ir a la página de login
-                            <br />2. Seleccionar el rol: <strong>{userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}</strong>
-                            <br />3. Usar el email y contraseña mostrados arriba
+                                <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-20"></div>
+                              </div>
+                            </div>
+                            
+                            <h3 className="text-2xl font-bold text-center text-gray-900 mb-2">
+                              ¡Usuario creado exitosamente!
+                            </h3>
+                            <div className="flex justify-center mb-2">
+                              {createdUser.credentialsSent ? (
+                                <Badge className="bg-green-100 text-green-800 border-green-300">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Credenciales enviadas por email
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Email no enviado
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-center text-gray-600">
+                              {createdUser.credentialsSent 
+                                ? "Las credenciales se han enviado al correo del usuario"
+                                : "No se pudo enviar el email. Usa las credenciales mostradas abajo."}
                           </p>
                         </div>
-                        <p className="text-xs text-green-600 mt-2">
-                          Copia estas credenciales y entrégalas al usuario manualmente.
-                        </p>
+
+                          {/* Contenido */}
+                          <div className="px-6 py-6 space-y-4">
+                            {/* Credenciales */}
+                            <div className="space-y-3">
+                              <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                                  Email
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 font-mono text-sm text-gray-900">
+                                    {createdUser.email}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(createdUser.email)
+                                      toast({ title: "Copiado", description: "Email copiado al portapapeles" })
+                                    }}
+                                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="Copiar email"
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                                  Contraseña Temporal
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 font-mono text-sm text-gray-900">
+                                    {createdUser.password}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(createdUser.password)
+                                      toast({ title: "Copiado", description: "Contraseña copiada al portapapeles" })
+                                    }}
+                                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="Copiar contraseña"
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                                  Rol
+                                </label>
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                                  <span className="text-sm font-medium text-blue-900">
+                                    {userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Instrucciones */}
+                            {!createdUser.credentialsSent && (
+                              <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                                <div className="flex items-start gap-3">
+                                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-red-900 mb-2">
+                                      ⚠️ Email no enviado
+                                    </p>
+                                    <p className="text-xs text-red-800 mb-2">
+                                      El usuario fue creado exitosamente, pero no se pudo enviar el email con las credenciales. 
+                                      Por favor, comparte manualmente las credenciales mostradas arriba con el usuario.
+                                    </p>
+                                    <p className="text-xs font-medium text-red-900 mt-2">
+                                      Posibles causas:
+                                    </p>
+                                    <ul className="text-xs text-red-800 space-y-1 list-disc list-inside mt-1">
+                                      <li>Configuración de email incorrecta en el servidor</li>
+                                      <li>Problemas de conectividad del servidor</li>
+                                      <li>El email del usuario podría ser inválido</li>
+                                    </ul>
+                                    {createdUser.emailError && (
+                                      <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded text-xs">
+                                        <p className="font-semibold text-red-900 mb-1">Detalle del error:</p>
+                                        <p className="text-red-800 font-mono break-all">{createdUser.emailError}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div className={`border rounded-lg p-4 ${createdUser.credentialsSent ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
+                              <div className="flex items-start gap-3">
+                                <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${createdUser.credentialsSent ? 'text-amber-600' : 'text-blue-600'}`} />
+                                <div className="flex-1">
+                                  <p className={`text-sm font-medium mb-2 ${createdUser.credentialsSent ? 'text-amber-900' : 'text-blue-900'}`}>
+                                    Instrucciones para el usuario
+                                  </p>
+                                  <ol className={`text-xs space-y-1 list-decimal list-inside ${createdUser.credentialsSent ? 'text-amber-800' : 'text-blue-800'}`}>
+                                    <li>Ir a la página de login</li>
+                                    <li>Seleccionar el rol: <strong>{userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}</strong></li>
+                                    <li>Usar el email y contraseña mostrados arriba</li>
+                                  </ol>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Botones de acción */}
+                            <div className="flex gap-3 pt-2">
+                              <Button
+                                onClick={() => {
+                                  const credentials = `Email: ${createdUser.email}\nContraseña: ${createdUser.password}\nRol: ${userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}`
+                                  navigator.clipboard.writeText(credentials)
+                                  toast({ title: "Copiado", description: "Credenciales copiadas al portapapeles" })
+                                }}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copiar Todo
+                              </Button>
+                              <Button
+                                onClick={() => setCreatedUser(null)}
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                Cerrar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                     <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
@@ -1357,6 +1865,84 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   </Card>
+
+                  {/* Import Results Modal */}
+                  {importResult && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
+                      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
+                        <div className="p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold text-gray-900">Resultados de la importación</h3>
+                            <button
+                              onClick={() => setImportResult(null)}
+                              className="text-gray-400 hover:text-gray-600 transition-colors"
+                              aria-label="Cerrar"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Total filas</p>
+                              <p className="text-lg font-semibold">{importResult.total_rows}</p>
+                            </div>
+                            <div className="bg-green-50 p-3 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Importados</p>
+                              <p className="text-lg font-semibold text-green-600">{importResult.successful_imports}</p>
+                            </div>
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Emails enviados</p>
+                              <p className="text-lg font-semibold text-blue-600">{importResult.emails_sent}</p>
+                            </div>
+                            <div className="bg-red-50 p-3 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Emails fallidos</p>
+                              <p className="text-lg font-semibold text-red-600">{importResult.emails_failed}</p>
+                            </div>
+                          </div>
+
+                          {importResult.errors && importResult.errors.length > 0 && (
+                            <div className="mt-4">
+                              <p className="text-sm font-semibold text-red-600 mb-2">Errores ({importResult.errors.length}):</p>
+                              <div className="max-h-40 overflow-y-auto space-y-1">
+                                {importResult.errors.map((error: any, idx: number) => (
+                                  <div key={idx} className="text-xs text-red-700 bg-red-50 p-2 rounded">
+                                    <strong>Fila {error.row}:</strong> {error.error}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {importResult.warnings && importResult.warnings.length > 0 && (
+                            <div className="mt-4">
+                              <p className="text-sm font-semibold text-amber-600 mb-2">Advertencias ({importResult.warnings.length}):</p>
+                              <div className="max-h-40 overflow-y-auto space-y-1">
+                                {importResult.warnings.map((warning: any, idx: number) => (
+                                  <div key={idx} className="text-xs text-amber-700 bg-amber-50 p-2 rounded">
+                                    <strong>Fila {warning.row}:</strong> {warning.warning}
+                                    {warning.password && (
+                                      <div className="mt-1 font-mono text-xs">
+                                        Contraseña temporal: <strong>{warning.password}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <Button
+                            variant="outline"
+                            className="mt-4 w-full"
+                            onClick={() => setImportResult(null)}
+                          >
+                            Cerrar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Current Users List */}
                   <Card className="p-6">
@@ -1497,97 +2083,315 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </Card>
-
-                  {/* Evaluator Assignment */}
-                  <Card className="p-4 sm:p-6">
-                    <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">Asignación de Evaluadores</h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                      <div>
-                        <h4 className="font-medium text-foreground mb-3">Por Área de Competencia</h4>
-                        <div className="space-y-3">
-                          {loadingAreas ? (
-                            <div className="text-center py-4">
-                              <p className="text-muted-foreground">Cargando áreas...</p>
-                            </div>
-                          ) : areas.length > 0 ? (
-                            areas.map((area, index) => {
-                              // Contar evaluadores por área
-                              const evaluatorsInArea = users.filter(user => 
-                                (user.role === 'evaluador' || user.rol === 'evaluador') && 
-                                (user.area === area.nombre || user.area_competencia === area.nombre)
-                              ).length
-                              
-                              return (
-                                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                                  <div>
-                                    <p className="font-medium text-foreground">{area.nombre}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {evaluatorsInArea} evaluadores asignados
-                                    </p>
-                                  </div>
-                                  <Button variant="outline" size="sm" className="bg-transparent">
-                                    Asignar
-                                  </Button>
-                                </div>
-                              )
-                            })
-                          ) : (
-                            <div className="text-center py-4">
-                              <p className="text-muted-foreground">No hay áreas disponibles</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-foreground mb-3">Evaluadores Disponibles</h4>
-                        <div className="space-y-3">
-                          {loadingUsers ? (
-                            <div className="text-center py-4">
-                              <p className="text-muted-foreground">Cargando evaluadores...</p>
-                            </div>
-                          ) : users.filter(user => 
-                            user.role === 'evaluador' || user.rol === 'evaluador'
-                          ).length > 0 ? (
-                            users
-                              .filter(user => user.role === 'evaluador' || user.rol === 'evaluador')
-                              .map((evaluator, index) => (
-                                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                                  <div>
-                                    <p className="font-medium text-foreground">{evaluator.name || evaluator.nombre}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {evaluator.area || evaluator.area_competencia || 'Sin área asignada'}
-                                    </p>
-                                  </div>
-                                  <Badge
-                                    className={
-                                      evaluator.is_active !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                                    }
-                                  >
-                                    {evaluator.is_active !== false ? "Disponible" : "Inactivo"}
-                                  </Badge>
-                                </div>
-                              ))
-                          ) : (
-                            <div className="text-center py-4">
-                              <p className="text-muted-foreground">No hay evaluadores registrados</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Reports Tab */}
-          <TabsContent value="reports" className="space-y-4 sm:space-y-6">
-            <div className="text-center py-8 sm:py-12 px-4">
-              <h3 className="text-base sm:text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-2">Sistema de generación de reportes con exportación PDF/Excel y análisis estadísticos</p>
+          {/* Calendario Tab - Vista de Períodos de Evaluación y Publicación */}
+          <TabsContent value="calendario" className="space-y-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Calendario General de Períodos</h2>
+              <p className="text-muted-foreground">Visualiza todos los períodos de evaluación y publicación de todas las áreas</p>
+                            </div>
+
+            {loadingAreas ? (
+              <div className="text-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                <p className="text-sm text-muted-foreground">Cargando calendario...</p>
+                                  </div>
+            ) : areas.length === 0 ? (
+              <div className="text-center py-12">
+                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No hay áreas disponibles</p>
+                                </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Leyenda */}
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardContent className="pt-6">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-blue-500"></div>
+                        <span className="text-sm font-medium">Período de Evaluación</span>
+                            </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-green-500"></div>
+                        <span className="text-sm font-medium">Período de Publicación</span>
+                        </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-gradient-to-br from-blue-400 to-green-400"></div>
+                        <span className="text-sm font-medium">Ambos períodos</span>
+                      </div>
+                            </div>
+                  </CardContent>
+                </Card>
+
+                {/* Calendario General */}
+                {(() => {
+                  // Recopilar todos los períodos de todas las áreas
+                  const todosLosPeriodos: Array<{
+                    area: string
+                    evalInicio: Date | null
+                    evalFin: Date | null
+                    pubInicio: Date | null
+                    pubFin: Date | null
+                  }> = []
+
+                  areas.forEach((area) => {
+                    const configArea = configuracionesAreas[area.id] || {}
+                    if (configArea.periodo_evaluacion_inicio && configArea.periodo_evaluacion_fin &&
+                        configArea.periodo_publicacion_inicio && configArea.periodo_publicacion_fin) {
+                      todosLosPeriodos.push({
+                        area: area.nombre,
+                        evalInicio: new Date(configArea.periodo_evaluacion_inicio),
+                        evalFin: new Date(configArea.periodo_evaluacion_fin),
+                        pubInicio: new Date(configArea.periodo_publicacion_inicio),
+                        pubFin: new Date(configArea.periodo_publicacion_fin)
+                      })
+                    }
+                  })
+
+                  // Función para verificar si una fecha está en algún rango de evaluación
+                  const estaEnEvaluacion = (fecha: Date) => {
+                    return todosLosPeriodos.some(p => {
+                      if (!p.evalInicio || !p.evalFin) return false
+                      const fechaStr = fecha.toISOString().split('T')[0]
+                      const inicioStr = p.evalInicio.toISOString().split('T')[0]
+                      const finStr = p.evalFin.toISOString().split('T')[0]
+                      return fechaStr >= inicioStr && fechaStr <= finStr
+                    })
+                  }
+
+                  // Función para verificar si una fecha está en algún rango de publicación
+                  const estaEnPublicacion = (fecha: Date) => {
+                    return todosLosPeriodos.some(p => {
+                      if (!p.pubInicio || !p.pubFin) return false
+                      const fechaStr = fecha.toISOString().split('T')[0]
+                      const inicioStr = p.pubInicio.toISOString().split('T')[0]
+                      const finStr = p.pubFin.toISOString().split('T')[0]
+                      return fechaStr >= inicioStr && fechaStr <= finStr
+                    })
+                  }
+
+                  // Función para obtener el tipo de fecha
+                  const obtenerTipoFecha = (fecha: Date) => {
+                    const enEvaluacion = estaEnEvaluacion(fecha)
+                    const enPublicacion = estaEnPublicacion(fecha)
+                    
+                    if (enEvaluacion && enPublicacion) return 'ambos'
+                    if (enEvaluacion) return 'evaluacion'
+                    if (enPublicacion) return 'publicacion'
+                    return 'ninguno'
+                  }
+
+                  // Obtener rango de fechas general
+                  const todasLasFechas: Date[] = []
+                  todosLosPeriodos.forEach(p => {
+                    if (p.evalInicio) todasLasFechas.push(p.evalInicio)
+                    if (p.evalFin) todasLasFechas.push(p.evalFin)
+                    if (p.pubInicio) todasLasFechas.push(p.pubInicio)
+                    if (p.pubFin) todasLasFechas.push(p.pubFin)
+                  })
+
+                  if (todasLasFechas.length === 0) {
+                    return (
+                      <Card>
+                        <CardContent className="pt-6">
+                          <div className="text-center py-8">
+                            <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                            <p className="text-sm text-gray-600">No hay períodos configurados en ninguna área</p>
+                                  </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  }
+
+                  const fechaMin = new Date(Math.min(...todasLasFechas.map(d => d.getTime())))
+                  const fechaMax = new Date(Math.max(...todasLasFechas.map(d => d.getTime())))
+
+                  // Función para generar calendario de un mes
+                  const generarCalendarioMes = (año: number, mes: number) => {
+                    const primerDia = new Date(año, mes, 1)
+                    const ultimoDia = new Date(año, mes + 1, 0)
+                    const diasEnMes = ultimoDia.getDate()
+                    const diaInicioSemana = primerDia.getDay()
+                    
+                    const dias: Array<{ dia: number; tipo: string }> = []
+                    
+                    // Días del mes anterior (para completar la primera semana)
+                    for (let i = diaInicioSemana - 1; i >= 0; i--) {
+                      dias.push({ dia: 0, tipo: 'fuera' })
+                    }
+                    
+                    // Días del mes actual
+                    for (let dia = 1; dia <= diasEnMes; dia++) {
+                      const fecha = new Date(año, mes, dia)
+                      dias.push({ dia, tipo: obtenerTipoFecha(fecha) })
+                    }
+                    
+                    // Días del mes siguiente (para completar la última semana)
+                    const diasRestantes = 42 - dias.length // 6 semanas * 7 días
+                    for (let dia = 1; dia <= diasRestantes; dia++) {
+                      dias.push({ dia: 0, tipo: 'fuera' })
+                    }
+                    
+                    return dias
+                  }
+
+                  // Obtener meses a mostrar
+                  const meses: Array<{ año: number; mes: number }> = []
+                  const fechaActual = new Date(fechaMin.getFullYear(), fechaMin.getMonth(), 1)
+                  
+                  while (fechaActual <= fechaMax) {
+                    meses.push({
+                      año: fechaActual.getFullYear(),
+                      mes: fechaActual.getMonth()
+                    })
+                    fechaActual.setMonth(fechaActual.getMonth() + 1)
+                  }
+
+                  const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+                  const nombresDias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+                  return (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Calendario Consolidado</CardTitle>
+                        <CardDescription>
+                          Períodos del {fechaMin.toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })} al {fechaMax.toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {meses.map(({ año, mes }) => {
+                            const calendario = generarCalendarioMes(año, mes)
+                            return (
+                              <div key={`${año}-${mes}`} className="bg-white border rounded-lg p-4 shadow-sm">
+                                <h4 className="font-semibold text-center mb-3 text-base text-gray-800">
+                                  {nombresMeses[mes]} {año}
+                                </h4>
+                                <div className="grid grid-cols-7 gap-1 text-xs">
+                                  {/* Días de la semana */}
+                                  {nombresDias.map(dia => (
+                                    <div key={dia} className="text-center font-medium text-gray-600 py-1.5 text-[11px]">
+                                      {dia}
+                                    </div>
+                                  ))}
+                                  {/* Días del mes */}
+                                  {calendario.map((item, index) => {
+                                    if (item.dia === 0) {
+                                      return <div key={index} className="aspect-square"></div>
+                                    }
+                                    
+                                    let bgColor = 'bg-gray-100'
+                                    let textColor = 'text-gray-600'
+                                    
+                                    if (item.tipo === 'evaluacion') {
+                                      bgColor = 'bg-blue-500'
+                                      textColor = 'text-white'
+                                    } else if (item.tipo === 'publicacion') {
+                                      bgColor = 'bg-green-500'
+                                      textColor = 'text-white'
+                                    } else if (item.tipo === 'ambos') {
+                                      bgColor = 'bg-gradient-to-br from-blue-400 to-green-400'
+                                      textColor = 'text-white'
+                                    }
+                                    
+                                    return (
+                                      <div
+                                        key={index}
+                                        className={`aspect-square flex items-center justify-center rounded text-xs font-medium ${bgColor} ${textColor} ${
+                                          item.tipo !== 'ninguno' && item.tipo !== 'fuera' ? 'shadow-sm' : ''
+                                        }`}
+                                      >
+                                        {item.dia}
+                                </div>
+                                    )
+                                  })}
+                            </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })()}
+
+                {/* Lista de áreas con períodos configurados */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Áreas Configuradas</CardTitle>
+                    <CardDescription>Haz clic en un área para editar sus períodos</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {areas.map((area) => {
+                        const configArea = configuracionesAreas[area.id] || {}
+                        const tieneConfiguracion = configArea.periodo_evaluacion_inicio && 
+                                                   configArea.periodo_evaluacion_fin &&
+                                                   configArea.periodo_publicacion_inicio && 
+                                                   configArea.periodo_publicacion_fin
+
+                        const formatearFecha = (fecha: Date | null) => {
+                          if (!fecha) return 'No definida'
+                          return fecha.toLocaleDateString('es-BO', { 
+                            day: '2-digit', 
+                            month: 'short', 
+                            year: 'numeric'
+                          })
+                        }
+
+                        const evalInicio = configArea.periodo_evaluacion_inicio ? new Date(configArea.periodo_evaluacion_inicio) : null
+                        const evalFin = configArea.periodo_evaluacion_fin ? new Date(configArea.periodo_evaluacion_fin) : null
+                        const pubInicio = configArea.periodo_publicacion_inicio ? new Date(configArea.periodo_publicacion_inicio) : null
+                        const pubFin = configArea.periodo_publicacion_fin ? new Date(configArea.periodo_publicacion_fin) : null
+
+                        return (
+                          <Card 
+                            key={area.id} 
+                            className={`cursor-pointer hover:shadow-md transition-shadow ${tieneConfiguracion ? 'border-blue-200' : 'border-gray-200'}`}
+                            onClick={() => {
+                              setSelectedArea(area)
+                              setTempConfig(configArea)
+                              setIsModalOpen(true)
+                            }}
+                          >
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base flex items-center justify-between">
+                                <span>{area.nombre}</span>
+                                {!tieneConfiguracion && (
+                                  <Badge variant="outline" className="text-xs">Sin config</Badge>
+                                )}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              {tieneConfiguracion ? (
+                                <div className="space-y-2 text-sm">
+                                  <div>
+                                    <span className="text-gray-600 text-xs">Evaluación: </span>
+                                    <span className="font-medium">{formatearFecha(evalInicio)} - {formatearFecha(evalFin)}</span>
+                        </div>
+                                  <div>
+                                    <span className="text-gray-600 text-xs">Publicación: </span>
+                                    <span className="font-medium">{formatearFecha(pubInicio)} - {formatearFecha(pubFin)}</span>
+                      </div>
+                    </div>
+                              ) : (
+                                <p className="text-sm text-gray-500">Sin períodos configurados</p>
+                              )}
+                            </CardContent>
+                  </Card>
+                        )
+                      })}
+                </div>
+              </CardContent>
+            </Card>
             </div>
+            )}
           </TabsContent>
+
         </Tabs>
       </div>
     </div>

@@ -10,6 +10,8 @@ class Mailer
 {
     private $mail;
     private $pdo;
+    private $lastError;
+    
     public function __construct()
     {
         $this->mail = new PHPMailer(true);
@@ -43,7 +45,7 @@ class Mailer
     /**
      * Reinicializar PHPMailer para un nuevo correo
      */
-    private function reinicializarMailer()
+    public function reinicializarMailer()
     {
         $this->mail->clearAddresses();
         $this->mail->clearAttachments();
@@ -66,6 +68,15 @@ class Mailer
     public function enviar($para, $asunto, $mensaje, $de = null, $nombre = null)
     {
         try {
+            // Limpiar direcciones anteriores antes de agregar nuevas
+            $this->mail->clearAddresses();
+            $this->mail->clearAllRecipients();
+            $this->mail->clearAttachments();
+            $this->mail->clearCustomHeaders();
+            $this->mail->clearReplyTos();
+            $this->mail->clearBCCs();
+            $this->mail->clearCCs();
+            
             $this->mail->setFrom($de ?? 'forwardsoft.official@gmail.com', $nombre ?? 'Sistema Olimpiada Oh - SanSi');
             $this->mail->addAddress($para);
             $this->mail->isHTML(true);
@@ -92,12 +103,21 @@ class Mailer
             $this->mail->AltBody = strip_tags($mensaje);
 
             $this->mail->send();
+            $this->lastError = null;
             return true;
         } catch (Exception $e) {
-            error_log("Error al enviar correo: {$this->mail->ErrorInfo}");
+            $errorInfo = $this->mail->ErrorInfo ?? $e->getMessage();
+            $this->lastError = $errorInfo;
+            error_log("Error al enviar correo: {$errorInfo}");
+            error_log("Excepción completa: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
             return false;
         }
-
+    }
+    
+    public function getLastError()
+    {
+        return $this->lastError;
     }
     public function enviarMensajeEvaluadoresCierre($area, $nombreCoordinador, $correoCoordinador)
     {

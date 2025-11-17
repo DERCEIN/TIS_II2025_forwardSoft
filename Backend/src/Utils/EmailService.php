@@ -79,7 +79,7 @@ class EmailService
     {
         $adminName = $enviadoPor['name'] ?? 'Administrador';
         $appUrl = $_ENV['APP_URL'] ?? 'http://localhost:8000';
-        $loginUrl = $appUrl . '/login';
+        $loginUrl = $appUrl . 'htpp://localhost:3000/login';
 
         return "
         <!DOCTYPE html>

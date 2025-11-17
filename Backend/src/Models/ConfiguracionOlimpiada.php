@@ -99,14 +99,20 @@ class ConfiguracionOlimpiada
             return $id;
         }
         
+        // Agregar updated_at
+        $setParts[] = "updated_at = CURRENT_TIMESTAMP";
+        
         $params[] = $id;
         $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts) . " WHERE id = ?";
 
         try {
+            error_log("SQL Update Config General: " . $sql);
+            error_log("Params: " . json_encode($params));
             $stmt = $this->db->query($sql, $params);
             return $id;
         } catch (\Exception $e) {
             error_log("Error al actualizar configuración: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
             throw $e;
         }
     }
