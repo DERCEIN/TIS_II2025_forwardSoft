@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, CheckCircle2, RefreshCw, Save, Copy, Calculator, Atom, FlaskConical, Leaf, Code, BookOpen, GraduationCap, Microscope, Beaker, Zap, Brain } from 'lucide-react'
+import { AlertCircle, CheckCircle2, RefreshCw, Save, Copy } from 'lucide-react'
 import { MedalleroService } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
@@ -65,35 +65,38 @@ export default function MedalleroPage() {
         setLoading(true)
         
         // Obtener áreas
-        const areasResponse = await MedalleroService.getAreas()
-        if (areasResponse.success && areasResponse.data) {
-          const areasData = Array.isArray(areasResponse.data) ? areasResponse.data : []
-          const structuredAreas: Area[] = areasData.map((item: any) => ({
+        const areasRes = await MedalleroService.getAreas()
+        try {
+      const areasRes = await MedalleroService.getAreas();
+      if (Array.isArray(areasRes)) {
+        const structuredAreas: Area[] = areasRes.map((item: any) => ({
           id: item.id,
           nombre: item.nombre,
-          }))
-          setAreas(structuredAreas)
-          console.log("Áreas cargadas:", structuredAreas)
+        }));
+        setAreas(structuredAreas);
+        console.log("Áreas cargadas:", structuredAreas);
       } else {
-          console.warn("Respuesta de áreas no es válida:", areasResponse)
+        console.warn("Respuesta de áreas no es válida:", areasRes);
+      }
+    } catch (error) {
+      console.error("Error al cargar áreas:", error);
       toast({
         title: "Error",
         description: "No se pudieron cargar las áreas",
         variant: "destructive",
-          })
+      });
     }
         
         // Obtener configuración de medallero
-        const medalleroResponse = await MedalleroService.getMedallero()
-        if (medalleroResponse.success && medalleroResponse.data) {
-          const medalleroData = Array.isArray(medalleroResponse.data) ? medalleroResponse.data : []
-          setMedalleroData(medalleroData)
+        const medalleroRes = await MedalleroService.getMedallero()
+        if (Array.isArray(medalleroRes)) {
+      setMedalleroData(medalleroRes);
 
-          const structuredConfig: Record<number, Record<string, MedalConfig>> = {}
+      const structuredConfig: Record<number, Record<string, MedalConfig>> = {};
 
-          medalleroData.forEach((item: MedalleroData) => {
+      medalleroRes.forEach((item: MedalleroData) => {
         if (!structuredConfig[item.area_id]) {
-              structuredConfig[item.area_id] = {}
+          structuredConfig[item.area_id] = {};
         }
 
         structuredConfig[item.area_id][item.nivel_nombre] = {
@@ -112,29 +115,23 @@ export default function MedalleroPage() {
             max: item.bronce_max,
             cantidad: item.bronce,
           },
-            }
-          })
+        };
+      });
 
-          setConfig(structuredConfig)
+      setConfig(structuredConfig);
     } else {
-          console.warn("Respuesta de medallero no es válida:", medalleroResponse)
-          toast({
-            title: "Error",
-            description: medalleroResponse.message || "No se pudo cargar los datos del medallero",
-            variant: "destructive",
-          })
-        }
-      } catch (error: any) {
-        console.error("Error loading data:", error)
-        const errorMessage = error?.message || "No se pudo cargar los datos del medallero"
+      console.warn("Respuesta de medallero no es válida:", medalleroRes);
+    }
+  } catch (error) {
+    console.error("Error loading data:", error);
     toast({
       title: "Error",
-          description: errorMessage,
+      description: "No se pudo cargar los datos del medallero",
       variant: "destructive",
-        })
+    });
   } finally {
-        setLoading(false)
-      }
+    setLoading(false);
+};
     }
     
     fetchData()
@@ -142,33 +139,6 @@ export default function MedalleroPage() {
 
   const currentArea = areas.find(a => a.id === selectedArea)
   const areaConfig: AreaConfig = selectedArea ? config[selectedArea] || {} : {}
-
-  // Función para obtener el icono según el área
-  const getAreaIcon = (areaNombre: string) => {
-    const nombreLower = areaNombre.toLowerCase()
-    
-    if (nombreLower.includes('matemática') || nombreLower.includes('matematicas')) {
-      return Calculator
-    } else if (nombreLower.includes('física') || nombreLower.includes('fisica')) {
-      return Atom
-    } else if (nombreLower.includes('química') || nombreLower.includes('quimica')) {
-      return FlaskConical
-    } else if (nombreLower.includes('biología') || nombreLower.includes('biologia')) {
-      return Leaf
-    } else if (nombreLower.includes('informática') || nombreLower.includes('informatica') || nombreLower.includes('computación') || nombreLower.includes('computacion')) {
-      return Code
-    } else if (nombreLower.includes('robótica') || nombreLower.includes('robotica')) {
-      return Zap
-    } else if (nombreLower.includes('lenguaje') || nombreLower.includes('comunicación') || nombreLower.includes('comunicacion')) {
-      return BookOpen
-    } else if (nombreLower.includes('sociales') || nombreLower.includes('historia') || nombreLower.includes('geografía') || nombreLower.includes('geografia')) {
-      return GraduationCap
-    } else if (nombreLower.includes('ciencias') || nombreLower.includes('experimental')) {
-      return Microscope
-    } else {
-      return BookOpen // Icono por defecto
-    }
-  }
 
   const getLevelsForArea = (areaId: number) => {
     const areaItems = medalleroData.filter(item => item.area_id === areaId)
@@ -413,23 +383,18 @@ export default function MedalleroPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {areas.map((area) => {
-              const IconComponent = getAreaIcon(area.nombre)
-              return (
+            {areas.map((area) => (
               <button
                 key={area.id}
                 onClick={() => setSelectedArea(area.id)}
                 className="group p-8 rounded-xl border-2 border-blue-200 bg-white hover:border-blue-500 hover:shadow-xl transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95"
               >
-                  <div className="mb-4 transition-transform group-hover:scale-110 flex justify-center">
-                    <IconComponent className="h-16 w-16 text-blue-600 group-hover:text-blue-700" />
-                  </div>
+                <div className="text-6xl mb-4 transition-transform group-hover:scale-110">📚</div>
                 <div className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
                   {area.nombre}
                 </div>
               </button>
-              )
-            })}
+            ))}
           </div>
         </div>
       </div>
@@ -453,10 +418,7 @@ export default function MedalleroPage() {
             </button>
             <div>
               <div className="flex items-center gap-3">
-                {currentArea && (() => {
-                  const IconComponent = getAreaIcon(currentArea.nombre)
-                  return <IconComponent className="h-12 w-12 text-blue-600" />
-                })()}
+                <span className="text-5xl">📚</span>
                 <h1 className="text-4xl font-bold text-gray-900">{currentArea?.nombre}</h1>
               </div>
               <p className="text-gray-600 mt-1">Configura medallas para cada nivel</p>
