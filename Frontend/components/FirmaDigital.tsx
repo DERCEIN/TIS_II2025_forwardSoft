@@ -28,12 +28,12 @@ export default function FirmaDigital({
   const [lineWidth, setLineWidth] = useState(2.5)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   
-  // Para suavizado de líneas
+ 
   const pointsRef = useRef<Array<{ x: number; y: number; time: number }>>([])
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
-  const smoothingLevel = 0.3 // Nivel de suavizado (0-1, mayor = más suave)
+  const smoothingLevel = 0.3 
 
-  // Configurar canvas con alta resolución
+  
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -42,22 +42,22 @@ export default function FirmaDigital({
     const ctx = canvas.getContext('2d', { willReadFrequently: false })
     if (!ctx) return
 
-    // Obtener tamaño del contenedor
+   
     const rect = container.getBoundingClientRect()
     const width = Math.floor(rect.width)
-    const height = 200 // Altura fija para mejor UX
+    const height = 200 
 
-    // Configurar canvas con alta resolución para mejor calidad
+   
     const dpr = window.devicePixelRatio || 1
     canvas.width = width * dpr
     canvas.height = height * dpr
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
 
-    // Escalar contexto para alta resolución
+   
     ctx.scale(dpr, dpr)
 
-    // Configurar estilo de dibujo
+   
     ctx.strokeStyle = '#1a1a1a'
     ctx.lineWidth = lineWidth
     ctx.lineCap = 'round'
@@ -66,7 +66,7 @@ export default function FirmaDigital({
 
     setCanvasSize({ width, height })
 
-    // Si hay una firma existente, cargarla
+   
     if (firmaExistente) {
       const img = new Image()
       img.onload = () => {
@@ -76,7 +76,7 @@ export default function FirmaDigital({
       }
       img.src = firmaExistente
     } else {
-      // Limpiar canvas
+      
       ctx.clearRect(0, 0, width, height)
       setHasSignature(false)
     }
@@ -85,7 +85,7 @@ export default function FirmaDigital({
   useEffect(() => {
     setupCanvas()
 
-    // Manejar resize
+    
     const handleResize = () => {
       setupCanvas()
     }
@@ -114,25 +114,25 @@ export default function FirmaDigital({
     }
   }
 
-  // Función para suavizar puntos usando interpolación cuadrática
+ 
   const smoothPoint = (current: { x: number; y: number }, previous: { x: number; y: number } | null, beforePrevious: { x: number; y: number } | null) => {
     if (!previous) return current
     if (!beforePrevious) {
-      // Si solo hay un punto anterior, interpolar entre ellos
+      
       return {
         x: previous.x + (current.x - previous.x) * smoothingLevel,
         y: previous.y + (current.y - previous.y) * smoothingLevel
       }
     }
     
-    // Interpolación cuadrática para suavizado más avanzado
+    
     return {
       x: previous.x + (current.x - previous.x) * smoothingLevel,
       y: previous.y + (current.y - previous.y) * smoothingLevel
     }
   }
 
-  // Función para calcular distancia entre dos puntos
+ 
   const distance = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
     return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2))
   }
@@ -182,19 +182,19 @@ export default function FirmaDigital({
 
     const dpr = window.devicePixelRatio || 1
 
-    // Agregar punto al buffer (guardar en coordenadas de canvas escaladas)
+   
     pointsRef.current.push({
       x: point.x,
       y: point.y,
       time: Date.now()
     })
 
-    // Mantener solo los últimos 5 puntos para el suavizado
+    
     if (pointsRef.current.length > 5) {
       pointsRef.current.shift()
     }
 
-    // Calcular punto suavizado
+    
     const previousPoint = pointsRef.current.length >= 2 
       ? pointsRef.current[pointsRef.current.length - 2] 
       : null
@@ -205,27 +205,27 @@ export default function FirmaDigital({
     let smoothedPoint = point
     
     if (lastPointRef.current) {
-      // Calcular distancia para filtrar movimientos muy pequeños (temblor)
+      
       const dist = distance(lastPointRef.current, point)
       
-      // Si la distancia es muy pequeña, ignorar (reduce temblor)
+     
       if (dist < 1) {
         return
       }
 
-      // Suavizado básico: interpolar entre el último punto y el actual
+     
       smoothedPoint = {
         x: lastPointRef.current.x + (point.x - lastPointRef.current.x) * smoothingLevel,
         y: lastPointRef.current.y + (point.y - lastPointRef.current.y) * smoothingLevel
       }
 
-      // Suavizado avanzado con interpolación cuadrática si hay suficientes puntos
+      
       if (beforePreviousPoint && previousPoint) {
-        // Calcular punto medio entre el anterior y el actual
+       
         const midX = (previousPoint.x + point.x) / 2
         const midY = (previousPoint.y + point.y) / 2
         
-        // Combinar suavizado básico con punto medio para curvas más naturales
+       
         smoothedPoint = {
           x: smoothedPoint.x * 0.6 + midX * 0.4,
           y: smoothedPoint.y * 0.6 + midY * 0.4
@@ -233,14 +233,13 @@ export default function FirmaDigital({
       }
     }
 
-    // Dibujar línea suavizada usando curva cuadrática de Bezier
-    // El contexto ya está escalado por dpr, así que dividimos las coordenadas
+   
     if (lastPointRef.current) {
-      // Punto de control para la curva cuadrática (punto medio)
+      
       const controlX = (lastPointRef.current.x + smoothedPoint.x) / 2
       const controlY = (lastPointRef.current.y + smoothedPoint.y) / 2
 
-      // Usar curva cuadrática para líneas más suaves
+     
       ctx.quadraticCurveTo(
         controlX / dpr,
         controlY / dpr,
@@ -248,7 +247,7 @@ export default function FirmaDigital({
         smoothedPoint.y / dpr
       )
     } else {
-      // Primer punto del trazo
+      
       ctx.lineTo(smoothedPoint.x / dpr, smoothedPoint.y / dpr)
     }
 
@@ -261,7 +260,7 @@ export default function FirmaDigital({
   const stopDrawing = (e?: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (e) e.preventDefault()
     
-    // Limpiar el buffer de puntos
+    
     pointsRef.current = []
     lastPointRef.current = null
     
@@ -286,7 +285,7 @@ export default function FirmaDigital({
 
     try {
       setGuardando(true)
-      // Exportar con alta calidad
+      
       const firmaImagen = canvas.toDataURL('image/png', 1.0)
       await onGuardar(firmaImagen)
       setGuardado(true)
