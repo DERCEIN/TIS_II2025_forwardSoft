@@ -88,7 +88,70 @@ class Medaller{
         return false;
     }
 }
+public function getAreasNombre(){
+    $sql="SELECT nombre FROM areas_competencia";
+    $stmt = $this->db->query($sql); 
+    return $stmt->fetchAll();
+}
+public function getOlimpistasFinales(){
+    $sql="SELECT 
+    o.id AS id,
+    o.nombre || ' ' || o.apellido AS olimpista,
+    a.nombre AS area,
+    n.nombre AS nivel,
+    e.puntuacion,
+    ROW_NUMBER() OVER (
+        PARTITION BY a.id, n.id
+        ORDER BY e.puntuacion DESC
+    ) AS posicion
+FROM evaluaciones_finales e
+JOIN inscripciones_areas i ON e.inscripcion_area_id = i.id
+JOIN olimpistas o ON i.olimpista_id = o.id
+JOIN areas_competencia a ON i.area_competencia_id = a.id
+JOIN niveles_competencia n ON i.nivel_competencia_id = n.id
+WHERE (e.observaciones = '' OR e.observaciones IS NULL)
+ORDER BY a.id, n.id, posicion;
+
+";        
+    $stmt = $this->db->query($sql);
+    $result= $stmt->fetchAll();
+    return $result; 
 
 
+}
+public function getMedalleroFinal(){
+    $sql="SELECT 
+    c.id, 
+    a.nombre AS area_nombre, 
+    n.nombre AS nivel_nombre,  
+    c.oro, 
+    c.plata, 
+    c.bronce, 
+    c.oro_min, 
+    c.oro_max, 
+    c.plata_min, 
+    c.plata_max, 
+    c.bronce_min, 
+    c.bronce_max  
+FROM configuracion_medallero c  
+JOIN areas_competencia a ON c.area_competencia_id = a.id  
+JOIN niveles_competencia n ON c.nivel_competencia_id = n.id;
+";        
+    $stmt = $this->db->query($sql);
+    return $stmt->fetchAll();
+}
+public function getConfiguracionPublicacionFinal()
+{
+    $sql = "
+        SELECT 
+            a.nombre AS area_nombre,
+            c.periodo_publicacion_final_inicio AS publicacion_inicio,
+            c.periodo_publicacion_final_fin AS publicacion_fin
+        FROM configuracion_areas_evaluacion c
+        JOIN areas_competencia a ON a.id = c.area_competencia_id
+    ";
+    $stmt = $this->db->query($sql);
+    return $stmt->fetchAll();
+}
 
 }

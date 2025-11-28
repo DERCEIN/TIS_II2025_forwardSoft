@@ -69,7 +69,8 @@ class Router
         $this->addRoute('GET', '/api/administrador/medallero', [MedalleroController::class, 'getMedallero'], ['auth', 'admin']);
         $this->addRoute('GET', '/api/administrador/medallero/areas', [MedalleroController::class, 'getAreas'], ['auth', 'admin']);
         $this->addRoute('PUT', '/api/administrador/medallero', [MedalleroController::class, 'updateMedallero'], ['auth', 'admin']);
-        
+        $this->addRoute('GET', '/api/administrador/medallero/final', [MedalleroController::class, 'getMedalleroFinal'],[]);
+
         // Rutas de configuración general
         $this->addRoute('GET', '/api/configuracion', [ConfiguracionOlimpiadaController::class, 'getConfiguracion'], ['auth']);
         $this->addRoute('PUT', '/api/configuracion/general', [ConfiguracionOlimpiadaController::class, 'updateConfiguracionGeneral'], ['auth', 'admin']);
