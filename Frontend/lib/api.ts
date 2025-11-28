@@ -1,9 +1,10 @@
 import { id } from "date-fns/locale"
-
+import type { PublishedResult } from "@/lib/types"
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 
 export interface ApiResponse<T = any> {
+  olimpistas(olimpistas: any): unknown
   success: boolean
   message: string
   data?: T
@@ -1273,7 +1274,11 @@ export class MedalleroService{
     return ApiService.put('/api/administrador/medallero', data);
   }
 }
-
+export class PublicResultsService {
+  static async getMedalleroFinal(): Promise<ApiResponse<PublishedResult>> {
+    return ApiService.get<PublishedResult>("/api/administrador/medallero/final")
+  }
+}
 export class PublicacionResultadosService {
   static async getAreasPublicadas() {
     return ApiService.get('/api/publicacion-resultados/areas')

@@ -172,6 +172,12 @@ export default function LandingPage() {
               >
                 Resultados
               </Link>
+              <Link
+                href="/medallero"
+                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                Medallero
+              </Link>
               <a
                 href="#noticias"
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
