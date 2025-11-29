@@ -2899,11 +2899,11 @@ function CierreFaseFinal() {
       try {
         const response = await CoordinadorService.getProgresoEvaluacionFinal()
         if (response.success) {
-          // Verificar directamente el estado de cierre de fase final desde la base de datos
+         
           const cerrada = response.data?.estado_fase?.cerrada || false
           const estado = response.data?.estado_fase?.estado || 'activa'
           
-          // La fase final está cerrada si hay un registro en cierre_fase_areas con estado 'cerrada' y fase 'final'
+        
           const estaCerrada = cerrada || estado === 'cerrada'
           
           console.log(' [CierreFaseFinal] Estado fase final:', {
@@ -2962,7 +2962,7 @@ function CierreFaseFinal() {
   }
 
   const handleRegenerar = async () => {
-    // Recargar datos
+   
     setLoading(true)
     try {
       const response = await CoordinadorService.getProgresoEvaluacionFinal()
@@ -2981,7 +2981,7 @@ function CierreFaseFinal() {
   }
 
   const handleCompartir = () => {
-    // Copiar URL al portapapeles
+    
     const url = window.location.href
     navigator.clipboard.writeText(url)
     toast({
@@ -3092,10 +3092,9 @@ function CierreFaseFinal() {
   const medallas = faseData?.medallas || { oro: 0, plata: 0, bronce: 0, mencion_honor: 0, sin_medalla: 0 }
   const totalEvaluados = faseData?.estadisticas_generales?.total_evaluados || 0
   const totalClasificados = faseData?.estadisticas_generales?.total_clasificados || 0
-  // Los premiados son solo Oro, Plata y Bronce (no incluyen Mención de Honor)
+ 
   const totalPremiados = medallas.oro + medallas.plata + medallas.bronce
-  // Sin medalla son los que tienen NULL, pero estos deberían estar en Mención de Honor
-  // Mención de Honor son los que no recibieron medalla ni cumplieron criterios
+ 
   const totalSinMedalla = medallas.mencion_honor + (medallas.sin_medalla || 0)
   const porcentajePremiados = totalEvaluados > 0 ? ((totalPremiados / totalEvaluados) * 100).toFixed(1) : '0'
   const porcentajeSinMedalla = totalEvaluados > 0 ? ((totalSinMedalla / totalEvaluados) * 100).toFixed(1) : '0'
@@ -3138,17 +3137,17 @@ function CierreFaseFinal() {
       case 'oro': 
         const oroMin = configMedallero.oro_min
         const oroMax = configMedallero.oro_max
-        // Si ambos valores existen y son mayores que 0, mostrar el rango
+       
         if (oroMin !== null && oroMin !== undefined && oroMin > 0 && 
             oroMax !== null && oroMax !== undefined && oroMax > 0) {
           return `${oroMin}-${oroMax}`
         }
-        // Si están en 0 o null, mostrar N/A
+       
         return 'N/A'
       case 'plata': 
         const plataMin = configMedallero.plata_min
         const plataMax = configMedallero.plata_max
-        // Si ambos valores existen y son mayores que 0, mostrar el rango
+       
         if (plataMin !== null && plataMin !== undefined && plataMin > 0 && 
             plataMax !== null && plataMax !== undefined && plataMax > 0) {
           return `${plataMin}-${plataMax}`
@@ -3157,14 +3156,14 @@ function CierreFaseFinal() {
       case 'bronce': 
         const bronceMin = configMedallero.bronce_min
         const bronceMax = configMedallero.bronce_max
-        // Si ambos valores existen y son mayores que 0, mostrar el rango
+        
         if (bronceMin !== null && bronceMin !== undefined && bronceMin > 0 && 
             bronceMax !== null && bronceMax !== undefined && bronceMax > 0) {
           return `${bronceMin}-${bronceMax}`
         }
         return 'N/A'
       case 'mencion_honor': 
-        // Mención de honor no tiene rango específico, son los que no cumplieron criterios
+        
         return 'N/A'
       default: return 'N/A'
     }
@@ -3254,7 +3253,7 @@ function CierreFaseFinal() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {['oro', 'plata', 'bronce', 'mencion_honor'].map((tipo) => {
                   let cantidad = medallas[tipo as keyof typeof medallas] || 0
-                  // Si es mencion_honor, incluir también los que tienen sin_medalla (NULL)
+                  
                   if (tipo === 'mencion_honor') {
                     cantidad = cantidad + (medallas.sin_medalla || 0)
                   }
@@ -3553,7 +3552,7 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
     try {
       const res = await CoordinadorService.generarAsignaciones({
         area_id: parseInt(areaId, 10),
-        nivel_id: nivelId, // Enviar directamente 'primaria' o 'secundaria'
+        nivel_id: nivelId, 
         fase,
         num_evaluadores: Math.max(1, Math.min(5, parseInt(numEval || '1', 10))),
         metodo,
@@ -4097,7 +4096,7 @@ export default function CoordinatorDashboard() {
                 className="hidden md:flex"
                 onClick={async () => {
                   try {
-                    // Cargar participantes premiados desde la API
+                    
                     const response = await CertificadosService.getParticipantesPremiados();
                     if (response.success && response.data) {
                       const data = response.data;
@@ -4482,10 +4481,10 @@ export default function CoordinatorDashboard() {
         area={certificateArea}
         onToggleApproved={async (areaId, approved) => {
           try {
-            // Guardar aprobación en la API
+            
             const response = await CertificadosService.aprobarCertificados(approved);
             if (response.success) {
-              // Actualizar el estado del área
+            
               if (certificateArea) {
                 setCertificateArea({ ...certificateArea, approved });
               }

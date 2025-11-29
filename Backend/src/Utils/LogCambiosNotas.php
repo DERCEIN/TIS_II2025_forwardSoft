@@ -318,14 +318,14 @@ class LogCambiosNotas
                 return false;
             }
             
-            // Validar que el tipo_evaluacion existe
+            
             $tipoEvaluacion = $cambio['tipo_evaluacion'] ?? 'clasificacion';
             if (!in_array($tipoEvaluacion, ['clasificacion', 'final'])) {
                 error_log("LogCambiosNotas::rechazarCambio - Tipo de evaluación inválido: " . ($tipoEvaluacion ?? 'NULL'));
-                $tipoEvaluacion = 'clasificacion'; // Default por compatibilidad
+                $tipoEvaluacion = 'clasificacion'; 
             }
             
-            // Validar que existe evaluacion_id
+           
             if (empty($cambio['evaluacion_id'])) {
                 error_log("LogCambiosNotas::rechazarCambio - evaluacion_id no encontrado en el cambio");
                 return false;
@@ -335,7 +335,7 @@ class LogCambiosNotas
             
             try {
                 
-                // Actualizar el estado del cambio
+                
                 $sql = "UPDATE log_cambios_notas
                         SET estado_aprobacion = 'rechazado',
                             coordinador_id = ?,
@@ -350,12 +350,12 @@ class LogCambiosNotas
                     throw new \Exception("No se pudo actualizar el estado del cambio");
                 }
                 
-                // Revertir según el tipo de evaluación
+                
                 $tablaEvaluacion = $tipoEvaluacion === 'final' 
                     ? 'evaluaciones_finales' 
                     : 'evaluaciones_clasificacion';
                 
-                // Verificar que el registro de evaluación existe
+              
                 $sqlVerificar = "SELECT id FROM {$tablaEvaluacion} WHERE id = ?";
                 $stmtVerificar = self::$db->prepare($sqlVerificar);
                 $stmtVerificar->execute([$cambio['evaluacion_id']]);
@@ -363,14 +363,13 @@ class LogCambiosNotas
                 
                 if (!$evaluacionExiste) {
                     error_log("LogCambiosNotas::rechazarCambio - La evaluación ID {$cambio['evaluacion_id']} no existe en la tabla $tablaEvaluacion");
-                    // Continuar sin revertir la nota, pero marcar el cambio como rechazado
+                    
                     self::$db->commit();
                     error_log("LogCambiosNotas::rechazarCambio - Cambio $cambioId rechazado (nota no revertida - evaluación no existe)");
                     return true;
                 }
                 
-                // Revertir la nota y observaciones
-                // Nota: evaluaciones_finales no tiene campo updated_at
+              
                 if ($tipoEvaluacion === 'final') {
                     $sqlRevertir = "UPDATE {$tablaEvaluacion}
                                    SET puntuacion = ?,
@@ -396,7 +395,7 @@ class LogCambiosNotas
                 
                 if ($stmtRevertir->rowCount() === 0) {
                     error_log("LogCambiosNotas::rechazarCambio - No se pudo revertir la nota (ninguna fila afectada)");
-                    // Continuar de todas formas, el cambio ya está marcado como rechazado
+                    
                 } else {
                     error_log("LogCambiosNotas::rechazarCambio - Nota revertida exitosamente en tabla: $tablaEvaluacion");
                 }
@@ -457,10 +456,10 @@ class LogCambiosNotas
     {
         self::init();
         
-        // Validar tipo de evaluación
+       
         if (!in_array($tipoEvaluacion, ['clasificacion', 'final'])) {
             error_log("LogCambiosNotas::revertirNota - Tipo de evaluación inválido: $tipoEvaluacion");
-            $tipoEvaluacion = 'clasificacion'; // Default por compatibilidad
+            $tipoEvaluacion = 'clasificacion'; 
         }
         
         try {

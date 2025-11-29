@@ -16,7 +16,7 @@ class Mailer
     {
         $this->mail = new PHPMailer(true);
         $this->pdo = $this->getConnection();
-        // Configuración SMTP (Gmail)
+        
         $this->mail->isSMTP();
         $this->mail->Host       = 'smtp.gmail.com';
         $this->mail->SMTPAuth   = true;
@@ -42,9 +42,7 @@ class Mailer
         }
     }
 
-    /**
-     * Reinicializar PHPMailer para un nuevo correo
-     */
+   
     public function reinicializarMailer()
     {
         $this->mail->clearAddresses();
@@ -55,7 +53,7 @@ class Mailer
         $this->mail->clearBCCs();
         $this->mail->clearCCs();
         
-        // Reinicializar configuración SMTP
+       
         $this->mail->isSMTP();
         $this->mail->Host       = 'smtp.gmail.com';
         $this->mail->SMTPAuth   = true;
@@ -68,7 +66,7 @@ class Mailer
     public function enviar($para, $asunto, $mensaje, $de = null, $nombre = null)
     {
         try {
-            // Limpiar direcciones anteriores antes de agregar nuevas
+          
             $this->mail->clearAddresses();
             $this->mail->clearAllRecipients();
             $this->mail->clearAttachments();

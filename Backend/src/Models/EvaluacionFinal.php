@@ -173,9 +173,9 @@ class EvaluacionFinal
         $stmt = $this->db->query($sql, $params);
         $resultados = $stmt->fetchAll();
         
-        // Si hay configuración del medallero, agrupar por grado y aplicar medallas
+       
         if ($medalleroConfig) {
-            // Agrupar resultados por grado de escolaridad
+           
             $resultadosPorGrado = [];
             foreach ($resultados as $resultado) {
                 $grado = $resultado['grado_escolaridad'] ?? 'sin_grado';
@@ -185,16 +185,15 @@ class EvaluacionFinal
                 $resultadosPorGrado[$grado][] = $resultado;
             }
             
-            // Aplicar medallero a cada grupo de grado
+           
             $resultadosFinales = [];
             $medalleroModel = new \ForwardSoft\Models\ConfiguracionMedallero();
             
             foreach ($resultadosPorGrado as $grado => $participantesGrado) {
-                // Obtener configuración específica del grado si existe
-                // Primero intentar obtener configuración por grado específico
+              
                 $configGrado = null;
                 if ($grado !== 'sin_grado') {
-                    // Obtener nivel del primer participante del grado
+                    
                     $nivelId = null;
                     if (!empty($participantesGrado)) {
                         $sqlNivel = "SELECT ia.nivel_competencia_id 
@@ -205,11 +204,11 @@ class EvaluacionFinal
                         $nivelId = $nivelData['nivel_competencia_id'] ?? null;
                     }
                     
-                    // Intentar obtener configuración específica por grado
+                   
                     $configGrado = $medalleroModel->getByAreaAndLevel($areaId, $nivelId, $grado);
                 }
                 
-                // Si no hay configuración específica por grado, usar la general
+               
                 if (!$configGrado) {
                     $configGrado = $medalleroConfig;
                 }

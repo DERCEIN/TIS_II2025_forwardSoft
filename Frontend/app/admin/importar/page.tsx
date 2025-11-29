@@ -38,7 +38,7 @@ export default function ImportarOlimpistasPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   
-  // Hooks de importación
+  
   const { importar, loading: importing, error: importError, result } = useImportarOlimpistas()
   const { descargar, loading: downloading } = useDescargarPlantilla()
   const { validaciones, validar, limpiar: limpiarValidaciones } = useValidarArchivoCSV()
@@ -48,7 +48,7 @@ export default function ImportarOlimpistasPage() {
   
   const { success, error: showError, warning, info } = useNotifications()
 
-  // Manejar selección de archivo
+  
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
@@ -61,19 +61,18 @@ export default function ImportarOlimpistasPage() {
     }
   }
 
-  // Manejar importación
+  
   const handleImport = async () => {
     if (!selectedFile) return
 
     try {
       const result = await importar(selectedFile)
       
-      // Procesar resultados
       procesarEstadisticas(result)
       procesarErrores(result)
       generarResumen(result)
       
-      // Mostrar notificación
+      
       if (result.errors.length === 0) {
         success('Importación exitosa', `Se importaron ${result.successful_imports} olimpistas correctamente`)
       } else if (result.successful_imports > 0) {
@@ -86,7 +85,7 @@ export default function ImportarOlimpistasPage() {
     }
   }
 
-  // Manejar descarga de plantilla
+  
   const handleDownloadTemplate = async () => {
     try {
       await descargar()
@@ -96,7 +95,7 @@ export default function ImportarOlimpistasPage() {
     }
   }
 
-  // Limpiar archivo seleccionado
+ 
   const clearFile = () => {
     setSelectedFile(null)
     if (fileInputRef.current) {

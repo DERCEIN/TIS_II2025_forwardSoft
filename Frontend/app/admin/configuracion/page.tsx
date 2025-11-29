@@ -255,13 +255,12 @@ export default function ConfiguracionPage() {
           }
         }
 
-        // Convertir formato datetime-local a TIMESTAMP para PostgreSQL
+       
         const convertirFecha = (fechaLocal: string) => {
           if (!fechaLocal) return null
-          // Formato datetime-local: "YYYY-MM-DDTHH:mm"
-          // PostgreSQL necesita: "YYYY-MM-DD HH:mm:ss"
+          
           const fechaFormateada = fechaLocal.replace('T', ' ')
-          // Asegurar que tenga segundos
+         
           if (fechaFormateada.split(':').length === 2) {
             return fechaFormateada + ':00'
           }
@@ -460,7 +459,7 @@ export default function ConfiguracionPage() {
                           ...prev,
                           olimpiada: { ...prev.olimpiada, fechaInicio: e.target.value }
                           }))
-                          // Limpiar error al cambiar
+                         
                           if (errores.fechaInicio) {
                             setErrores(prev => {
                               const newErrores = { ...prev }
@@ -489,7 +488,7 @@ export default function ConfiguracionPage() {
                           ...prev,
                           olimpiada: { ...prev.olimpiada, fechaFin: e.target.value }
                           }))
-                          // Limpiar error al cambiar
+                        
                           if (errores.fechaFin) {
                             setErrores(prev => {
                               const newErrores = { ...prev }

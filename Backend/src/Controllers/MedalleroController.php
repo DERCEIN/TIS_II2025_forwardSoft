@@ -43,7 +43,7 @@ public function updateMedallero($request = null)
 
     $allUpdated = true;
     foreach ($request as $medallero) {
-        // ahora aceptamos id_medallero o id
+        
         $id = $medallero['id_medallero'] ?? $medallero['id'] ?? null;
         if (!$id) continue;
 
@@ -103,7 +103,7 @@ public function getMedalleroFinal() {
 
         $responseOlimpistas = [];
         
-        // Procesar cada grupo de área/nivel
+        
         foreach ($participantesPorAreaNivel as $key => $participantes) {
             if (empty($participantes)) continue;
             
@@ -111,12 +111,12 @@ public function getMedalleroFinal() {
             $nivelO = $participantes[0]['nivel'];
             $cfg = $cfgIndex[$areaO][$nivelO];
 
-            // Asegurar que los valores sean numéricos correctos
+           
             $cantidadOro = isset($cfg['oro']) ? intval($cfg['oro']) : 0;
             $cantidadPlata = isset($cfg['plata']) ? intval($cfg['plata']) : 0;
             $cantidadBronce = isset($cfg['bronce']) ? intval($cfg['bronce']) : 0;
             
-            // Verificar si los rangos están configurados
+           
             $rangosConfigurados = isset($cfg['oro_min']) && $cfg['oro_min'] !== null && $cfg['oro_min'] !== '' &&
                                   isset($cfg['oro_max']) && $cfg['oro_max'] !== null && $cfg['oro_max'] !== '' &&
                                   isset($cfg['plata_min']) && $cfg['plata_min'] !== null && $cfg['plata_min'] !== '' &&
@@ -125,7 +125,7 @@ public function getMedalleroFinal() {
                                   isset($cfg['bronce_max']) && $cfg['bronce_max'] !== null && $cfg['bronce_max'] !== '';
 
             if ($rangosConfigurados) {
-                // Obtener y normalizar rangos de puntuación
+              
                 $oroMin = floatval($cfg['oro_min']);
                 $oroMax = floatval($cfg['oro_max']);
                 $plataMin = floatval($cfg['plata_min']);
@@ -133,7 +133,7 @@ public function getMedalleroFinal() {
                 $bronceMin = floatval($cfg['bronce_min']);
                 $bronceMax = floatval($cfg['bronce_max']);
 
-                // Normalizar rangos: asegurar que min <= max
+                
                 $oroMinNormalizado = min($oroMin, $oroMax);
                 $oroMaxNormalizado = max($oroMin, $oroMax);
                 $plataMinNormalizado = min($plataMin, $plataMax);
@@ -141,7 +141,7 @@ public function getMedalleroFinal() {
                 $bronceMinNormalizado = min($bronceMin, $bronceMax);
                 $bronceMaxNormalizado = max($bronceMin, $bronceMax);
                 
-                // Separar participantes por rango (ordenados por posición)
+              
                 $enRangoOro = [];
                 $enRangoPlata = [];
                 $enRangoBronce = [];
@@ -154,7 +154,7 @@ public function getMedalleroFinal() {
                     $estaEnRangoPlata = ($puntaje >= $plataMinNormalizado && $puntaje <= $plataMaxNormalizado);
                     $estaEnRangoBronce = ($puntaje >= $bronceMinNormalizado && $puntaje <= $bronceMaxNormalizado);
                     
-                    // Prioridad: Oro > Plata > Bronce
+                   
                     if ($estaEnRangoOro) {
                         $enRangoOro[] = ['participante' => $o, 'puntaje' => $puntaje, 'posicion' => $pos];
                     } elseif ($estaEnRangoPlata) {
@@ -163,8 +163,7 @@ public function getMedalleroFinal() {
                         $enRangoBronce[] = ['participante' => $o, 'puntaje' => $puntaje, 'posicion' => $pos];
                     }
                 }
-                
-                // Ordenar por posición dentro de cada rango
+               
                 usort($enRangoOro, function($a, $b) {
                     return $a['posicion'] <=> $b['posicion'];
                 });
@@ -175,12 +174,12 @@ public function getMedalleroFinal() {
                     return $a['posicion'] <=> $b['posicion'];
                 });
                 
-                // Contadores para controlar la cantidad de medallas asignadas
+                
                 $contadorOro = 0;
                 $contadorPlata = 0;
                 $contadorBronce = 0;
                 
-                // Procesar todos los participantes y asignar medallas según rango y cantidad disponible
+               
                 foreach ($participantes as $o) {
                     $puntaje = floatval($o['puntuacion'] ?? 0);
                     $pos = intval($o['posicion'] ?? 0);
@@ -191,7 +190,7 @@ public function getMedalleroFinal() {
                     $estaEnRangoPlata = ($puntaje >= $plataMinNormalizado && $puntaje <= $plataMaxNormalizado);
                     $estaEnRangoBronce = ($puntaje >= $bronceMinNormalizado && $puntaje <= $bronceMaxNormalizado);
                     
-                    // Asignar medalla según rango y cantidad disponible (por orden de posición)
+                   
                     if ($estaEnRangoOro && $contadorOro < $cantidadOro) {
                         $medalla = "Oro";
                         $contadorOro++;
@@ -205,7 +204,7 @@ public function getMedalleroFinal() {
                         $contadorBronce++;
                     }
                     else {
-                        // No alcanzó medalla (excedió la cantidad o no está en ningún rango)
+                      
                         $tieneHonor = true;
                     }
                     
@@ -221,7 +220,7 @@ public function getMedalleroFinal() {
                     ];
                 }
             } else {
-                // Si los rangos NO están configurados, todos reciben mención de honor
+              
                 foreach ($participantes as $o) {
                     $puntaje = floatval($o['puntuacion'] ?? 0);
                     $pos = intval($o['posicion'] ?? 0);
@@ -247,10 +246,10 @@ public function getMedalleroFinal() {
             "nivel" => $nivel,
             "olimpistas" => $responseOlimpistas,
             "configPublicacion" => $configPublicacion,
-            "fechaPublicacion" => date('c'),  // ISO8601 para frontend
+            "fechaPublicacion" => date('c'), 
         ];
 
-        // Usar el formato estándar de respuesta de la API
+       
         Response::success($resultado, 'Medallero final obtenido exitosamente');
     } catch (\Exception $e) {
         error_log("Error al obtener medallero final: " . $e->getMessage());

@@ -14,9 +14,7 @@ class ConfiguracionAreaEvaluacion
         $this->db = Database::getInstance();
     }
 
-    /**
-     * Obtener configuración por área
-     */
+   
     public function getByAreaId($areaId)
     {
         $sql = "SELECT * FROM {$this->table} WHERE area_competencia_id = ?";

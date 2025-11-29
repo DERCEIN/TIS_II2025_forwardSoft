@@ -1760,9 +1760,7 @@ class AdminController
         }
     }
 
-    /**
-     * Obtener todas las áreas con estado de aprobación de certificados
-     */
+    
     public function getAreasAprobadas()
     {
         try {
@@ -1940,7 +1938,7 @@ class AdminController
                 $participantesPorNivel[$nivelId]['participantes'][] = $participante;
             }
             
-            // Contar por tipo de medalla
+           
             $estadisticas = [
                 'oro' => 0,
                 'plata' => 0,

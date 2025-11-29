@@ -171,17 +171,17 @@ class EvaluadorController
                 ];
             }, $evaluaciones);
 
-            // Verificar si la fase clasificatoria está cerrada
+            
             $faseClasificatoriaCerrada = false;
             $fechaCierreClasificatoria = null;
             if ($fase === 'clasificacion' || $fase === 'final') {
-                // Obtener el área del primer evaluado (si existe)
+               
                 $areaId = null;
                 if (!empty($evaluaciones)) {
                     $areaId = $evaluaciones[0]['area_competencia_id'] ?? null;
                 }
                 
-                // Si no hay evaluaciones, intentar obtener el área desde las asignaciones
+               
                 if (!$areaId) {
                     $sqlArea = "SELECT DISTINCT ia.area_competencia_id 
                                 FROM asignaciones_evaluacion ae

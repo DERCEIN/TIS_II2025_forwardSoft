@@ -377,7 +377,7 @@ class ConfiguracionOlimpiadaController
                 return;
             }
 
-            // Validar fase clasificatoria si se proporciona
+            
             if (isset($input['periodo_evaluacion_inicio']) && !empty($input['periodo_evaluacion_inicio'])) {
                 $requiredClasificatoria = [
                     'periodo_evaluacion_inicio',
@@ -414,7 +414,7 @@ class ConfiguracionOlimpiadaController
                 }
             }
 
-            // Validar fase final si se proporciona
+          
             if (isset($input['periodo_evaluacion_final_inicio']) && !empty($input['periodo_evaluacion_final_inicio'])) {
                 $requiredFinal = [
                     'periodo_evaluacion_final_inicio',

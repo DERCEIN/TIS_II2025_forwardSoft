@@ -517,7 +517,7 @@ export default function RegistroNotas() {
 
           if (reglas.success && reglas.data) {
 
-            // Filtrar duplicados por ID para evitar reglas duplicadas
+            
 
             const reglasUnicas = reglas.data.filter((regla: any, index: number, self: any[]) => 
 
@@ -572,7 +572,7 @@ export default function RegistroNotas() {
     const matchesNivel = filterNivel === 'todos' || participante.nivel === filterNivel
 
     
-    // Verificar estado: considerar tanto estado como inscripcion_estado para desclasificados
+    
     const esDesclasificado = participante.estado === 'desclasificado' || participante.inscripcion_estado === 'desclasificado'
     const matchesEstado = filterEstado === 'todos' || 
                          (filterEstado === 'desclasificado' ? esDesclasificado : participante.estado === filterEstado)
@@ -585,13 +585,13 @@ export default function RegistroNotas() {
 
 
   const handleEditNota = (participante: Participante) => {
-    // Si está en fase clasificatoria y está cerrada, bloquear
+    
     if (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) {
       error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
     }
 
-    // Para fase final, permitir editar (no hay restricción de fase cerrada)
+    
     setEditingParticipant(participante.id)
 
     setNotaTemporal(participante.nota_actual?.toString() || '')
@@ -649,7 +649,7 @@ export default function RegistroNotas() {
       if (response.success) {
 
         success('Desclasificación registrada', 'El participante ha sido desclasificado exitosamente')
-        fetchParticipantes() // Recargar la lista
+        fetchParticipantes() 
 
         handleCancelarDesclasificacion()
 
@@ -729,20 +729,19 @@ export default function RegistroNotas() {
       return
     }
 
-    // Si está en fase clasificatoria y está cerrada, bloquear
+   
     if (fase === 'clasificacion' && faseCerrada) {
       error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
     }
 
-    // Si está en fase clasificatoria y está cerrada (verificación adicional)
+    
     if (fase === 'clasificacion' && faseClasificatoriaCerrada) {
       error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
     }
 
-    // Para fase final, no verificar faseCerrada (solo aplica a clasificación)
-    // La fase final puede estar activa aunque la clasificatoria esté cerrada
+   
 
     
 
@@ -881,13 +880,13 @@ export default function RegistroNotas() {
 
       } else {
 
-        // Verificar que el participante esté clasificado para la fase final
+      
 
         const participante = participantes.find(p => p.id === participanteId)
 
         const estadoInscripcion = participante?.inscripcion_estado || participante?.estado
 
-        // Para evaluación final, permitir si está clasificado o tiene un estado del medallero
+       
         const estadosValidosFinal = ['clasificado', 'evaluado', 'oro', 'plata', 'bronce', 'mencion_honor', 'sin_medalla']
         if (participante && !estadosValidosFinal.includes(estadoInscripcion || '')) {
           error('Error', 'Solo se pueden registrar notas finales para participantes clasificados')
@@ -922,8 +921,7 @@ export default function RegistroNotas() {
 
       
 
-      // Para evaluación final, no actualizar el estado aquí - el backend lo calcula basado en el medallero
-      // Solo actualizar la nota y fecha
+     
       if (fase === 'final') {
         setParticipantes(prev => prev.map(p => 
           p.id === participanteId 
@@ -934,12 +932,12 @@ export default function RegistroNotas() {
               }
             : p
         ))
-        // Recargar participantes para obtener el estado actualizado del backend
+       
         setTimeout(() => {
           fetchParticipantes()
         }, 500)
       } else {
-        // Para clasificación, mantener la lógica anterior
+       
         setParticipantes(prev => prev.map(p => 
           p.id === participanteId 
             ? { 
@@ -998,7 +996,7 @@ export default function RegistroNotas() {
 
   const handleConfirmarCierreCalificacion = async () => {
 
-    // Excluir desclasificados del conteo de evaluaciones pendientes
+   
     const participantesEvaluables = participantes.filter(p => 
       p.estado !== 'desclasificado' && p.inscripcion_estado !== 'desclasificado'
     )
@@ -1154,7 +1152,7 @@ export default function RegistroNotas() {
 
   const nivelesUnicos = [...new Set(participantes.map(p => p.nivel))]
 
-  // Agrupar participantes por nivel y luego por grado
+ 
   const participantesAgrupados = participantesFiltrados.reduce((acc, participante) => {
     const nivel = participante.nivel || 'Sin nivel'
     const grado = participante.grado_escolaridad || participante.nivel || 'Sin grado'

@@ -36,18 +36,18 @@ export default function ResultadosPage() {
   const [departamentos, setDepartamentos] = useState<string[]>([]);
   const [unidades, setUnidades] = useState<string[]>([]);
 
-  // Cargar todos los resultados desde el inicio
+  
   useEffect(() => {
     const cargarTodosResultados = async () => {
       setLoading(true);
       try {
-        // Obtener todas las áreas publicadas
+        
         const areasResponse = await PublicacionResultadosService.getAreasPublicadas();
         if (areasResponse.success && areasResponse.data) {
           const areasData = areasResponse.data;
           const todosResultados: Resultado[] = [];
 
-          // Cargar resultados de cada área
+          
           for (const area of areasData) {
             try {
               const response = await PublicacionResultadosService.getResultadosPublicados({
@@ -65,7 +65,7 @@ export default function ResultadosPage() {
 
           setResultados(todosResultados);
           
-          // Extraer departamentos y unidades únicos
+         
           const depts = [...new Set(todosResultados.map((r: Resultado) => r.departamento).filter(Boolean))] as string[];
           const unids = [...new Set(todosResultados.map((r: Resultado) => r.unidad_educativa).filter(Boolean))] as string[];
           setDepartamentos(depts.sort());
@@ -80,25 +80,25 @@ export default function ResultadosPage() {
     cargarTodosResultados();
   }, []);
 
-  // Filtrar resultados
+ 
   const filteredResults = useMemo(() => {
     return resultados.filter((item) => {
-      // Filtro por nombre
+     
       if (searchName && !item.nombre_completo.toLowerCase().includes(searchName.toLowerCase())) {
         return false;
       }
       
-      // Filtro por área
+      
       if (selectedArea && item.area !== selectedArea) {
         return false;
       }
       
-      // Filtro por nivel
+      
       if (selectedLevel && item.nivel !== selectedLevel) {
         return false;
       }
       
-      // Filtros adicionales
+     
       if (filtros.departamento && item.departamento !== filtros.departamento) return false;
       if (filtros.unidad && item.unidad_educativa !== filtros.unidad) return false;
       if (filtros.observaciones && item.observaciones !== filtros.observaciones) return false;
@@ -107,7 +107,7 @@ export default function ResultadosPage() {
     });
   }, [resultados, searchName, selectedArea, selectedLevel, filtros]);
 
-  // Separar por nivel
+ 
   const resultadosPrimaria = useMemo(() => 
     filteredResults.filter(r => r.nivel === "Primaria"), 
     [filteredResults]

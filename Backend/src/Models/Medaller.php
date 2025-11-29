@@ -67,7 +67,7 @@ class Medaller{
         $column = $allowedColumns[$key];
         $fields[] = "$column = ?";
 
-        // convertir a int los campos numéricos
+        
         if (str_contains($key, 'oro') || str_contains($key, 'plata') || str_contains($key, 'bronce')) {
             $values[] = (int)$value;
         } else {

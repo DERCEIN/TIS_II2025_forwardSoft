@@ -24,7 +24,6 @@ type Competitor = {
   area: string;
   nivel: string;
   puntaje: number;
-  // Estado de medalla o clasificación (oro, plata, bronce, mencion, etc.) o null si no tiene
   estado: string | null;
   puesto?: number | null;
 };
@@ -33,7 +32,6 @@ type Area = {
   id: string;
   nombre: string;
   approved: boolean;
-   // Marca si la fase final del área está cerrada (usado para filtrar áreas habilitadas)
   finalClosed?: boolean;
   competitors: Competitor[];
 };
@@ -121,7 +119,7 @@ export default function PremiacionPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        // Cargar todas las áreas desde la API
+       
         const response = await CertificadosService.getAreasAprobadas();
         if (response.success && response.data) {
           const rawAreas: Area[] = await Promise.all(
@@ -140,7 +138,6 @@ export default function PremiacionPage() {
                         area: areaData.nombre,
                         nivel: p.nivel,
                         puntaje: p.puntaje || 0,
-                        // Sin medalla_asignada (NULL) => null aquí; premiación puede tratarlos como participación
                         estado: p.medalla_asignada || null,
                         puesto: p.puesto
                       }))
@@ -168,7 +165,7 @@ export default function PremiacionPage() {
             setConsolidatedList([]);
           } else {
             setAreas(readyAreas);
-            // Generar automáticamente la lista consolidada de premiados (solo oro, plata, bronce)
+          
             const premiados: Competitor[] = [];
             const ordenMedallas = ["oro", "plata", "bronce"];
             
@@ -233,7 +230,7 @@ export default function PremiacionPage() {
       const margin = 1.18;
       let y = margin + 0.5; // Espacio superior para el título
 
-      // Título principal centrado
+     
       pdf.setFontSize(20);
       pdf.setFont("helvetica", "bold");
       const title = "LISTA GENERAL DE PREMIADOS";
@@ -246,11 +243,11 @@ export default function PremiacionPage() {
       );
       y += 0.4;
 
-      // TABLA GENERAL - Solo premiados (oro, plata, bronce)
+      
       if (payload.type === "general" && payload?.payload?.list) {
         const list = payload.payload.list || [];
         
-        // Filtrar solo los premiados (oro, plata, bronce) - validar que estado sea string
+      
         const premiados = list.filter((c: Competitor) => {
           if (!c.estado) return false;
           const estadoStr = String(c.estado).toLowerCase().trim();
@@ -264,7 +261,7 @@ export default function PremiacionPage() {
             align: "center",
           });
         } else {
-          // Ordenar por tipo de medalla (oro, plata, bronce) y luego por puntaje descendente
+          
           const ordenMedallas = ["oro", "plata", "bronce"];
           const premiadosOrdenados = premiados.sort((a: Competitor, b: Competitor) => {
             const estadoA = String(a.estado || "").toLowerCase().trim();
@@ -297,10 +294,10 @@ export default function PremiacionPage() {
               ]);
 
             if (rows.length > 0) {
-              // Espacio antes de cada sección
+             
               y = pdf.lastAutoTable ? pdf.lastAutoTable.finalY + 0.3 : y;
 
-              // Título de la sección (medalla)
+              
               pdf.setFontSize(16);
               pdf.setFont("helvetica", "bold");
               pdf.text(nombresCategorias[i], pdf.internal.pageSize.getWidth() / 2, y, {
@@ -308,7 +305,7 @@ export default function PremiacionPage() {
               });
               y += 0.25;
 
-              // Tabla de la sección
+            
               autoTable(pdf, {
                 startY: y,
                 head: [["Área", "Competidor", "Unidad Educativa", "Puntaje"]],
@@ -318,7 +315,7 @@ export default function PremiacionPage() {
                 margin: { left: margin, right: margin },
                 styles: { fontSize: 11 },
                 columnStyles: {
-                  3: { halign: "right" }, // Puntaje alineado a la derecha
+                  3: { halign: "right" },
                 },
               });
             }

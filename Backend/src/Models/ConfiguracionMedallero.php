@@ -16,7 +16,7 @@ class ConfiguracionMedallero
 
     public function getByAreaAndLevel($areaId, $nivelId = null, $gradoEscolaridad = null)
     {
-        // Primero intentar obtener configuración específica por grado
+        
         if ($gradoEscolaridad) {
             $sql = "SELECT * FROM {$this->table} 
                     WHERE area_competencia_id = ? 
@@ -33,13 +33,13 @@ class ConfiguracionMedallero
             $stmt = $this->db->query($sql, $params);
             $result = $stmt->fetch();
             
-            // Si hay configuración específica por grado, retornarla
+           
             if ($result) {
                 return $result;
             }
         }
         
-        // Si no hay configuración por grado, buscar por nivel (o general)
+       
         $sql = "SELECT * FROM {$this->table} 
                 WHERE area_competencia_id = ? 
                 AND (grado_escolaridad IS NULL OR grado_escolaridad = '')";

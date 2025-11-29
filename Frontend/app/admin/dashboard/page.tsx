@@ -43,7 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService, PublicacionResultadosService } from "@/lib/api"
 
-// Importar la URL base para logs
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/AuthContext"
@@ -452,7 +452,7 @@ export default function AdminDashboard() {
       return false
     }
     
-    // Validar nombres: solo letras, espacios, guiones y apostrofes
+    
     const nombreRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]+$/
     if (!nombreRegex.test(userFirstName.trim())) {
       toast({ 
@@ -472,7 +472,7 @@ export default function AdminDashboard() {
       return false
     }
     
-    // Validar institución: solo letras y espacios, no números
+    
     if (userInstitution.trim()) {
       const institucionRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s.,-]+$/
       if (!institucionRegex.test(userInstitution.trim())) {
@@ -559,7 +559,7 @@ export default function AdminDashboard() {
           })
         }
 
-        // Limpiar formulario solo si el email se envió correctamente
+       
         if (credentialsSent) {
         setUserFirstName("")
         setUserLastName("")
@@ -571,12 +571,12 @@ export default function AdminDashboard() {
         setUserExperience("")
           
           toast({
-            title: "✅ Usuario registrado",
+            title: "Usuario registrado",
             description: `Se creó ${createdEmail}. Las credenciales se enviaron por email.`,
           })
         } else {
           toast({
-            title: "⚠️ Usuario creado",
+            title: "Usuario creado",
             description: `El usuario se creó pero no se pudo enviar el email. Las credenciales se muestran abajo.`,
             variant: "destructive",
           })
@@ -624,11 +624,11 @@ export default function AdminDashboard() {
       if (res.success && res.data) {
         setImportResult(res.data)
         toast({
-          title: "✅ Importación completada",
+          title: "Importación completada",
           description: `Se importaron ${res.data.successful_imports} de ${res.data.total_rows} usuarios. ${res.data.emails_sent} emails enviados.`,
         })
         
-        // Recargar lista de usuarios
+       
         fetchUsers()
       } else {
         toast({
@@ -646,13 +646,13 @@ export default function AdminDashboard() {
       })
     } finally {
       setImportingUsers(false)
-      // Limpiar el input
+     
       event.target.value = ''
     }
   }
 
   const handleDownloadTemplate = () => {
-    // Obtener nombres de áreas para el ejemplo
+    
     const areasEjemplo = areas.length > 0 
       ? areas.slice(0, 2).map(a => a.nombre).join(',')
       : 'Matemáticas,Física'
@@ -673,7 +673,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
     URL.revokeObjectURL(url)
     
     toast({
-      title: "✅ Plantilla descargada",
+      title: " Plantilla descargada",
       description: "Se descargó la plantilla CSV. Completa los datos y vuelve a importar.",
     })
   }
@@ -953,7 +953,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                              configArea.periodo_publicacion_inicio && 
                                              configArea.periodo_publicacion_fin
                   
-                  // Datos reales desde el backend
+                  
                   const participantes = parseInt(area.participantes_count) || 0
                   const evaluadores = parseInt(area.evaluadores_count) || 0
                   const capacidad = parseInt(area.capacidad) || 300
@@ -1301,34 +1301,32 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                       try {
                         setIsSavingArea(true)
                         
-                        // Convertir formato datetime-local a TIMESTAMP para PostgreSQL
+                       
                         const convertirFecha = (fechaLocal: string) => {
                           if (!fechaLocal) return ''
-                          // Formato datetime-local: "YYYY-MM-DDTHH:mm"
-                          // PostgreSQL necesita: "YYYY-MM-DD HH:mm:ss"
+                        
                           const fechaFormateada = fechaLocal.replace('T', ' ')
-                          // Asegurar que tenga segundos
+                         
                           if (fechaFormateada.split(':').length === 2) {
                             return fechaFormateada + ':00'
                           }
                           return fechaFormateada
                         }
 
-                        // Preparar datos a enviar
+                        
                         const datosEnvio: any = {
                           area_competencia_id: selectedArea.id,
                         }
 
-                        // Si estamos en fase clasificatoria, SOLO permitir actualizar el tiempo de evaluación
-                        // Los períodos de evaluación y publicación de la fase clasificatoria NO se pueden editar
+                       
                         if (selectedFase === 'clasificatoria') {
                           datosEnvio.tiempo_evaluacion_minutos = tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120
                         }
 
-                        // Agregar datos de fase final solo si estamos en fase final y están presentes
+                       
                         if (selectedFase === 'final' && tempConfig.periodo_evaluacion_final_inicio && tempConfig.periodo_evaluacion_final_fin && 
                             tempConfig.periodo_publicacion_final_inicio && tempConfig.periodo_publicacion_final_fin) {
-                          // Validar fechas de fase final
+                        
                           const evalFinalInicio = new Date(tempConfig.periodo_evaluacion_final_inicio)
                           const evalFinalFin = new Date(tempConfig.periodo_evaluacion_final_fin)
                           const pubFinalInicio = new Date(tempConfig.periodo_publicacion_final_inicio)
@@ -1392,17 +1390,17 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                       } catch (error: any) {
                         console.error("Error al guardar configuración:", error)
                         
-                        // Extraer mensaje de error más específico
+                        
                         let mensajeError = "No se pudo guardar la configuración. Inténtalo de nuevo."
                         
                         if (error?.message) {
-                          // Si el mensaje tiene formato "código:mensaje", extraer solo el mensaje
+                         
                           const match = error.message.match(/^\d+:(.+)$/)
                           mensajeError = match ? match[1].trim() : error.message
                         } else if (error?.response?.data?.message) {
                           mensajeError = error.response.data.message
                         } else if (error?.response?.data?.errors) {
-                          // Si hay errores de validación, construir mensaje
+                        
                           const errores = Object.entries(error.response.data.errors)
                             .map(([campo, mensajes]: [string, any]) => {
                               const msgs = Array.isArray(mensajes) ? mensajes : [mensajes]
@@ -1608,7 +1606,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                               setUserLastName(validValue)
                             }}
                             onBlur={(e) => {
-                              // Limpiar espacios múltiples
+                             
                               const cleaned = e.target.value.trim().replace(/\s+/g, ' ')
                               setUserLastName(cleaned)
                             }}
@@ -2168,7 +2166,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
 
                 {/* Calendario General */}
                 {(() => {
-                  // Recopilar todos los períodos de todas las áreas (clasificatoria y final)
+                 
                   const todosLosPeriodos: Array<{
                     area: string
                     fase: 'clasificatoria' | 'final'
@@ -2194,7 +2192,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                       })
                     }
                     
-                    // Fase final
+                   
                     if (configArea.periodo_evaluacion_final_inicio && configArea.periodo_evaluacion_final_fin &&
                         configArea.periodo_publicacion_final_inicio && configArea.periodo_publicacion_final_fin) {
                       todosLosPeriodos.push({
@@ -2208,7 +2206,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     }
                   })
 
-                  // Función para verificar si una fecha está en algún rango de evaluación
+                  
                   const estaEnEvaluacion = (fecha: Date) => {
                     return todosLosPeriodos.some(p => {
                       if (!p.evalInicio || !p.evalFin) return false
@@ -2219,7 +2217,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     })
                   }
 
-                  // Función para verificar si una fecha está en algún rango de publicación
+                 
                   const estaEnPublicacion = (fecha: Date) => {
                     return todosLosPeriodos.some(p => {
                       if (!p.pubInicio || !p.pubFin) return false
@@ -2230,7 +2228,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     })
                   }
 
-                  // Función para obtener el tipo de fecha y fase
+                 
                   const obtenerTipoFecha = (fecha: Date) => {
                     const fechaStr = fecha.toISOString().split('T')[0]
                     const periodosEnFecha = todosLosPeriodos.filter(p => {
@@ -2273,7 +2271,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     return { tipo, fase }
                   }
 
-                  // Obtener rango de fechas general
+                 
                   const todasLasFechas: Date[] = []
                   todosLosPeriodos.forEach(p => {
                     if (p.evalInicio) todasLasFechas.push(p.evalInicio)
@@ -2298,7 +2296,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                   const fechaMin = new Date(Math.min(...todasLasFechas.map(d => d.getTime())))
                   const fechaMax = new Date(Math.max(...todasLasFechas.map(d => d.getTime())))
 
-                  // Función para generar calendario de un mes
+                  
                   const generarCalendarioMes = (año: number, mes: number) => {
                     const primerDia = new Date(año, mes, 1)
                     const ultimoDia = new Date(año, mes + 1, 0)
@@ -2307,19 +2305,19 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     
                     const dias: Array<{ dia: number; tipo: string; fase: string | null }> = []
                     
-                    // Días del mes anterior (para completar la primera semana)
+                   
                     for (let i = diaInicioSemana - 1; i >= 0; i--) {
                       dias.push({ dia: 0, tipo: 'fuera', fase: null })
                     }
                     
-                    // Días del mes actual
+                   
                     for (let dia = 1; dia <= diasEnMes; dia++) {
                       const fecha = new Date(año, mes, dia)
                       const infoFecha = obtenerTipoFecha(fecha)
                       dias.push({ dia, tipo: infoFecha.tipo, fase: infoFecha.fase })
                     }
                     
-                    // Días del mes siguiente (para completar la última semana)
+                   
                     const diasRestantes = 42 - dias.length // 6 semanas * 7 días
                     for (let dia = 1; dia <= diasRestantes; dia++) {
                       dias.push({ dia: 0, tipo: 'fuera', fase: null })
@@ -2328,7 +2326,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     return dias
                   }
 
-                  // Obtener meses a mostrar
+                 
                   const meses: Array<{ año: number; mes: number }> = []
                   const fechaActual = new Date(fechaMin.getFullYear(), fechaMin.getMonth(), 1)
                   
@@ -2377,7 +2375,6 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                     let textColor = 'text-gray-600'
                                     let borderClass = ''
                                     
-                                    // Determinar color según tipo y fase
                                     if (item.tipo === 'evaluacion') {
                                       if (item.fase === 'final' || item.fase === 'ambas') {
                                         bgColor = 'bg-purple-500'
@@ -2403,7 +2400,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                       textColor = 'text-white'
                                     }
                                     
-                                    // Agregar borde para distinguir fases
+                                    
                                     if (item.fase === 'clasificatoria' && item.tipo !== 'ninguno') {
                                       borderClass = 'border-2 border-blue-600'
                                     } else if (item.fase === 'final' && item.tipo !== 'ninguno') {

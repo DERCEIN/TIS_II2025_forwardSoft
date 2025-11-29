@@ -10,7 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CertificadosService } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-/** Demo data (usa tus datos reales en producción) */
+
 const demoAreas: Area[] = [
   {
     id: "matematica",
@@ -100,7 +100,7 @@ export default function PremiacionPage() {
       setLoading(true);
       try {
         if (isCoordinador) {
-          // Cargar datos del coordinador desde la API
+         
           const response = await CertificadosService.getParticipantesPremiados();
           if (response.success && response.data) {
             const data = response.data;
@@ -115,9 +115,7 @@ export default function PremiacionPage() {
                 area: data.area.nombre,
                 nivel: p.nivel,
                 puntaje: p.puntaje || 0,
-                // Si no tiene medalla_asignada (NULL en BD), lo tratamos como
-                // participante de mención de honor para certificados de participación.
-                // Dejamos estado en null para que el modal lo clasifique como participación.
+               
                 estado: p.medalla_asignada || null,
                 puesto: p.puesto
               }))
@@ -133,7 +131,7 @@ export default function PremiacionPage() {
             });
           }
         } else if (isAdmin) {
-          // Cargar todas las áreas desde la API
+          
           const response = await CertificadosService.getAreasAprobadas();
           if (response.success && response.data) {
             const allAreas: Area[] = await Promise.all(
@@ -152,7 +150,6 @@ export default function PremiacionPage() {
                           area: areaData.nombre,
                           nivel: p.nivel,
                           puntaje: p.puntaje || 0,
-                          // Sin medalla_asignada (NULL) => null aquí; CertificateModal los trata como participación
                           estado: p.medalla_asignada || null,
                           puesto: p.puesto
                         }))
@@ -170,7 +167,7 @@ export default function PremiacionPage() {
               })
             );
 
-            // Solo mostrar al administrador las áreas ya habilitadas (aprobadas + fase final cerrada)
+           
             const enabledAreas = allAreas.filter(a => a.approved && a.finalClosed);
             const notApproved = allAreas.filter(a => !a.approved);
             const pendingFinalClose = allAreas.filter(a => a.approved && !a.finalClosed);
@@ -242,7 +239,7 @@ export default function PremiacionPage() {
         });
       }
     } else {
-      // Para admin, solo actualizar el estado local (la aprobación ya fue hecha por el coordinador)
+      
     setAreas(prev => prev.map(a => (a.id === areaId ? { ...a, approved } : a)));
     }
   }
@@ -255,19 +252,19 @@ export default function PremiacionPage() {
   }
 
   function consolidateCertificates() {
-    // Si es coordinador, no puede consolidar - solo aprobar
+    
     if (isCoordinador) {
       alert("Como coordinador, solo puedes aprobar participantes de tu área. El administrador generará los certificados una vez aprobados.");
       return;
     }
     
-    // Si es admin, solo puede consolidar si hay áreas habilitadas (ya filtradas al cargarlas)
+   
     if (areas.length === 0) {
       alert("No hay áreas habilitadas. Asegúrate de que las áreas estén aprobadas por sus coordinadores y con la fase final cerrada.");
       return;
     }
     
-    // Prepara lista consolidada (solo puestos 1,2,3)
+  
     const consolidated: Competitor[] = [];
     areas.forEach(a => {
       a.competitors
@@ -277,7 +274,7 @@ export default function PremiacionPage() {
     setShowCertificateModal(true);
   }
 
-  // Si es coordinador, mostrar solo el modal
+  
   if (isCoordinador) {
     const coordinadorArea = areas.find(a => a.id === selectedAreaId) || areas[0];
     
@@ -293,7 +290,7 @@ export default function PremiacionPage() {
     );
   }
 
-  // Si es admin, mostrar la página completa
+ 
   return (
     <div className="min-h-screen p-6 bg-gray-100 text-gray-900">
       <div className="max-w-6xl mx-auto space-y-6">

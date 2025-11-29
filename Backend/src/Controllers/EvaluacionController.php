@@ -67,7 +67,7 @@ class EvaluacionController
         
         try {
             
-            // Verificar primero si la fase clasificatoria está cerrada
+           
             $inscripcion = $this->inscripcionModel->findById($input['inscripcion_area_id']);
             if ($inscripcion) {
                 $areaId = $inscripcion['area_competencia_id'];
@@ -91,7 +91,7 @@ class EvaluacionController
                 }
             }
             
-            // Verificar permisos de tiempo de asignación
+           
             if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'], 'clasificacion')) {
                 Response::forbidden('No tienes permisos para evaluar esta inscripción. Verifica tu tiempo de asignación y período de evaluación.');
             }
@@ -229,7 +229,7 @@ class EvaluacionController
             
             
             if ($existingEval) {
-                // Verificar si hay un cambio pendiente para esta evaluación
+               
                 if (LogCambiosNotas::tieneCambioPendiente($evaluacionId)) {
                     Response::error('No se puede modificar esta evaluación porque tiene un cambio pendiente de aprobación. Por favor, espera a que el coordinador revise el cambio anterior.', 400);
                     return;
@@ -382,7 +382,7 @@ class EvaluacionController
             ];
 
             if ($existingEval) {
-                // Verificar si hay un cambio pendiente para esta evaluación
+                
                 if (LogCambiosNotas::tieneCambioPendiente($existingEval['id'])) {
                     Response::error('No se puede modificar esta evaluación porque tiene un cambio pendiente de aprobación. Por favor, espera a que el coordinador revise el cambio anterior.', 400);
                     return;
@@ -390,7 +390,7 @@ class EvaluacionController
                 
                 error_log("Registrando cambio de nota final - Evaluacion ID: " . $existingEval['id']);
                 
-                // Obtener datos del olimpista, área y nivel
+               
                 $sql = "SELECT o.id as olimpista_id, o.nombre_completo as olimpista_nombre, 
                                ac.id as area_id, ac.nombre as area_nombre,
                                nc.id as nivel_id, nc.nombre as nivel_nombre
@@ -410,7 +410,7 @@ class EvaluacionController
                     $motivo = $input['motivo_modificacion'] ?? 'Modificación de nota final';
                     error_log("Registrando cambio final con motivo: $motivo");
                     
-                    // Registrar cambio en el log con tipo 'final'
+                    
                     $cambioRegistrado = LogCambiosNotas::registrarCambio(
                         $existingEval['id'],
                         $currentUser['id'],
@@ -426,11 +426,11 @@ class EvaluacionController
                         $existingEval['observaciones'],
                         $input['observaciones'] ?? null,
                         $motivo,
-                        'final' // Tipo de evaluación: final
+                        'final' 
                     );
                     error_log("Cambio final registrado exitosamente");
                     
-                    // Enviar notificación al coordinador
+                  
                     if ($cambioRegistrado) {
                         try {
                             $sqlCoordinador = "SELECT u.id, u.name, u.email, u.nombre
@@ -690,7 +690,7 @@ class EvaluacionController
             return false;
         }
 
-        // Si es fase clasificatoria, verificar que no esté cerrada
+       
         if ($fase === 'clasificacion') {
             $sqlCierre = "
                 SELECT estado FROM cierre_fase_areas
@@ -706,7 +706,7 @@ class EvaluacionController
             $cierre = $stmtCierre->fetch(\PDO::FETCH_ASSOC);
             
             if ($cierre && $cierre['estado'] === 'cerrada') {
-                return false; // La fase clasificatoria está cerrada
+                return false;
             }
         }
 
@@ -724,7 +724,7 @@ class EvaluacionController
         $permiso = $stmt->fetch(\PDO::FETCH_ASSOC);
         
         if (!$permiso) {
-            return false; // No tiene permiso activo
+            return false; 
         }
         
         
@@ -752,33 +752,33 @@ class EvaluacionController
                 $periodoFin = $configArea['periodo_evaluacion_final_fin'] ?? null;
             }
             
-            // Si el período está configurado, validar que estemos dentro del rango
+            
             if ($periodoInicio && $periodoFin) {
                 $periodoInicioDt = new \DateTime($periodoInicio);
                 $periodoFinDt = new \DateTime($periodoFin);
                 
                 if ($now < $periodoInicioDt) {
                     error_log("canEvaluate: Fuera del período - Fecha actual antes del inicio. Fase: $fase, Inicio: $periodoInicio, Ahora: " . $now->format('Y-m-d H:i:s'));
-                    return false; // Aún no ha comenzado el período de evaluación
+                    return false; 
                 }
                 
                 if ($now > $periodoFinDt) {
                     error_log("canEvaluate: Fuera del período - Fecha actual después del fin. Fase: $fase, Fin: $periodoFin, Ahora: " . $now->format('Y-m-d H:i:s'));
-                    return false; // Ya pasó el período de evaluación
+                    return false; 
                 }
             } else {
-                // Si no hay período configurado para la fase final, permitir (puede que no esté configurado aún)
+               
                 if ($fase === 'final') {
                     error_log("canEvaluate: Período de evaluación final no configurado para el área " . $inscripcion['area_competencia_id']);
-                    // No bloquear si no está configurado, permitir evaluación
+                   
                 } else {
-                    // Para fase clasificatoria, si no hay período configurado, no permitir
+                   
                     error_log("canEvaluate: Período de evaluación clasificatoria no configurado para el área " . $inscripcion['area_competencia_id']);
                     return false;
                 }
             }
         } else {
-            // Si no hay configuración del área, no permitir
+           
             error_log("canEvaluate: No hay configuración de área para inscripción " . $inscripcionId);
             return false;
         }
@@ -907,7 +907,7 @@ class EvaluacionController
 
         } catch (\Exception $e) {
             error_log("Error verificando clasificación: " . $e->getMessage());
-            // No lanzar excepción para no interrumpir el flujo principal
+           
         }
     }
     
@@ -977,13 +977,11 @@ class EvaluacionController
         }
     }
 
-    /**
-     * Verificar si el evaluador ha completado todas sus evaluaciones asignadas y notificar al coordinador
-     */
+   
     private function verificarYNotificarEvaluadorCompleto($evaluadorId, $areaId, $nombreEvaluador, $correoEvaluador)
     {
         try {
-            // Obtener todas las asignaciones del evaluador en esta área para fase clasificatoria
+            
             $sqlAsignaciones = "
                 SELECT COUNT(*) as total_asignaciones
                 FROM asignaciones_evaluacion ae
@@ -999,7 +997,7 @@ class EvaluacionController
             $totalAsignaciones = (int)$asignaciones['total_asignaciones'];
             
             if ($totalAsignaciones == 0) {
-                return; // No tiene asignaciones en esta área
+                return;
             }
             
             
