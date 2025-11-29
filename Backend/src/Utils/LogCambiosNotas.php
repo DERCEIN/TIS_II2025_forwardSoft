@@ -17,17 +17,25 @@ class LogCambiosNotas
     
     /**
      * Registrar un cambio de nota
+     * @param string $tipoEvaluacion 'clasificacion' o 'final'
      */
-    public static function registrarCambio($evaluacionId, $evaluadorId, $evaluadorNombre, $olimpistaId, $olimpistaNombre, $areaId, $areaNombre, $nivelId, $nivelNombre, $notaAnterior, $notaNueva, $observacionesAnterior = null, $observacionesNueva = null, $motivoCambio = null)
+    public static function registrarCambio($evaluacionId, $evaluadorId, $evaluadorNombre, $olimpistaId, $olimpistaNombre, $areaId, $areaNombre, $nivelId, $nivelNombre, $notaAnterior, $notaNueva, $observacionesAnterior = null, $observacionesNueva = null, $motivoCambio = null, $tipoEvaluacion = 'clasificacion')
     {
         self::init();
         
+        // Validar tipo de evaluación
+        if (!in_array($tipoEvaluacion, ['clasificacion', 'final'])) {
+            error_log("LogCambiosNotas::registrarCambio - Tipo de evaluación inválido: $tipoEvaluacion");
+            $tipoEvaluacion = 'clasificacion'; // Default por compatibilidad
+        }
+        
         error_log("LogCambiosNotas::registrarCambio - Iniciando registro de cambio");
-        error_log("Datos: EvaluacionId=$evaluacionId, EvaluadorId=$evaluadorId, OlimpistaId=$olimpistaId, Motivo=$motivoCambio");
+        error_log("Datos: EvaluacionId=$evaluacionId, TipoEvaluacion=$tipoEvaluacion, EvaluadorId=$evaluadorId, OlimpistaId=$olimpistaId, Motivo=$motivoCambio");
         
         try {
             $sql = "INSERT INTO log_cambios_notas (
                 evaluacion_id,
+                tipo_evaluacion,
                 evaluador_id,
                 evaluador_nombre,
                 olimpista_id,
@@ -44,11 +52,12 @@ class LogCambiosNotas
                 ip_address,
                 fecha_cambio,
                 estado_aprobacion
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'pendiente')";
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'pendiente')";
             
             $stmt = self::$db->prepare($sql);
             $result = $stmt->execute([
                 $evaluacionId,
+                $tipoEvaluacion,
                 $evaluadorId,
                 $evaluadorNombre,
                 $olimpistaId,
@@ -117,6 +126,11 @@ class LogCambiosNotas
         if (!empty($filtros['estado_aprobacion']) && $filtros['estado_aprobacion'] !== 'todos') {
             $where[] = "lcn.estado_aprobacion = ?";
             $params[] = $filtros['estado_aprobacion'];
+        }
+        
+        if (!empty($filtros['tipo_evaluacion']) && in_array($filtros['tipo_evaluacion'], ['clasificacion', 'final'])) {
+            $where[] = "lcn.tipo_evaluacion = ?";
+            $params[] = $filtros['tipo_evaluacion'];
         }
         
         $whereClause = implode(' AND ', $where);
@@ -300,15 +314,28 @@ class LogCambiosNotas
             $cambio = self::getCambioPorId($cambioId);
             
             if (!$cambio || $cambio['estado_aprobacion'] !== 'pendiente') {
-                error_log("LogCambiosNotas::rechazarCambio - Cambio no encontrado o ya procesado");
+                error_log("LogCambiosNotas::rechazarCambio - Cambio no encontrado o ya procesado. ID: $cambioId");
                 return false;
             }
             
+            // Validar que el tipo_evaluacion existe
+            $tipoEvaluacion = $cambio['tipo_evaluacion'] ?? 'clasificacion';
+            if (!in_array($tipoEvaluacion, ['clasificacion', 'final'])) {
+                error_log("LogCambiosNotas::rechazarCambio - Tipo de evaluación inválido: " . ($tipoEvaluacion ?? 'NULL'));
+                $tipoEvaluacion = 'clasificacion'; // Default por compatibilidad
+            }
+            
+            // Validar que existe evaluacion_id
+            if (empty($cambio['evaluacion_id'])) {
+                error_log("LogCambiosNotas::rechazarCambio - evaluacion_id no encontrado en el cambio");
+                return false;
+            }
             
             self::$db->beginTransaction();
             
             try {
                 
+                // Actualizar el estado del cambio
                 $sql = "UPDATE log_cambios_notas
                         SET estado_aprobacion = 'rechazado',
                             coordinador_id = ?,
@@ -319,19 +346,60 @@ class LogCambiosNotas
                 $stmt = self::$db->prepare($sql);
                 $stmt->execute([$coordinadorId, $observaciones, $cambioId]);
                 
+                if ($stmt->rowCount() === 0) {
+                    throw new \Exception("No se pudo actualizar el estado del cambio");
+                }
                 
-                $sqlRevertir = "UPDATE evaluaciones_clasificacion
-                               SET puntuacion = ?,
-                                   observaciones = ?,
-                                   updated_at = NOW()
-                               WHERE id = ?";
+                // Revertir según el tipo de evaluación
+                $tablaEvaluacion = $tipoEvaluacion === 'final' 
+                    ? 'evaluaciones_finales' 
+                    : 'evaluaciones_clasificacion';
+                
+                // Verificar que el registro de evaluación existe
+                $sqlVerificar = "SELECT id FROM {$tablaEvaluacion} WHERE id = ?";
+                $stmtVerificar = self::$db->prepare($sqlVerificar);
+                $stmtVerificar->execute([$cambio['evaluacion_id']]);
+                $evaluacionExiste = $stmtVerificar->fetch(\PDO::FETCH_ASSOC);
+                
+                if (!$evaluacionExiste) {
+                    error_log("LogCambiosNotas::rechazarCambio - La evaluación ID {$cambio['evaluacion_id']} no existe en la tabla $tablaEvaluacion");
+                    // Continuar sin revertir la nota, pero marcar el cambio como rechazado
+                    self::$db->commit();
+                    error_log("LogCambiosNotas::rechazarCambio - Cambio $cambioId rechazado (nota no revertida - evaluación no existe)");
+                    return true;
+                }
+                
+                // Revertir la nota y observaciones
+                // Nota: evaluaciones_finales no tiene campo updated_at
+                if ($tipoEvaluacion === 'final') {
+                    $sqlRevertir = "UPDATE {$tablaEvaluacion}
+                                   SET puntuacion = ?,
+                                       observaciones = ?
+                                   WHERE id = ?";
+                } else {
+                    $sqlRevertir = "UPDATE {$tablaEvaluacion}
+                                   SET puntuacion = ?,
+                                       observaciones = ?,
+                                       updated_at = NOW()
+                                   WHERE id = ?";
+                }
                 
                 $stmtRevertir = self::$db->prepare($sqlRevertir);
+                $notaAnterior = $cambio['nota_anterior'] ?? null;
+                $observacionesAnterior = $cambio['observaciones_anterior'] ?? null;
+                
                 $stmtRevertir->execute([
-                    $cambio['nota_anterior'],
-                    $cambio['observaciones_anterior'],
+                    $notaAnterior,
+                    $observacionesAnterior,
                     $cambio['evaluacion_id']
                 ]);
+                
+                if ($stmtRevertir->rowCount() === 0) {
+                    error_log("LogCambiosNotas::rechazarCambio - No se pudo revertir la nota (ninguna fila afectada)");
+                    // Continuar de todas formas, el cambio ya está marcado como rechazado
+                } else {
+                    error_log("LogCambiosNotas::rechazarCambio - Nota revertida exitosamente en tabla: $tablaEvaluacion");
+                }
                 
                 self::$db->commit();
                 error_log("LogCambiosNotas::rechazarCambio - Cambio $cambioId rechazado y nota revertida");
@@ -339,11 +407,14 @@ class LogCambiosNotas
                 
             } catch (\Exception $e) {
                 self::$db->rollBack();
+                error_log("LogCambiosNotas::rechazarCambio - Error en transacción: " . $e->getMessage());
+                error_log("LogCambiosNotas::rechazarCambio - Stack trace: " . $e->getTraceAsString());
                 throw $e;
             }
             
         } catch (\Exception $e) {
             error_log("Error en LogCambiosNotas::rechazarCambio: " . $e->getMessage());
+            error_log("LogCambiosNotas::rechazarCambio - Stack trace: " . $e->getTraceAsString());
             return false;
         }
     }
@@ -382,12 +453,22 @@ class LogCambiosNotas
     }
     
     
-    public static function revertirNota($evaluacionId, $notaAnterior, $observacionesAnterior = null)
+    public static function revertirNota($evaluacionId, $notaAnterior, $observacionesAnterior = null, $tipoEvaluacion = 'clasificacion')
     {
         self::init();
         
+        // Validar tipo de evaluación
+        if (!in_array($tipoEvaluacion, ['clasificacion', 'final'])) {
+            error_log("LogCambiosNotas::revertirNota - Tipo de evaluación inválido: $tipoEvaluacion");
+            $tipoEvaluacion = 'clasificacion'; // Default por compatibilidad
+        }
+        
         try {
-            $sql = "UPDATE evaluaciones_clasificacion
+            $tablaEvaluacion = $tipoEvaluacion === 'final' 
+                ? 'evaluaciones_finales' 
+                : 'evaluaciones_clasificacion';
+            
+            $sql = "UPDATE {$tablaEvaluacion}
                     SET puntuacion = ?,
                         observaciones = ?,
                         updated_at = NOW()
@@ -397,7 +478,7 @@ class LogCambiosNotas
             $result = $stmt->execute([$notaAnterior, $observacionesAnterior, $evaluacionId]);
             
             if ($result) {
-                error_log("LogCambiosNotas::revertirNota - Nota revertida para evaluación $evaluacionId");
+                error_log("LogCambiosNotas::revertirNota - Nota revertida para evaluación $evaluacionId en tabla $tablaEvaluacion");
                 return true;
             }
             

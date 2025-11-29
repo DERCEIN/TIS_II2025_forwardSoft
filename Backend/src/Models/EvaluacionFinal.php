@@ -151,6 +151,7 @@ class EvaluacionFinal
                     ia.id as inscripcion_area_id,
                     o.nombre_completo as olimpista_nombre,
                     o.documento_identidad as olimpista_documento,
+                    o.grado_escolaridad,
                     AVG(ef.puntuacion) as puntuacion_final,
                     COUNT(ef.id) as total_evaluaciones
                 FROM inscripciones_areas ia
@@ -165,35 +166,78 @@ class EvaluacionFinal
             $params[] = $nivelId;
         }
         
-        $sql .= " GROUP BY ia.id, o.nombre_completo, o.documento_identidad
+        $sql .= " GROUP BY ia.id, o.nombre_completo, o.documento_identidad, o.grado_escolaridad
                   HAVING COUNT(ef.id) > 0
-                  ORDER BY puntuacion_final DESC";
+                  ORDER BY o.grado_escolaridad, puntuacion_final DESC";
         
         $stmt = $this->db->query($sql, $params);
         $resultados = $stmt->fetchAll();
         
-        // Aplicar configuración del medallero
+        // Si hay configuración del medallero, agrupar por grado y aplicar medallas
         if ($medalleroConfig) {
-            $oro = $medalleroConfig['oro'] ?? 1;
-            $plata = $medalleroConfig['plata'] ?? 1;
-            $bronce = $medalleroConfig['bronce'] ?? 1;
-            $mencion = $medalleroConfig['mencion_honor'] ?? 0;
-            
-            $posicion = 1;
-            foreach ($resultados as &$resultado) {
-                if ($posicion <= $oro) {
-                    $resultado['medalla'] = 'oro';
-                } elseif ($posicion <= $oro + $plata) {
-                    $resultado['medalla'] = 'plata';
-                } elseif ($posicion <= $oro + $plata + $bronce) {
-                    $resultado['medalla'] = 'bronce';
-                } elseif ($posicion <= $oro + $plata + $bronce + $mencion) {
-                    $resultado['medalla'] = 'mencion_honor';
-                } else {
-                    $resultado['medalla'] = 'sin_medalla';
+            // Agrupar resultados por grado de escolaridad
+            $resultadosPorGrado = [];
+            foreach ($resultados as $resultado) {
+                $grado = $resultado['grado_escolaridad'] ?? 'sin_grado';
+                if (!isset($resultadosPorGrado[$grado])) {
+                    $resultadosPorGrado[$grado] = [];
                 }
-                $posicion++;
+                $resultadosPorGrado[$grado][] = $resultado;
             }
+            
+            // Aplicar medallero a cada grupo de grado
+            $resultadosFinales = [];
+            $medalleroModel = new \ForwardSoft\Models\ConfiguracionMedallero();
+            
+            foreach ($resultadosPorGrado as $grado => $participantesGrado) {
+                // Obtener configuración específica del grado si existe
+                // Primero intentar obtener configuración por grado específico
+                $configGrado = null;
+                if ($grado !== 'sin_grado') {
+                    // Obtener nivel del primer participante del grado
+                    $nivelId = null;
+                    if (!empty($participantesGrado)) {
+                        $sqlNivel = "SELECT ia.nivel_competencia_id 
+                                     FROM inscripciones_areas ia 
+                                     WHERE ia.id = ?";
+                        $stmtNivel = $this->db->query($sqlNivel, [$participantesGrado[0]['inscripcion_area_id']]);
+                        $nivelData = $stmtNivel->fetch();
+                        $nivelId = $nivelData['nivel_competencia_id'] ?? null;
+                    }
+                    
+                    // Intentar obtener configuración específica por grado
+                    $configGrado = $medalleroModel->getByAreaAndLevel($areaId, $nivelId, $grado);
+                }
+                
+                // Si no hay configuración específica por grado, usar la general
+                if (!$configGrado) {
+                    $configGrado = $medalleroConfig;
+                }
+                
+                $oro = $configGrado['oro'] ?? 1;
+                $plata = $configGrado['plata'] ?? 1;
+                $bronce = $configGrado['bronce'] ?? 1;
+                $mencion = $configGrado['mencion_honor'] ?? 0;
+                
+                $posicion = 1;
+                foreach ($participantesGrado as &$participante) {
+                    if ($posicion <= $oro) {
+                        $participante['medalla'] = 'oro';
+                    } elseif ($posicion <= $oro + $plata) {
+                        $participante['medalla'] = 'plata';
+                    } elseif ($posicion <= $oro + $plata + $bronce) {
+                        $participante['medalla'] = 'bronce';
+                    } elseif ($posicion <= $oro + $plata + $bronce + $mencion) {
+                        $participante['medalla'] = 'mencion_honor';
+                    } else {
+                        $participante['medalla'] = 'sin_medalla';
+                    }
+                    $posicion++;
+                    $resultadosFinales[] = $participante;
+                }
+            }
+            
+            return $resultadosFinales;
         }
         
         return $resultados;

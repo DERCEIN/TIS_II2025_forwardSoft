@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { OlimpistaService, AuthService, ReporteService, AdminService, CoordinadorService, PublicacionResultadosService } from "@/lib/api"
+import { OlimpistaService, AuthService, ReporteService, AdminService, CoordinadorService, PublicacionResultadosService, CertificadosService } from "@/lib/api"
 import { Input } from "@/components/ui/input"
 import {
   Trophy,
@@ -42,10 +42,18 @@ import {
   Timer,
   Globe,
   EyeOff,
+  FileSpreadsheet,
+  Loader2,
+  Lock,
+  Share2,
+  Medal,
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/AuthContext"
 import FirmaDigital from "@/components/FirmaDigital"
+import { useToast } from "@/hooks/use-toast"
+import CoordinadorCertificateModal from "@/app/certificados/components/CoordinadorCertificateModal"
+import { Area } from "@/app/certificados/utils/certificateGenerator"
 
 function ListaInscritosAreaNivel() {
   const [loading, setLoading] = useState<boolean>(true)
@@ -2875,6 +2883,656 @@ function CierreFaseArea() {
   )
 }
 
+function CierreFaseFinal() {
+  const [loading, setLoading] = useState<boolean>(true)
+  const [faseCerrada, setFaseCerrada] = useState<boolean>(false)
+  const [showCierreModal, setShowCierreModal] = useState<boolean>(false)
+  const [cerrando, setCerrando] = useState<boolean>(false)
+  const [descargandoPDF, setDescargandoPDF] = useState<boolean>(false)
+  const [descargandoExcel, setDescargandoExcel] = useState<boolean>(false)
+  const [descargandoEstadisticas, setDescargandoEstadisticas] = useState<boolean>(false)
+  const [faseData, setFaseData] = useState<any>(null)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const verificarEstado = async () => {
+      try {
+        const response = await CoordinadorService.getProgresoEvaluacionFinal()
+        if (response.success) {
+          // Verificar directamente el estado de cierre de fase final desde la base de datos
+          const cerrada = response.data?.estado_fase?.cerrada || false
+          const estado = response.data?.estado_fase?.estado || 'activa'
+          
+          // La fase final está cerrada si hay un registro en cierre_fase_areas con estado 'cerrada' y fase 'final'
+          const estaCerrada = cerrada || estado === 'cerrada'
+          
+          console.log(' [CierreFaseFinal] Estado fase final:', {
+            cerrada: cerrada,
+            estado: estado,
+            estaCerrada: estaCerrada,
+            fecha_cierre: response.data?.estado_fase?.fecha_cierre
+          })
+          
+          setFaseCerrada(estaCerrada)
+          setFaseData(response.data)
+        }
+      } catch (error) {
+        console.error('Error verificando estado de fase final:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    verificarEstado()
+    const interval = setInterval(verificarEstado, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleCerrarFase = async () => {
+    setCerrando(true)
+    try {
+      const response = await CoordinadorService.cerrarFaseFinal()
+      if (response.success) {
+        toast({
+          title: "Fase final cerrada",
+          description: "La fase final ha sido cerrada exitosamente. Los reportes se están generando en segundo plano.",
+        })
+        setFaseCerrada(true)
+        setShowCierreModal(false)
+        // Recargar datos
+        const refreshResponse = await CoordinadorService.getProgresoEvaluacionFinal()
+        if (refreshResponse.success) {
+          setFaseData(refreshResponse.data)
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: response.message || "No se pudo cerrar la fase final",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Error al cerrar la fase final",
+        variant: "destructive",
+      })
+    } finally {
+      setCerrando(false)
+    }
+  }
+
+  const handleRegenerar = async () => {
+    // Recargar datos
+    setLoading(true)
+    try {
+      const response = await CoordinadorService.getProgresoEvaluacionFinal()
+      if (response.success) {
+        setFaseData(response.data)
+        toast({
+          title: "Datos actualizados",
+          description: "La información ha sido regenerada exitosamente.",
+        })
+      }
+    } catch (error) {
+      console.error('Error regenerando datos:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCompartir = () => {
+    // Copiar URL al portapapeles
+    const url = window.location.href
+    navigator.clipboard.writeText(url)
+    toast({
+      title: "URL copiada",
+      description: "El enlace ha sido copiado al portapapeles.",
+    })
+  }
+
+  const handleDescargarPDF = async () => {
+    setDescargandoPDF(true)
+    try {
+      const result = await CoordinadorService.descargarReportePDFCierreFaseFinal()
+      if (result.success) {
+        toast({
+          title: "Descarga exitosa",
+          description: "El reporte PDF se está descargando",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo descargar el reporte PDF",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Error al descargar el reporte PDF",
+        variant: "destructive",
+      })
+    } finally {
+      setDescargandoPDF(false)
+    }
+  }
+
+  const handleDescargarExcel = async () => {
+    setDescargandoExcel(true)
+    try {
+      const result = await CoordinadorService.descargarReporteExcelParticipantesFaseFinal()
+      if (result.success) {
+        toast({
+          title: "Descarga exitosa",
+          description: "El reporte Excel se está descargando",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo descargar el reporte Excel",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Error al descargar el reporte Excel",
+        variant: "destructive",
+      })
+    } finally {
+      setDescargandoExcel(false)
+    }
+  }
+
+  const handleDescargarEstadisticas = async () => {
+    setDescargandoEstadisticas(true)
+    try {
+      const result = await CoordinadorService.descargarReportePDFEstadisticasFaseFinal()
+      if (result.success) {
+        toast({
+          title: "Descarga exitosa",
+          description: "El reporte de estadísticas se está descargando",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo descargar el reporte de estadísticas",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Error al descargar el reporte de estadísticas",
+        variant: "destructive",
+      })
+    } finally {
+      setDescargandoEstadisticas(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Cargando información de cierre de fase final...</p>
+      </div>
+    )
+  }
+
+  if (loading && !faseData) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Cargando información de cierre de fase final...</p>
+      </div>
+    )
+  }
+
+  const medallas = faseData?.medallas || { oro: 0, plata: 0, bronce: 0, mencion_honor: 0, sin_medalla: 0 }
+  const totalEvaluados = faseData?.estadisticas_generales?.total_evaluados || 0
+  const totalClasificados = faseData?.estadisticas_generales?.total_clasificados || 0
+  // Los premiados son solo Oro, Plata y Bronce (no incluyen Mención de Honor)
+  const totalPremiados = medallas.oro + medallas.plata + medallas.bronce
+  // Sin medalla son los que tienen NULL, pero estos deberían estar en Mención de Honor
+  // Mención de Honor son los que no recibieron medalla ni cumplieron criterios
+  const totalSinMedalla = medallas.mencion_honor + (medallas.sin_medalla || 0)
+  const porcentajePremiados = totalEvaluados > 0 ? ((totalPremiados / totalEvaluados) * 100).toFixed(1) : '0'
+  const porcentajeSinMedalla = totalEvaluados > 0 ? ((totalSinMedalla / totalEvaluados) * 100).toFixed(1) : '0'
+  const topParticipantes = faseData?.top_participantes || []
+  const configMedallero = faseData?.config_medallero
+  const fechaCierre = faseData?.estado_fase?.fecha_cierre
+    ? new Date(faseData.estado_fase.fecha_cierre).toLocaleDateString('es-ES', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      })
+    : null
+
+  const getMedallaIcon = (tipo: string) => {
+    switch(tipo) {
+      case 'oro': return <Medal className="h-6 w-6 text-yellow-500" />
+      case 'plata': return <Medal className="h-6 w-6 text-gray-400" />
+      case 'bronce': return <Medal className="h-6 w-6 text-orange-500" />
+      case 'mencion_honor': return <Award className="h-6 w-6 text-blue-500" />
+      default: return <div className="h-6 w-6 rounded-full border-2 border-gray-300" />
+    }
+  }
+
+  const getMedallaColor = (tipo: string) => {
+    switch(tipo) {
+      case 'oro': return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', progress: 'bg-yellow-500' }
+      case 'plata': return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700', progress: 'bg-gray-400' }
+      case 'bronce': return { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', progress: 'bg-orange-500' }
+      case 'mencion_honor': return { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', progress: 'bg-blue-500' }
+      default: return { bg: 'bg-white', border: 'border-gray-200', text: 'text-gray-700', progress: 'bg-gray-300' }
+    }
+  }
+
+  const getRangoMedalla = (tipo: string) => {
+    if (!configMedallero) {
+      return 'N/A'
+    }
+    
+    switch(tipo) {
+      case 'oro': 
+        const oroMin = configMedallero.oro_min
+        const oroMax = configMedallero.oro_max
+        // Si ambos valores existen y son mayores que 0, mostrar el rango
+        if (oroMin !== null && oroMin !== undefined && oroMin > 0 && 
+            oroMax !== null && oroMax !== undefined && oroMax > 0) {
+          return `${oroMin}-${oroMax}`
+        }
+        // Si están en 0 o null, mostrar N/A
+        return 'N/A'
+      case 'plata': 
+        const plataMin = configMedallero.plata_min
+        const plataMax = configMedallero.plata_max
+        // Si ambos valores existen y son mayores que 0, mostrar el rango
+        if (plataMin !== null && plataMin !== undefined && plataMin > 0 && 
+            plataMax !== null && plataMax !== undefined && plataMax > 0) {
+          return `${plataMin}-${plataMax}`
+        }
+        return 'N/A'
+      case 'bronce': 
+        const bronceMin = configMedallero.bronce_min
+        const bronceMax = configMedallero.bronce_max
+        // Si ambos valores existen y son mayores que 0, mostrar el rango
+        if (bronceMin !== null && bronceMin !== undefined && bronceMin > 0 && 
+            bronceMax !== null && bronceMax !== undefined && bronceMax > 0) {
+          return `${bronceMin}-${bronceMax}`
+        }
+        return 'N/A'
+      case 'mencion_honor': 
+        // Mención de honor no tiene rango específico, son los que no cumplieron criterios
+        return 'N/A'
+      default: return 'N/A'
+    }
+  }
+
+  const getMaxMedalla = (tipo: string) => {
+    if (!configMedallero) return 0
+    switch(tipo) {
+      case 'oro': return configMedallero.oro || 0
+      case 'plata': return configMedallero.plata || 0
+      case 'bronce': return configMedallero.bronce || 0
+      case 'mencion_honor': return configMedallero.mencion_honor || 0
+      default: return 0
+    }
+  }
+
+  return (
+    <>
+      {faseCerrada ? (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">Fase Final Cerrada</h2>
+              {fechaCierre && (
+                <p className="text-sm text-muted-foreground">al {fechaCierre}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleRegenerar} disabled={loading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Regenerar
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleCompartir}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Compartir
+              </Button>
+            </div>
+          </div>
+
+          {/* Resumen General */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-3xl font-bold text-blue-600">{totalEvaluados}</div>
+                  <div className="text-sm text-muted-foreground">Total Evaluados</div>
+                  <div className="text-xs text-muted-foreground mt-1">de {totalClasificados} participantes</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-3xl font-bold text-green-600">{totalPremiados}</div>
+                  <div className="text-sm text-muted-foreground">Participantes Premiados</div>
+                  <div className="text-xs text-muted-foreground mt-1">{porcentajePremiados}% del total</div>
+                </div>
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <div className="text-3xl font-bold text-gray-600">{totalSinMedalla}</div>
+                  <div className="text-sm text-muted-foreground">Sin Medalla</div>
+                  <div className="text-xs text-muted-foreground mt-1">{porcentajeSinMedalla}% del total</div>
+                  <div className="text-xs text-muted-foreground mt-1">(Mención de Honor)</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-sm font-semibold text-purple-700 mb-2">Distribución Rápida</div>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span>Oro:</span>
+                      <span className="font-bold">{medallas.oro}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Plata:</span>
+                      <span className="font-bold">{medallas.plata}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Bronce:</span>
+                      <span className="font-bold">{medallas.bronce}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Mención:</span>
+                      <span className="font-bold">
+                        {(medallas.mencion_honor || 0) + (medallas.sin_medalla || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tarjetas de Medallas */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {['oro', 'plata', 'bronce', 'mencion_honor'].map((tipo) => {
+                  let cantidad = medallas[tipo as keyof typeof medallas] || 0
+                  // Si es mencion_honor, incluir también los que tienen sin_medalla (NULL)
+                  if (tipo === 'mencion_honor') {
+                    cantidad = cantidad + (medallas.sin_medalla || 0)
+                  }
+                  const max = tipo !== 'mencion_honor' ? getMaxMedalla(tipo) : 0
+                  const porcentaje = max > 0 ? ((cantidad / max) * 100) : 0
+                  const colors = getMedallaColor(tipo)
+                  const nombre = tipo === 'oro' ? 'Oro' : tipo === 'plata' ? 'Plata' : tipo === 'bronce' ? 'Bronce' : 'Mención de Honor'
+                  
+                  return (
+                    <Card key={tipo} className={`${colors.bg} ${colors.border} border-2`}>
+                      <CardContent className="pt-4">
+                        <div className="flex items-center justify-center mb-2">
+                          {getMedallaIcon(tipo)}
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold mb-1">{cantidad}</div>
+                          <div className="text-sm font-semibold mb-2">{nombre}</div>
+                          {tipo === 'mencion_honor' ? (
+                            <div className="text-xs text-muted-foreground">
+                              No recibieron medalla porque no cumplen con ningún criterio de configuración de medallero
+                            </div>
+                          ) : (
+                            <>
+                              <div className="text-xs text-muted-foreground mb-2">Rango: {getRangoMedalla(tipo)}</div>
+                              {max > 0 && (
+                                <>
+                                  <Progress value={porcentaje} className="h-2 mb-1" />
+                                  <div className="text-xs text-muted-foreground">
+                                    {Math.round(porcentaje)}% de {max} máx.
+                                  </div>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Top 5 Clasificados */}
+          {topParticipantes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-5 w-5" />
+                  Top 5 Clasificados
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-center font-semibold">Posición</TableHead>
+                        <TableHead className="font-semibold">Nombre</TableHead>
+                        <TableHead className="font-semibold">Institución</TableHead>
+                        <TableHead className="font-semibold">Nivel</TableHead>
+                        <TableHead className="text-center font-semibold">Nota</TableHead>
+                        <TableHead className="text-center font-semibold">Medalla</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {topParticipantes.map((participante: any, index: number) => {
+                        const nota = parseFloat(participante.nota_promedio || 0)
+                        const medalla = participante.medalla
+                        const esMedallaMetal = medalla === 'oro' || medalla === 'plata' || medalla === 'bronce'
+                        const esMencionHonor =
+                          !medalla ||
+                          medalla === 'sin_medalla' ||
+                          medalla === 'mencion_honor'
+
+                        return (
+                          <TableRow 
+                            key={index}
+                            className={index < 3 ? "bg-muted/20" : ""}
+                          >
+                            <TableCell className="text-center font-bold text-lg">
+                              <div className="flex items-center justify-center">
+                                {index === 0 && <Trophy className="h-4 w-4 text-yellow-500 mr-1" />}
+                                {index === 1 && <Trophy className="h-4 w-4 text-gray-400 mr-1" />}
+                                {index === 2 && <Trophy className="h-4 w-4 text-orange-500 mr-1" />}
+                                {index + 1}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">{participante.nombre_completo}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {participante.unidad_educativa || 'N/A'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {participante.nivel_nombre || participante.grado_escolaridad || 'N/A'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-bold text-lg text-primary">
+                                {nota.toFixed(1)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {esMedallaMetal ? (
+                                <div className="flex items-center justify-center gap-2">
+                                  {getMedallaIcon(medalla)}
+                                  <span className="text-sm capitalize font-medium">
+                                    {medalla === 'oro'
+                                      ? 'Oro'
+                                      : medalla === 'plata'
+                                      ? 'Plata'
+                                      : 'Bronce'}
+                                  </span>
+                                </div>
+                              ) : esMencionHonor ? (
+                                <div className="flex items-center justify-center gap-2">
+                                  {getMedallaIcon('mencion_honor')}
+                                  <span className="text-sm font-medium">Mención de Honor</span>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">Sin medalla</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Mostrando {topParticipantes.length} de {totalEvaluados} participantes evaluados
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Botones de Descarga */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Reportes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button
+                  onClick={handleDescargarPDF}
+                  disabled={descargandoPDF}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {descargandoPDF ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Descargando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Reporte PDF
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  onClick={handleDescargarExcel}
+                  disabled={descargandoExcel}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {descargandoExcel ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Descargando...
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="mr-2 h-4 w-4" />
+                      Reporte Excel
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  onClick={handleDescargarEstadisticas}
+                  disabled={descargandoEstadisticas}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {descargandoEstadisticas ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Descargando...
+                    </>
+                  ) : (
+                    <>
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Estadísticas
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Trophy className="h-5 w-5" />
+              Cierre de Fase Final
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-center gap-2 text-yellow-700">
+                  <AlertCircle className="h-5 w-5" />
+                  <span className="font-semibold">Fase final activa</span>
+                </div>
+                <p className="text-sm text-yellow-600 mt-2">
+                  Una vez que todos los participantes clasificados hayan sido evaluados, podrás cerrar la fase final manualmente usando el botón de abajo. Esta acción calculará las medallas según la configuración de medallero y generará los reportes oficiales.
+                </p>
+              </div>
+              
+              <Button
+                onClick={() => setShowCierreModal(true)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                size="lg"
+              >
+                <Lock className="mr-2 h-4 w-4" />
+                Cerrar Fase Final
+              </Button>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                La fase final solo se cierra cuando presionas este botón. No se cierra automáticamente.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={showCierreModal} onOpenChange={setShowCierreModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Cierre de Fase Final</DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas cerrar la fase final? Esta acción calculará las medallas según la configuración de medallero y generará los reportes oficiales.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowCierreModal(false)}
+              disabled={cerrando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCerrarFase}
+              disabled={cerrando}
+            >
+              {cerrando ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cerrando...
+                </>
+              ) : (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Confirmar Cierre
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; areaName: string }) {
   const [fase, setFase] = useState<'clasificacion'|'final'>('clasificacion')
   const [numEval, setNumEval] = useState<string>('2')
@@ -3061,6 +3719,7 @@ function AsignacionUI({ realEvaluators, areaName }: { realEvaluators: any[]; are
 }
 export default function CoordinatorDashboard() {
   const { user } = useAuth() as any
+  const { toast } = useToast()
   const avatarUrl = user?.avatar_url as string | undefined
   const toAbsolute = (p?: string) => {
     if (!p) return undefined
@@ -3084,6 +3743,8 @@ export default function CoordinatorDashboard() {
   const [asigLoading, setAsigLoading] = useState(false)
   const [asigPreview, setAsigPreview] = useState<any[]>([])
   const [cambiosPendientes, setCambiosPendientes] = useState<number>(0)
+  const [showCertificateModal, setShowCertificateModal] = useState<boolean>(false)
+  const [certificateArea, setCertificateArea] = useState<Area | null>(null)
 
   
   useEffect(() => {
@@ -3430,6 +4091,53 @@ export default function CoordinatorDashboard() {
                 <Settings className="h-4 w-4 mr-2" />
                 <span className="hidden lg:inline">Configuración</span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="hidden md:flex"
+                onClick={async () => {
+                  try {
+                    // Cargar participantes premiados desde la API
+                    const response = await CertificadosService.getParticipantesPremiados();
+                    if (response.success && response.data) {
+                      const data = response.data;
+                      const area: Area = {
+                        id: data.area.id.toString(),
+                        nombre: data.area.nombre,
+                        approved: data.aprobado || false,
+                        competitors: data.participantes.map((p: any) => ({
+                          id: p.olimpista_id,
+                          nombre: p.nombre,
+                          unidad: p.unidad,
+                          area: data.area.nombre,
+                          nivel: p.nivel,
+                          puntaje: p.puntaje || 0,
+                          estado: p.medalla_asignada || 'mencion_honor',
+                          puesto: p.puesto
+                        }))
+                      };
+                      setCertificateArea(area);
+                      setShowCertificateModal(true);
+                    } else {
+                      toast({
+                        title: "Error",
+                        description: response.message || "No se pudieron cargar los participantes premiados",
+                        variant: "destructive"
+                      });
+                    }
+                  } catch (error: any) {
+                    console.error('Error cargando participantes premiados:', error);
+                    toast({
+                      title: "Error",
+                      description: error.message || "Error al cargar los datos",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                <span className="hidden lg:inline">Aprobar Certificados</span>
+              </Button>
               <Link href="/coordinador/perfil" className="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border">
                 {avatarSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -3565,6 +4273,7 @@ export default function CoordinatorDashboard() {
               </TabsContent>
               <TabsContent value="final" className="space-y-6">
                 <ProgresoEvaluacionFinal />
+                <CierreFaseFinal />
               </TabsContent>
             </Tabs>
           </TabsContent>
@@ -3765,6 +4474,44 @@ export default function CoordinatorDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Certificados para Coordinador */}
+      <CoordinadorCertificateModal
+        open={showCertificateModal}
+        onClose={() => setShowCertificateModal(false)}
+        area={certificateArea}
+        onToggleApproved={async (areaId, approved) => {
+          try {
+            // Guardar aprobación en la API
+            const response = await CertificadosService.aprobarCertificados(approved);
+            if (response.success) {
+              // Actualizar el estado del área
+              if (certificateArea) {
+                setCertificateArea({ ...certificateArea, approved });
+              }
+              toast({
+                title: approved ? "Área aprobada" : "Aprobación cancelada",
+                description: approved 
+                  ? "El administrador ahora puede generar los certificados de esta área."
+                  : "La aprobación ha sido cancelada.",
+              });
+            } else {
+              toast({
+                title: "Error",
+                description: response.message || "No se pudo guardar la aprobación",
+                variant: "destructive"
+              });
+            }
+          } catch (error: any) {
+            console.error('Error aprobando certificados:', error);
+            toast({
+              title: "Error",
+              description: error.message || "Error al guardar la aprobación",
+              variant: "destructive"
+            });
+          }
+        }}
+      />
 
     </div>
   )

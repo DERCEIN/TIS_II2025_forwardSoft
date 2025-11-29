@@ -78,8 +78,8 @@ class EmailService
     private function generarTemplateCredenciales($usuario, $passwordTemporal, $enviadoPor)
     {
         $adminName = $enviadoPor['name'] ?? 'Administrador';
-        $appUrl = $_ENV['APP_URL'] ?? 'http://localhost:8000';
-        $loginUrl = $appUrl . 'htpp://localhost:3000/login';
+        $appUrl = $_ENV['APP_URL'] ?? 'http://forwardsoft.tis.cs.umss.edu.bo/';
+        $loginUrl = $appUrl . 'htpp://forwardsoft.tis.cs.umss.edu.bo/login';
 
         return "
         <!DOCTYPE html>
@@ -181,7 +181,7 @@ class EmailService
             $this->mailer->isHTML(true);
             $this->mailer->Subject = 'Recuperación de contraseña - ForwardSoft';
 
-            $resetUrl = ($_ENV['APP_URL'] ?? 'http://localhost:8000') . '/reset-password?token=' . $token;
+            $resetUrl = ($_ENV['APP_URL'] ?? 'http://forwardsoft.tis.cs.umss.edu.bo/') . '/reset-password?token=' . $token;
             
             $htmlContent = "
             <!DOCTYPE html>

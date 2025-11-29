@@ -39,6 +39,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService, PublicacionResultadosService } from "@/lib/api"
 
@@ -67,6 +68,7 @@ export default function AdminDashboard() {
   const [selectedArea, setSelectedArea] = useState<any>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [tempConfig, setTempConfig] = useState<any>({})
+  const [selectedFase, setSelectedFase] = useState<'clasificatoria' | 'final'>('clasificatoria')
   const [currentPage, setCurrentPage] = useState(1)
   const [usersPerPage] = useState(10)
   const router = useRouter()
@@ -810,6 +812,24 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                 variant="outline" 
                 size="sm"
                 className="hidden md:flex"
+                onClick={() => router.push('/premiacion')}
+              >
+                <Trophy className="h-4 w-4 mr-2" />
+                <span className="hidden lg:inline">Premiación</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="hidden md:flex"
+                onClick={() => router.push('/certificados')}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                <span className="hidden lg:inline">Certificados</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="hidden md:flex"
                 onClick={() => router.push('/admin/configuracion')}
               >
                 <Settings className="h-4 w-4 mr-2" />
@@ -1026,6 +1046,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                               size="sm"
                               onClick={() => {
                                 setSelectedArea(area)
+                                setSelectedFase('clasificatoria')
                                 setTempConfig(configArea || {
                                   area_competencia_id: area.id,
                                   tiempo_evaluacion_minutos: configGeneral?.tiempo_evaluacion || 120,
@@ -1033,6 +1054,11 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                   periodo_evaluacion_fin: '',
                                   periodo_publicacion_inicio: '',
                                   periodo_publicacion_fin: '',
+                                  tiempo_evaluacion_final_minutos: configGeneral?.tiempo_evaluacion || 120,
+                                  periodo_evaluacion_final_inicio: '',
+                                  periodo_evaluacion_final_fin: '',
+                                  periodo_publicacion_final_inicio: '',
+                                  periodo_publicacion_final_fin: '',
                                 })
                                 setIsModalOpen(true)
                               }}
@@ -1065,6 +1091,20 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                 
                 {selectedArea && (
                   <div className="space-y-4 py-2">
+                    {/* Selector de Fase */}
+                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                      <Label className="text-sm font-semibold text-slate-800 mb-2 block">Fase</Label>
+                      <Select value={selectedFase} onValueChange={(value: 'clasificatoria' | 'final') => setSelectedFase(value)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="clasificatoria">Fase Clasificatoria</SelectItem>
+                          <SelectItem value="final">Fase Final</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Tiempo de Evaluación */}
                     <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
                       <div className="flex items-center gap-2 mb-2">
@@ -1081,11 +1121,13 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                             type="number"
                             min="1"
                             placeholder="120"
-                            value={tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120}
+                            value={selectedFase === 'clasificatoria' 
+                              ? (tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120)
+                              : (tempConfig.tiempo_evaluacion_final_minutos || configGeneral?.tiempo_evaluacion || 120)}
                             onChange={(e) => {
                               setTempConfig((prev: any) => ({
                                 ...prev,
-                                tiempo_evaluacion_minutos: parseInt(e.target.value) || 120
+                                [selectedFase === 'clasificatoria' ? 'tiempo_evaluacion_minutos' : 'tiempo_evaluacion_final_minutos']: parseInt(e.target.value) || 120
                               }))
                             }}
                             className="bg-white border-slate-200 h-9 text-sm"
@@ -1103,9 +1145,18 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                         <Calendar className="h-4 w-4 text-slate-600" />
                         <Label className="text-sm font-semibold text-slate-800">Periodo de Evaluación</Label>
                       </div>
-                      <p className="text-xs text-slate-600 mb-2">
-                        Define cuándo los evaluadores pueden realizar las evaluaciones para esta área
-                      </p>
+                      {selectedFase === 'clasificatoria' ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                          <p className="text-xs text-amber-800">
+                            <AlertCircle className="h-3 w-3 inline mr-1" />
+                            Los períodos de evaluación y publicación de la fase clasificatoria no se pueden editar desde aquí.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-600 mb-2">
+                          Define cuándo los evaluadores pueden realizar las evaluaciones para esta área
+                        </p>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <Label htmlFor="eval-inicio-modal" className="text-xs font-medium text-slate-600">
@@ -1114,15 +1165,19 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                           <Input
                             id="eval-inicio-modal"
                             type="datetime-local"
-                            value={tempConfig.periodo_evaluacion_inicio ? 
-                              new Date(tempConfig.periodo_evaluacion_inicio).toISOString().slice(0, 16) : ''}
+                            value={selectedFase === 'clasificatoria'
+                              ? (tempConfig.periodo_evaluacion_inicio ? 
+                                  new Date(tempConfig.periodo_evaluacion_inicio).toISOString().slice(0, 16) : '')
+                              : (tempConfig.periodo_evaluacion_final_inicio ? 
+                                  new Date(tempConfig.periodo_evaluacion_final_inicio).toISOString().slice(0, 16) : '')}
                             onChange={(e) => {
                               setTempConfig((prev: any) => ({
                                 ...prev,
-                                periodo_evaluacion_inicio: e.target.value
+                                [selectedFase === 'clasificatoria' ? 'periodo_evaluacion_inicio' : 'periodo_evaluacion_final_inicio']: e.target.value
                               }))
                             }}
-                            className="bg-white border-slate-200 h-8 text-xs"
+                            disabled={selectedFase === 'clasificatoria'}
+                            className="bg-white border-slate-200 h-8 text-xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div className="space-y-1">
@@ -1132,15 +1187,19 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                           <Input
                             id="eval-fin-modal"
                             type="datetime-local"
-                            value={tempConfig.periodo_evaluacion_fin ? 
-                              new Date(tempConfig.periodo_evaluacion_fin).toISOString().slice(0, 16) : ''}
+                            value={selectedFase === 'clasificatoria'
+                              ? (tempConfig.periodo_evaluacion_fin ? 
+                                  new Date(tempConfig.periodo_evaluacion_fin).toISOString().slice(0, 16) : '')
+                              : (tempConfig.periodo_evaluacion_final_fin ? 
+                                  new Date(tempConfig.periodo_evaluacion_final_fin).toISOString().slice(0, 16) : '')}
                             onChange={(e) => {
                               setTempConfig((prev: any) => ({
                                 ...prev,
-                                periodo_evaluacion_fin: e.target.value
+                                [selectedFase === 'clasificatoria' ? 'periodo_evaluacion_fin' : 'periodo_evaluacion_final_fin']: e.target.value
                               }))
                             }}
-                            className="bg-white border-slate-200 h-8 text-xs"
+                            disabled={selectedFase === 'clasificatoria'}
+                            className="bg-white border-slate-200 h-8 text-xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1152,9 +1211,18 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                         <FileText className="h-4 w-4 text-slate-600" />
                         <Label className="text-sm font-semibold text-slate-800">Periodo de Publicación</Label>
                       </div>
-                      <p className="text-xs text-slate-600 mb-2">
-                        Define cuándo se publicarán los resultados de esta área. Debe comenzar después del periodo de evaluación.
-                      </p>
+                      {selectedFase === 'clasificatoria' ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                          <p className="text-xs text-amber-800">
+                            <AlertCircle className="h-3 w-3 inline mr-1" />
+                            Los períodos de evaluación y publicación de la fase clasificatoria no se pueden editar desde aquí.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-600 mb-2">
+                          Define cuándo se publicarán los resultados de esta área. Debe comenzar después del periodo de evaluación.
+                        </p>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <Label htmlFor="pub-inicio-modal" className="text-xs font-medium text-slate-600">
@@ -1163,15 +1231,19 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                           <Input
                             id="pub-inicio-modal"
                             type="datetime-local"
-                            value={tempConfig.periodo_publicacion_inicio ? 
-                              new Date(tempConfig.periodo_publicacion_inicio).toISOString().slice(0, 16) : ''}
+                            value={selectedFase === 'clasificatoria'
+                              ? (tempConfig.periodo_publicacion_inicio ? 
+                                  new Date(tempConfig.periodo_publicacion_inicio).toISOString().slice(0, 16) : '')
+                              : (tempConfig.periodo_publicacion_final_inicio ? 
+                                  new Date(tempConfig.periodo_publicacion_final_inicio).toISOString().slice(0, 16) : '')}
                             onChange={(e) => {
                               setTempConfig((prev: any) => ({
                                 ...prev,
-                                periodo_publicacion_inicio: e.target.value
+                                [selectedFase === 'clasificatoria' ? 'periodo_publicacion_inicio' : 'periodo_publicacion_final_inicio']: e.target.value
                               }))
                             }}
-                            className="bg-white border-slate-200 h-8 text-xs"
+                            disabled={selectedFase === 'clasificatoria'}
+                            className="bg-white border-slate-200 h-8 text-xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div className="space-y-1">
@@ -1181,15 +1253,19 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                           <Input
                             id="pub-fin-modal"
                             type="datetime-local"
-                            value={tempConfig.periodo_publicacion_fin ? 
-                              new Date(tempConfig.periodo_publicacion_fin).toISOString().slice(0, 16) : ''}
+                            value={selectedFase === 'clasificatoria'
+                              ? (tempConfig.periodo_publicacion_fin ? 
+                                  new Date(tempConfig.periodo_publicacion_fin).toISOString().slice(0, 16) : '')
+                              : (tempConfig.periodo_publicacion_final_fin ? 
+                                  new Date(tempConfig.periodo_publicacion_final_fin).toISOString().slice(0, 16) : '')}
                             onChange={(e) => {
                               setTempConfig((prev: any) => ({
                                 ...prev,
-                                periodo_publicacion_fin: e.target.value
+                                [selectedFase === 'clasificatoria' ? 'periodo_publicacion_fin' : 'periodo_publicacion_final_fin']: e.target.value
                               }))
                             }}
-                            className="bg-white border-slate-200 h-8 text-xs"
+                            disabled={selectedFase === 'clasificatoria'}
+                            className="bg-white border-slate-200 h-8 text-xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1225,56 +1301,6 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                       try {
                         setIsSavingArea(true)
                         
-                        // Validar que todos los campos requeridos estén llenos
-                        if (!tempConfig.periodo_evaluacion_inicio || 
-                            !tempConfig.periodo_evaluacion_fin || 
-                            !tempConfig.periodo_publicacion_inicio || 
-                            !tempConfig.periodo_publicacion_fin) {
-                          toast({
-                            title: "Error de validación",
-                            description: "Por favor complete todos los periodos (evaluación y publicación) antes de guardar.",
-                            variant: "destructive",
-                          })
-                          setIsSavingArea(false)
-                          return
-                        }
-
-                        // Validar fechas antes de enviar
-                        const evalInicio = new Date(tempConfig.periodo_evaluacion_inicio)
-                        const evalFin = new Date(tempConfig.periodo_evaluacion_fin)
-                        const pubInicio = new Date(tempConfig.periodo_publicacion_inicio)
-                        const pubFin = new Date(tempConfig.periodo_publicacion_fin)
-
-                        if (evalInicio >= evalFin) {
-                          toast({
-                            title: "Error de validación",
-                            description: "La fecha de fin de evaluación debe ser posterior a la fecha de inicio",
-                            variant: "destructive",
-                          })
-                          setIsSavingArea(false)
-                          return
-                        }
-
-                        if (pubInicio >= pubFin) {
-                          toast({
-                            title: "Error de validación",
-                            description: "La fecha de fin de publicación debe ser posterior a la fecha de inicio",
-                            variant: "destructive",
-                          })
-                          setIsSavingArea(false)
-                          return
-                        }
-
-                        if (evalFin > pubInicio) {
-                          toast({
-                            title: "Error de validación",
-                            description: "El periodo de evaluación debe terminar antes del periodo de publicación",
-                            variant: "destructive",
-                          })
-                          setIsSavingArea(false)
-                          return
-                        }
-                        
                         // Convertir formato datetime-local a TIMESTAMP para PostgreSQL
                         const convertirFecha = (fechaLocal: string) => {
                           if (!fechaLocal) return ''
@@ -1287,15 +1313,65 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                           }
                           return fechaFormateada
                         }
-                        
-                        await ConfiguracionService.updateConfiguracionPorArea({
+
+                        // Preparar datos a enviar
+                        const datosEnvio: any = {
                           area_competencia_id: selectedArea.id,
-                          tiempo_evaluacion_minutos: tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120,
-                          periodo_evaluacion_inicio: convertirFecha(tempConfig.periodo_evaluacion_inicio),
-                          periodo_evaluacion_fin: convertirFecha(tempConfig.periodo_evaluacion_fin),
-                          periodo_publicacion_inicio: convertirFecha(tempConfig.periodo_publicacion_inicio),
-                          periodo_publicacion_fin: convertirFecha(tempConfig.periodo_publicacion_fin),
-                        })
+                        }
+
+                        // Si estamos en fase clasificatoria, SOLO permitir actualizar el tiempo de evaluación
+                        // Los períodos de evaluación y publicación de la fase clasificatoria NO se pueden editar
+                        if (selectedFase === 'clasificatoria') {
+                          datosEnvio.tiempo_evaluacion_minutos = tempConfig.tiempo_evaluacion_minutos || configGeneral?.tiempo_evaluacion || 120
+                        }
+
+                        // Agregar datos de fase final solo si estamos en fase final y están presentes
+                        if (selectedFase === 'final' && tempConfig.periodo_evaluacion_final_inicio && tempConfig.periodo_evaluacion_final_fin && 
+                            tempConfig.periodo_publicacion_final_inicio && tempConfig.periodo_publicacion_final_fin) {
+                          // Validar fechas de fase final
+                          const evalFinalInicio = new Date(tempConfig.periodo_evaluacion_final_inicio)
+                          const evalFinalFin = new Date(tempConfig.periodo_evaluacion_final_fin)
+                          const pubFinalInicio = new Date(tempConfig.periodo_publicacion_final_inicio)
+                          const pubFinalFin = new Date(tempConfig.periodo_publicacion_final_fin)
+
+                          if (evalFinalInicio >= evalFinalFin) {
+                            toast({
+                              title: "Error de validación",
+                              description: "La fecha de fin de evaluación (final) debe ser posterior a la fecha de inicio",
+                              variant: "destructive",
+                            })
+                            setIsSavingArea(false)
+                            return
+                          }
+
+                          if (pubFinalInicio >= pubFinalFin) {
+                            toast({
+                              title: "Error de validación",
+                              description: "La fecha de fin de publicación (final) debe ser posterior a la fecha de inicio",
+                              variant: "destructive",
+                            })
+                            setIsSavingArea(false)
+                            return
+                          }
+
+                          if (evalFinalFin > pubFinalInicio) {
+                            toast({
+                              title: "Error de validación",
+                              description: "El periodo de evaluación (final) debe terminar antes del periodo de publicación",
+                              variant: "destructive",
+                            })
+                            setIsSavingArea(false)
+                            return
+                          }
+
+                          datosEnvio.tiempo_evaluacion_final_minutos = tempConfig.tiempo_evaluacion_final_minutos || configGeneral?.tiempo_evaluacion || 120
+                          datosEnvio.periodo_evaluacion_final_inicio = convertirFecha(tempConfig.periodo_evaluacion_final_inicio)
+                          datosEnvio.periodo_evaluacion_final_fin = convertirFecha(tempConfig.periodo_evaluacion_final_fin)
+                          datosEnvio.periodo_publicacion_final_inicio = convertirFecha(tempConfig.periodo_publicacion_final_inicio)
+                          datosEnvio.periodo_publicacion_final_fin = convertirFecha(tempConfig.periodo_publicacion_final_fin)
+                        }
+                        
+                        await ConfiguracionService.updateConfiguracionPorArea(datosEnvio)
                         
                         // Recargar configuraciones después de guardar
                         const configAreasRes = await ConfiguracionService.getConfiguracionesPorArea()
@@ -1751,38 +1827,6 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                   </button>
                                 </div>
                               </div>
-
-                              <div>
-                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                                  Contraseña Temporal
-                                </label>
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 font-mono text-sm text-gray-900">
-                                    {createdUser.password}
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(createdUser.password)
-                                      toast({ title: "Copiado", description: "Contraseña copiada al portapapeles" })
-                                    }}
-                                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                                    title="Copiar contraseña"
-                                  >
-                                    <Copy className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div>
-                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                                  Rol
-                                </label>
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-                                  <span className="text-sm font-medium text-blue-900">
-                                    {userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}
-                                  </span>
-                                </div>
-                              </div>
                             </div>
 
                             {/* Instrucciones */}
@@ -1816,35 +1860,18 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                 </div>
                               </div>
                             )}
-                            
-                            <div className={`border rounded-lg p-4 ${createdUser.credentialsSent ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
-                              <div className="flex items-start gap-3">
-                                <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${createdUser.credentialsSent ? 'text-amber-600' : 'text-blue-600'}`} />
-                                <div className="flex-1">
-                                  <p className={`text-sm font-medium mb-2 ${createdUser.credentialsSent ? 'text-amber-900' : 'text-blue-900'}`}>
-                                    Instrucciones para el usuario
-                                  </p>
-                                  <ol className={`text-xs space-y-1 list-decimal list-inside ${createdUser.credentialsSent ? 'text-amber-800' : 'text-blue-800'}`}>
-                                    <li>Ir a la página de login</li>
-                                    <li>Seleccionar el rol: <strong>{userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}</strong></li>
-                                    <li>Usar el email y contraseña mostrados arriba</li>
-                                  </ol>
-                                </div>
-                              </div>
-                            </div>
 
                             {/* Botones de acción */}
                             <div className="flex gap-3 pt-2">
                               <Button
                                 onClick={() => {
-                                  const credentials = `Email: ${createdUser.email}\nContraseña: ${createdUser.password}\nRol: ${userRole === 'coordinator' ? 'Coordinador de Área' : 'Evaluador'}`
-                                  navigator.clipboard.writeText(credentials)
-                                  toast({ title: "Copiado", description: "Credenciales copiadas al portapapeles" })
+                                  navigator.clipboard.writeText(createdUser.email)
+                                  toast({ title: "Copiado", description: "Email copiado al portapapeles" })
                                 }}
                                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                               >
                                 <Copy className="h-4 w-4 mr-2" />
-                                Copiar Todo
+                                Copiar Email
                               </Button>
                               <Button
                                 onClick={() => setCreatedUser(null)}
@@ -2110,28 +2137,41 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                 {/* Leyenda */}
                 <Card className="border-blue-200 bg-blue-50">
                   <CardContent className="pt-6">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-blue-500"></div>
-                        <span className="text-sm font-medium">Período de Evaluación</span>
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded bg-blue-500"></div>
+                          <span className="text-sm font-medium">Período de Evaluación</span>
                             </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-green-500"></div>
-                        <span className="text-sm font-medium">Período de Publicación</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded bg-green-500"></div>
+                          <span className="text-sm font-medium">Período de Publicación</span>
                         </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-gradient-to-br from-blue-400 to-green-400"></div>
-                        <span className="text-sm font-medium">Ambos períodos</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded bg-gradient-to-br from-blue-400 to-green-400"></div>
+                          <span className="text-sm font-medium">Ambos períodos</span>
                       </div>
                             </div>
+                      <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-blue-200">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded border-2 border-blue-600 bg-blue-100"></div>
+                          <span className="text-sm font-medium">Fase Clasificatoria</span>
+                                  </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded border-2 border-purple-600 bg-purple-100"></div>
+                          <span className="text-sm font-medium">Fase Final</span>
+                        </div>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* Calendario General */}
                 {(() => {
-                  // Recopilar todos los períodos de todas las áreas
+                  // Recopilar todos los períodos de todas las áreas (clasificatoria y final)
                   const todosLosPeriodos: Array<{
                     area: string
+                    fase: 'clasificatoria' | 'final'
                     evalInicio: Date | null
                     evalFin: Date | null
                     pubInicio: Date | null
@@ -2140,14 +2180,30 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
 
                   areas.forEach((area) => {
                     const configArea = configuracionesAreas[area.id] || {}
+                    
+                    // Fase clasificatoria
                     if (configArea.periodo_evaluacion_inicio && configArea.periodo_evaluacion_fin &&
                         configArea.periodo_publicacion_inicio && configArea.periodo_publicacion_fin) {
                       todosLosPeriodos.push({
                         area: area.nombre,
+                        fase: 'clasificatoria',
                         evalInicio: new Date(configArea.periodo_evaluacion_inicio),
                         evalFin: new Date(configArea.periodo_evaluacion_fin),
                         pubInicio: new Date(configArea.periodo_publicacion_inicio),
                         pubFin: new Date(configArea.periodo_publicacion_fin)
+                      })
+                    }
+                    
+                    // Fase final
+                    if (configArea.periodo_evaluacion_final_inicio && configArea.periodo_evaluacion_final_fin &&
+                        configArea.periodo_publicacion_final_inicio && configArea.periodo_publicacion_final_fin) {
+                      todosLosPeriodos.push({
+                        area: area.nombre,
+                        fase: 'final',
+                        evalInicio: new Date(configArea.periodo_evaluacion_final_inicio),
+                        evalFin: new Date(configArea.periodo_evaluacion_final_fin),
+                        pubInicio: new Date(configArea.periodo_publicacion_final_inicio),
+                        pubFin: new Date(configArea.periodo_publicacion_final_fin)
                       })
                     }
                   })
@@ -2174,15 +2230,47 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     })
                   }
 
-                  // Función para obtener el tipo de fecha
+                  // Función para obtener el tipo de fecha y fase
                   const obtenerTipoFecha = (fecha: Date) => {
-                    const enEvaluacion = estaEnEvaluacion(fecha)
-                    const enPublicacion = estaEnPublicacion(fecha)
+                    const fechaStr = fecha.toISOString().split('T')[0]
+                    const periodosEnFecha = todosLosPeriodos.filter(p => {
+                      const enEval = p.evalInicio && p.evalFin && 
+                        fechaStr >= p.evalInicio.toISOString().split('T')[0] && 
+                        fechaStr <= p.evalFin.toISOString().split('T')[0]
+                      const enPub = p.pubInicio && p.pubFin && 
+                        fechaStr >= p.pubInicio.toISOString().split('T')[0] && 
+                        fechaStr <= p.pubFin.toISOString().split('T')[0]
+                      return enEval || enPub
+                    })
                     
-                    if (enEvaluacion && enPublicacion) return 'ambos'
-                    if (enEvaluacion) return 'evaluacion'
-                    if (enPublicacion) return 'publicacion'
-                    return 'ninguno'
+                    if (periodosEnFecha.length === 0) return { tipo: 'ninguno', fase: null }
+                    
+                    const tieneClasificatoria = periodosEnFecha.some(p => p.fase === 'clasificatoria')
+                    const tieneFinal = periodosEnFecha.some(p => p.fase === 'final')
+                    const tieneEvaluacion = periodosEnFecha.some(p => {
+                      const enEval = p.evalInicio && p.evalFin && 
+                        fechaStr >= p.evalInicio.toISOString().split('T')[0] && 
+                        fechaStr <= p.evalFin.toISOString().split('T')[0]
+                      return enEval
+                    })
+                    const tienePublicacion = periodosEnFecha.some(p => {
+                      const enPub = p.pubInicio && p.pubFin && 
+                        fechaStr >= p.pubInicio.toISOString().split('T')[0] && 
+                        fechaStr <= p.pubFin.toISOString().split('T')[0]
+                      return enPub
+                    })
+                    
+                    let tipo = 'ninguno'
+                    if (tieneEvaluacion && tienePublicacion) tipo = 'ambos'
+                    else if (tieneEvaluacion) tipo = 'evaluacion'
+                    else if (tienePublicacion) tipo = 'publicacion'
+                    
+                    let fase: 'clasificatoria' | 'final' | 'ambas' | null = null
+                    if (tieneClasificatoria && tieneFinal) fase = 'ambas'
+                    else if (tieneClasificatoria) fase = 'clasificatoria'
+                    else if (tieneFinal) fase = 'final'
+                    
+                    return { tipo, fase }
                   }
 
                   // Obtener rango de fechas general
@@ -2217,23 +2305,24 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     const diasEnMes = ultimoDia.getDate()
                     const diaInicioSemana = primerDia.getDay()
                     
-                    const dias: Array<{ dia: number; tipo: string }> = []
+                    const dias: Array<{ dia: number; tipo: string; fase: string | null }> = []
                     
                     // Días del mes anterior (para completar la primera semana)
                     for (let i = diaInicioSemana - 1; i >= 0; i--) {
-                      dias.push({ dia: 0, tipo: 'fuera' })
+                      dias.push({ dia: 0, tipo: 'fuera', fase: null })
                     }
                     
                     // Días del mes actual
                     for (let dia = 1; dia <= diasEnMes; dia++) {
                       const fecha = new Date(año, mes, dia)
-                      dias.push({ dia, tipo: obtenerTipoFecha(fecha) })
+                      const infoFecha = obtenerTipoFecha(fecha)
+                      dias.push({ dia, tipo: infoFecha.tipo, fase: infoFecha.fase })
                     }
                     
                     // Días del mes siguiente (para completar la última semana)
                     const diasRestantes = 42 - dias.length // 6 semanas * 7 días
                     for (let dia = 1; dia <= diasRestantes; dia++) {
-                      dias.push({ dia: 0, tipo: 'fuera' })
+                      dias.push({ dia: 0, tipo: 'fuera', fase: null })
                     }
                     
                     return dias
@@ -2286,22 +2375,47 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                                     
                                     let bgColor = 'bg-gray-100'
                                     let textColor = 'text-gray-600'
+                                    let borderClass = ''
                                     
+                                    // Determinar color según tipo y fase
                                     if (item.tipo === 'evaluacion') {
-                                      bgColor = 'bg-blue-500'
+                                      if (item.fase === 'final' || item.fase === 'ambas') {
+                                        bgColor = 'bg-purple-500'
+                                      } else {
+                                        bgColor = 'bg-blue-500'
+                                      }
                                       textColor = 'text-white'
                                     } else if (item.tipo === 'publicacion') {
-                                      bgColor = 'bg-green-500'
+                                      if (item.fase === 'final' || item.fase === 'ambas') {
+                                        bgColor = 'bg-purple-600'
+                                      } else {
+                                        bgColor = 'bg-green-500'
+                                      }
                                       textColor = 'text-white'
                                     } else if (item.tipo === 'ambos') {
-                                      bgColor = 'bg-gradient-to-br from-blue-400 to-green-400'
+                                      if (item.fase === 'final') {
+                                        bgColor = 'bg-gradient-to-br from-purple-500 to-purple-600'
+                                      } else if (item.fase === 'ambas') {
+                                        bgColor = 'bg-gradient-to-br from-blue-400 via-purple-500 to-green-400'
+                                      } else {
+                                        bgColor = 'bg-gradient-to-br from-blue-400 to-green-400'
+                                      }
                                       textColor = 'text-white'
+                                    }
+                                    
+                                    // Agregar borde para distinguir fases
+                                    if (item.fase === 'clasificatoria' && item.tipo !== 'ninguno') {
+                                      borderClass = 'border-2 border-blue-600'
+                                    } else if (item.fase === 'final' && item.tipo !== 'ninguno') {
+                                      borderClass = 'border-2 border-purple-600'
+                                    } else if (item.fase === 'ambas' && item.tipo !== 'ninguno') {
+                                      borderClass = 'border-2 border-purple-500'
                                     }
                                     
                                     return (
                                       <div
                                         key={index}
-                                        className={`aspect-square flex items-center justify-center rounded text-xs font-medium ${bgColor} ${textColor} ${
+                                        className={`aspect-square flex items-center justify-center rounded text-xs font-medium ${bgColor} ${textColor} ${borderClass} ${
                                           item.tipo !== 'ninguno' && item.tipo !== 'fuera' ? 'shadow-sm' : ''
                                         }`}
                                       >
@@ -2323,16 +2437,20 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                 <Card>
                   <CardHeader>
                     <CardTitle>Áreas Configuradas</CardTitle>
-                    <CardDescription>Haz clic en un área para editar sus períodos</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {areas.map((area) => {
                         const configArea = configuracionesAreas[area.id] || {}
-                        const tieneConfiguracion = configArea.periodo_evaluacion_inicio && 
-                                                   configArea.periodo_evaluacion_fin &&
-                                                   configArea.periodo_publicacion_inicio && 
-                                                   configArea.periodo_publicacion_fin
+                        const tieneConfiguracionClasificatoria = configArea.periodo_evaluacion_inicio && 
+                                                                 configArea.periodo_evaluacion_fin &&
+                                                                 configArea.periodo_publicacion_inicio && 
+                                                                 configArea.periodo_publicacion_fin
+                        const tieneConfiguracionFinal = configArea.periodo_evaluacion_final_inicio && 
+                                                        configArea.periodo_evaluacion_final_fin &&
+                                                        configArea.periodo_publicacion_final_inicio && 
+                                                        configArea.periodo_publicacion_final_fin
+                        const tieneConfiguracion = tieneConfiguracionClasificatoria || tieneConfiguracionFinal
 
                         const formatearFecha = (fecha: Date | null) => {
                           if (!fecha) return 'No definida'
@@ -2347,6 +2465,11 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                         const evalFin = configArea.periodo_evaluacion_fin ? new Date(configArea.periodo_evaluacion_fin) : null
                         const pubInicio = configArea.periodo_publicacion_inicio ? new Date(configArea.periodo_publicacion_inicio) : null
                         const pubFin = configArea.periodo_publicacion_fin ? new Date(configArea.periodo_publicacion_fin) : null
+
+                        const evalFinalInicio = configArea.periodo_evaluacion_final_inicio ? new Date(configArea.periodo_evaluacion_final_inicio) : null
+                        const evalFinalFin = configArea.periodo_evaluacion_final_fin ? new Date(configArea.periodo_evaluacion_final_fin) : null
+                        const pubFinalInicio = configArea.periodo_publicacion_final_inicio ? new Date(configArea.periodo_publicacion_final_inicio) : null
+                        const pubFinalFin = configArea.periodo_publicacion_final_fin ? new Date(configArea.periodo_publicacion_final_fin) : null
 
                         return (
                           <Card 
@@ -2368,16 +2491,35 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                             </CardHeader>
                             <CardContent>
                               {tieneConfiguracion ? (
-                                <div className="space-y-2 text-sm">
-                                  <div>
-                                    <span className="text-gray-600 text-xs">Evaluación: </span>
-                                    <span className="font-medium">{formatearFecha(evalInicio)} - {formatearFecha(evalFin)}</span>
-                        </div>
-                                  <div>
-                                    <span className="text-gray-600 text-xs">Publicación: </span>
-                                    <span className="font-medium">{formatearFecha(pubInicio)} - {formatearFecha(pubFin)}</span>
-                      </div>
-                    </div>
+                                <div className="space-y-3 text-sm">
+                                  {tieneConfiguracionClasificatoria && (
+                                    <div className="space-y-2">
+                                      <div className="font-semibold text-xs text-blue-600 uppercase">Fase Clasificatoria</div>
+                                      <div>
+                                        <span className="text-gray-600 text-xs">Evaluación: </span>
+                                        <span className="font-medium">{formatearFecha(evalInicio)} - {formatearFecha(evalFin)}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600 text-xs">Publicación: </span>
+                                        <span className="font-medium">{formatearFecha(pubInicio)} - {formatearFecha(pubFin)}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {tieneConfiguracionFinal && (
+                                    <div className="space-y-2">
+                                      {tieneConfiguracionClasificatoria && <Separator />}
+                                      <div className="font-semibold text-xs text-purple-600 uppercase">Fase Final</div>
+                                      <div>
+                                        <span className="text-gray-600 text-xs">Evaluación: </span>
+                                        <span className="font-medium">{formatearFecha(evalFinalInicio)} - {formatearFecha(evalFinalFin)}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600 text-xs">Publicación: </span>
+                                        <span className="font-medium">{formatearFecha(pubFinalInicio)} - {formatearFecha(pubFinalFin)}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
                                 <p className="text-sm text-gray-500">Sin períodos configurados</p>
                               )}

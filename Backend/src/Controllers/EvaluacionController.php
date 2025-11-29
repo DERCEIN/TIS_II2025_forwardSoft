@@ -67,17 +67,15 @@ class EvaluacionController
         
         try {
             
-            if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'])) {
-                Response::forbidden('No tienes permisos para evaluar esta inscripción');
-            }
-            
-            
+            // Verificar primero si la fase clasificatoria está cerrada
             $inscripcion = $this->inscripcionModel->findById($input['inscripcion_area_id']);
             if ($inscripcion) {
                 $areaId = $inscripcion['area_competencia_id'];
                 $sqlCierre = "
-                    SELECT estado FROM cierre_fase_areas
+                    SELECT estado, fecha_cierre FROM cierre_fase_areas
                     WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                    AND estado = 'cerrada'
+                    ORDER BY fecha_cierre DESC
                     LIMIT 1
                 ";
                 $stmtCierre = $this->pdo->prepare($sqlCierre);
@@ -85,9 +83,17 @@ class EvaluacionController
                 $cierre = $stmtCierre->fetch(\PDO::FETCH_ASSOC);
                 
                 if ($cierre && $cierre['estado'] === 'cerrada') {
-                    Response::validationError(['general' => 'No se pueden editar notas después del cierre de calificación. La fase ya está cerrada.']);
+                    Response::validationError([
+                        'general' => 'No se pueden editar notas de la fase clasificatoria. La fase está cerrada y archivada desde el ' . 
+                                    date('d/m/Y H:i', strtotime($cierre['fecha_cierre']))
+                    ]);
                     return;
                 }
+            }
+            
+            // Verificar permisos de tiempo de asignación
+            if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'], 'clasificacion')) {
+                Response::forbidden('No tienes permisos para evaluar esta inscripción. Verifica tu tiempo de asignación y período de evaluación.');
             }
 
             
@@ -351,8 +357,8 @@ class EvaluacionController
         
         try {
             
-            if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'])) {
-                Response::forbidden('No tienes permisos para evaluar esta inscripción');
+            if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'], 'final')) {
+                Response::forbidden('No tienes permisos para evaluar esta inscripción. Verifica tu tiempo de asignación y período de evaluación.');
             }
 
             
@@ -376,11 +382,89 @@ class EvaluacionController
             ];
 
             if ($existingEval) {
+                // Verificar si hay un cambio pendiente para esta evaluación
+                if (LogCambiosNotas::tieneCambioPendiente($existingEval['id'])) {
+                    Response::error('No se puede modificar esta evaluación porque tiene un cambio pendiente de aprobación. Por favor, espera a que el coordinador revise el cambio anterior.', 400);
+                    return;
+                }
+                
+                error_log("Registrando cambio de nota final - Evaluacion ID: " . $existingEval['id']);
+                
+                // Obtener datos del olimpista, área y nivel
+                $sql = "SELECT o.id as olimpista_id, o.nombre_completo as olimpista_nombre, 
+                               ac.id as area_id, ac.nombre as area_nombre,
+                               nc.id as nivel_id, nc.nombre as nivel_nombre
+                        FROM inscripciones_areas ia
+                        JOIN olimpistas o ON o.id = ia.olimpista_id
+                        JOIN areas_competencia ac ON ac.id = ia.area_competencia_id
+                        JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                        WHERE ia.id = ?";
+                
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute([$input['inscripcion_area_id']]);
+                $datosOlimpista = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                error_log("Datos olimpista: " . json_encode($datosOlimpista));
+                
+                if ($datosOlimpista) {
+                    $motivo = $input['motivo_modificacion'] ?? 'Modificación de nota final';
+                    error_log("Registrando cambio final con motivo: $motivo");
+                    
+                    // Registrar cambio en el log con tipo 'final'
+                    $cambioRegistrado = LogCambiosNotas::registrarCambio(
+                        $existingEval['id'],
+                        $currentUser['id'],
+                        $currentUser['nombre'] ?? $currentUser['email'],
+                        $datosOlimpista['olimpista_id'],
+                        $datosOlimpista['olimpista_nombre'],
+                        $datosOlimpista['area_id'],
+                        $datosOlimpista['area_nombre'],
+                        $datosOlimpista['nivel_id'],
+                        $datosOlimpista['nivel_nombre'],
+                        (float)$existingEval['puntuacion'],
+                        (float)$input['puntuacion'],
+                        $existingEval['observaciones'],
+                        $input['observaciones'] ?? null,
+                        $motivo,
+                        'final' // Tipo de evaluación: final
+                    );
+                    error_log("Cambio final registrado exitosamente");
+                    
+                    // Enviar notificación al coordinador
+                    if ($cambioRegistrado) {
+                        try {
+                            $sqlCoordinador = "SELECT u.id, u.name, u.email, u.nombre
+                                             FROM responsables_academicos ra
+                                             JOIN users u ON u.id = ra.user_id
+                                             WHERE ra.area_competencia_id = ? AND ra.is_active = true AND u.is_active = true
+                                             LIMIT 1";
+                            $stmtCoord = $this->pdo->prepare($sqlCoordinador);
+                            $stmtCoord->execute([$datosOlimpista['area_id']]);
+                            $coordinador = $stmtCoord->fetch(\PDO::FETCH_ASSOC);
+                            
+                            if ($coordinador && $cambioRegistrado) {
+                                $sqlCambio = "SELECT * FROM log_cambios_notas 
+                                            WHERE id = ?";
+                                $stmtCambio = $this->pdo->prepare($sqlCambio);
+                                $stmtCambio->execute([$cambioRegistrado]);
+                                $cambio = $stmtCambio->fetch(\PDO::FETCH_ASSOC);
+                                
+                                if ($cambio) {
+                                    $mailer = new \ForwardSoft\Utils\Mailer();
+                                    $mailer->enviarNotificacionCambioPendiente($coordinador, $cambio);
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            error_log("Error enviando notificación de cambio pendiente: " . $e->getMessage());
+                        }
+                    }
+                } else {
+                    error_log("No se encontraron datos del olimpista para el log");
+                }
                 
                 $this->evalFinalModel->update($existingEval['id'], $evaluacionData);
                 $evaluacionId = $existingEval['id'];
             } else {
-                
                 $evaluacionId = $this->evalFinalModel->create($evaluacionData);
             }
 
@@ -598,12 +682,32 @@ class EvaluacionController
         return $errors;
     }
 
-    private function canEvaluate($evaluadorId, $inscripcionId)
+    private function canEvaluate($evaluadorId, $inscripcionId, $fase = 'clasificacion')
     {
         
         $inscripcion = $this->inscripcionModel->findById($inscripcionId);
         if (!$inscripcion) {
             return false;
+        }
+
+        // Si es fase clasificatoria, verificar que no esté cerrada
+        if ($fase === 'clasificacion') {
+            $sqlCierre = "
+                SELECT estado FROM cierre_fase_areas
+                WHERE area_competencia_id = :areaId 
+                AND nivel_competencia_id IS NULL
+                AND estado = 'cerrada'
+                ORDER BY fecha_cierre DESC
+                LIMIT 1
+            ";
+            $stmtCierre = $this->pdo->prepare($sqlCierre);
+            $stmtCierre->bindValue(':areaId', $inscripcion['area_competencia_id'], \PDO::PARAM_INT);
+            $stmtCierre->execute();
+            $cierre = $stmtCierre->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($cierre && $cierre['estado'] === 'cerrada') {
+                return false; // La fase clasificatoria está cerrada
+            }
         }
 
         
@@ -629,7 +733,7 @@ class EvaluacionController
         $endPermiso = new \DateTime($permiso['end_datetime']);
         
         if ($now < $startPermiso || $now > $endPermiso) {
-            return false;
+            return false; // Fuera del tiempo de asignación
         }
 
         
@@ -637,12 +741,46 @@ class EvaluacionController
         $configArea = $configAreaModel->getByAreaId($inscripcion['area_competencia_id']);
         
         if ($configArea) {
-            $periodoInicio = new \DateTime($configArea['periodo_evaluacion_inicio']);
-            $periodoFin = new \DateTime($configArea['periodo_evaluacion_fin']);
-            
-            if ($now < $periodoInicio || $now > $periodoFin) {
-                return false; 
+            // Para fase clasificatoria, usar período de clasificación
+            // Para fase final, usar período de final
+            if ($fase === 'clasificacion') {
+                $periodoInicio = $configArea['periodo_evaluacion_inicio'] ?? null;
+                $periodoFin = $configArea['periodo_evaluacion_fin'] ?? null;
+            } else {
+                // Fase final
+                $periodoInicio = $configArea['periodo_evaluacion_final_inicio'] ?? null;
+                $periodoFin = $configArea['periodo_evaluacion_final_fin'] ?? null;
             }
+            
+            // Si el período está configurado, validar que estemos dentro del rango
+            if ($periodoInicio && $periodoFin) {
+                $periodoInicioDt = new \DateTime($periodoInicio);
+                $periodoFinDt = new \DateTime($periodoFin);
+                
+                if ($now < $periodoInicioDt) {
+                    error_log("canEvaluate: Fuera del período - Fecha actual antes del inicio. Fase: $fase, Inicio: $periodoInicio, Ahora: " . $now->format('Y-m-d H:i:s'));
+                    return false; // Aún no ha comenzado el período de evaluación
+                }
+                
+                if ($now > $periodoFinDt) {
+                    error_log("canEvaluate: Fuera del período - Fecha actual después del fin. Fase: $fase, Fin: $periodoFin, Ahora: " . $now->format('Y-m-d H:i:s'));
+                    return false; // Ya pasó el período de evaluación
+                }
+            } else {
+                // Si no hay período configurado para la fase final, permitir (puede que no esté configurado aún)
+                if ($fase === 'final') {
+                    error_log("canEvaluate: Período de evaluación final no configurado para el área " . $inscripcion['area_competencia_id']);
+                    // No bloquear si no está configurado, permitir evaluación
+                } else {
+                    // Para fase clasificatoria, si no hay período configurado, no permitir
+                    error_log("canEvaluate: Período de evaluación clasificatoria no configurado para el área " . $inscripcion['area_competencia_id']);
+                    return false;
+                }
+            }
+        } else {
+            // Si no hay configuración del área, no permitir
+            error_log("canEvaluate: No hay configuración de área para inscripción " . $inscripcionId);
+            return false;
         }
 
         return true;

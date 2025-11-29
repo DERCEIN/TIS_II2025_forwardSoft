@@ -47,39 +47,6 @@ export default function ImportarOlimpistasPage() {
   const { resumen, generar: generarResumen, limpiar: limpiarResumen } = useResumenImportacion()
   
   const { success, error: showError, warning, info } = useNotifications()
-  
-  // Función para limpiar la tabla
-  const limpiarTabla = async () => {
-    try {
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}/api/olimpistas/clear`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        success(`Tabla limpiada exitosamente. Se eliminaron ${data.data.deleted_count} registros.`)
-        // Limpiar todos los estados
-        limpiarValidaciones()
-        limpiarEstadisticas()
-        limpiarErrores()
-        limpiarResumen()
-        setSelectedFile(null)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''
-        }
-      } else {
-        showError('Error al limpiar la tabla: ' + data.error)
-      }
-    } catch (error) {
-      showError('Error al limpiar la tabla: ' + error)
-    }
-  }
 
   // Manejar selección de archivo
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,14 +161,6 @@ export default function ImportarOlimpistasPage() {
                     <Download className="h-4 w-4 mr-2" />
                   )}
                   Descargar Plantilla
-                </Button>
-                <Button 
-                  onClick={limpiarTabla}
-                  variant="outline"
-                  className="flex items-center text-red-600 hover:text-red-700"
-                >
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  Limpiar Tabla
                 </Button>
               </div>
             </div>

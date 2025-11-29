@@ -1,4 +1,5 @@
 import { id } from "date-fns/locale"
+import type { PublishedResult } from "@/lib/types"
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
@@ -309,6 +310,32 @@ export class ImportService {
     a.click()
     window.URL.revokeObjectURL(url)
     document.body.removeChild(a)
+  }
+}
+
+// Servicio para certificados y premiación
+export class CertificadosService {
+  // Coordinador: Obtener participantes premiados de su área
+  static async getParticipantesPremiados() {
+    return ApiService.get('/api/coordinador/certificados/participantes-premiados')
+  }
+
+  // Coordinador: Aprobar certificados
+  static async aprobarCertificados(aprobado: boolean, observaciones?: string) {
+    return ApiService.post('/api/coordinador/certificados/aprobar', {
+      aprobado,
+      observaciones
+    })
+  }
+
+  // Admin: Obtener todas las áreas con estado de aprobación
+  static async getAreasAprobadas() {
+    return ApiService.get('/api/admin/certificados/areas')
+  }
+
+  // Admin: Obtener participantes premiados por área
+  static async getParticipantesPremiadosPorArea(areaId: number) {
+    return ApiService.get(`/api/admin/certificados/participantes-premiados/${areaId}`)
   }
 }
 
@@ -798,12 +825,17 @@ export class CoordinadorService {
     return ApiService.post('/api/coordinador/cierre-fase/cerrar', {})
   }
 
+  static async cerrarFaseFinal() {
+    return ApiService.post('/api/coordinador/cierre-fase-final/cerrar', {})
+  }
+
   static async descargarReportePDF() {
     
     const token = ApiService.getToken() || 
                   (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
                   (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
+    // Usar API_BASE_URL que ya normaliza las barras finales
+    const apiUrl = API_BASE_URL
     
     if (!token) {
       console.error(' No se encontró token de autenticación')
@@ -902,7 +934,8 @@ export class CoordinadorService {
     const token = ApiService.getToken() || 
                   (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
                   (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
+    // Usar API_BASE_URL que ya normaliza las barras finales
+    const apiUrl = API_BASE_URL
     
     if (!token) {
       return { 
@@ -963,7 +996,8 @@ export class CoordinadorService {
     const token = ApiService.getToken() || 
                   (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
                   (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
+    // Usar API_BASE_URL que ya normaliza las barras finales
+    const apiUrl = API_BASE_URL
     
     if (!token) {
       return { 
@@ -1024,7 +1058,8 @@ export class CoordinadorService {
     const token = ApiService.getToken() || 
                   (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
                   (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
+    // Usar API_BASE_URL que ya normaliza las barras finales
+    const apiUrl = API_BASE_URL
     
     if (!token) {
       return { 
@@ -1085,7 +1120,8 @@ export class CoordinadorService {
     const token = ApiService.getToken() || 
                   (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
                   (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
+    // Usar API_BASE_URL que ya normaliza las barras finales
+    const apiUrl = API_BASE_URL
     
     if (!token) {
       return { 
@@ -1139,6 +1175,189 @@ export class CoordinadorService {
     } catch (error: any) {
       console.error('Error descargando Excel de progreso:', error)
       return { success: false, error: error.message || 'Error desconocido al descargar el Excel' }
+    }
+  }
+
+  static async descargarReportePDFCierreFaseFinal() {
+    const token = ApiService.getToken() || 
+                  (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
+                  (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
+    const apiUrl = API_BASE_URL
+    
+    if (!token) {
+      return { 
+        success: false, 
+        error: 'No se encontró el token de autenticación. Por favor, inicia sesión nuevamente.' 
+      }
+    }
+    
+    try {
+      const response = await fetch(`${apiUrl}/api/coordinador/cierre-fase-final/reporte-pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const contentType = response.headers.get('content-type') || ''
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json()
+        const errorMessage = errorData.message || errorData.error || 'No se encontró el PDF. Asegúrate de que la fase final esté cerrada.'
+        throw new Error(errorMessage)
+      }
+
+      if (!response.ok) {
+        throw new Error('Error al descargar el PDF')
+      }
+
+      const blob = await response.blob()
+      
+      if (blob.size < 100) {
+        const text = await blob.text()
+        try {
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.message || errorData.error || 'No se encontró el PDF')
+        } catch (e) {
+          throw new Error('El archivo PDF está vacío o no se encontró. Asegúrate de que la fase final esté cerrada.')
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `reporte_cierre_fase_final_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      return { success: true }
+    } catch (error: any) {
+      console.error('Error descargando PDF de fase final:', error)
+      return { success: false, error: error.message || 'Error desconocido al descargar el PDF' }
+    }
+  }
+
+  static async descargarReporteExcelParticipantesFaseFinal() {
+    const token = ApiService.getToken() || 
+                  (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
+                  (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
+    const apiUrl = API_BASE_URL
+    
+    if (!token) {
+      return { 
+        success: false, 
+        error: 'No se encontró el token de autenticación. Por favor, inicia sesión nuevamente.' 
+      }
+    }
+    
+    try {
+      const response = await fetch(`${apiUrl}/api/coordinador/cierre-fase-final/reporte-excel`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const contentType = response.headers.get('content-type') || ''
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json()
+        const errorMessage = errorData.message || errorData.error || 'Error al descargar el Excel'
+        throw new Error(errorMessage)
+      }
+
+      if (!response.ok) {
+        throw new Error('Error al descargar el Excel')
+      }
+
+      const blob = await response.blob()
+      
+      if (blob.size < 100) {
+        const text = await blob.text()
+        try {
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.message || errorData.error || 'No se encontró el Excel')
+        } catch (e) {
+          throw new Error('El archivo Excel está vacío o no se encontró.')
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `reporte_participantes_fase_final_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      return { success: true }
+    } catch (error: any) {
+      console.error('Error descargando Excel de fase final:', error)
+      return { success: false, error: error.message || 'Error desconocido al descargar el Excel' }
+    }
+  }
+
+  static async descargarReportePDFEstadisticasFaseFinal() {
+    const token = ApiService.getToken() || 
+                  (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) ||
+                  (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
+    const apiUrl = API_BASE_URL
+    
+    if (!token) {
+      return { 
+        success: false, 
+        error: 'No se encontró el token de autenticación. Por favor, inicia sesión nuevamente.' 
+      }
+    }
+    
+    try {
+      const response = await fetch(`${apiUrl}/api/coordinador/cierre-fase-final/reporte-estadisticas`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const contentType = response.headers.get('content-type') || ''
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json()
+        const errorMessage = errorData.message || errorData.error || 'Error al descargar el PDF'
+        throw new Error(errorMessage)
+      }
+
+      if (!response.ok) {
+        throw new Error('Error al descargar el PDF')
+      }
+
+      const blob = await response.blob()
+      
+      if (blob.size < 100) {
+        const text = await blob.text()
+        try {
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.message || errorData.error || 'No se encontró el PDF')
+        } catch (e) {
+          throw new Error('El archivo PDF está vacío o no se encontró.')
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `reporte_estadisticas_fase_final_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      return { success: true }
+    } catch (error: any) {
+      console.error('Error descargando PDF de estadísticas fase final:', error)
+      return { success: false, error: error.message || 'Error desconocido al descargar el PDF' }
     }
   }
 }
@@ -1204,11 +1423,16 @@ export class ConfiguracionService {
 
   static async updateConfiguracionPorArea(data: {
     area_competencia_id: number
-    tiempo_evaluacion_minutos: number
-    periodo_evaluacion_inicio: string
-    periodo_evaluacion_fin: string
-    periodo_publicacion_inicio: string
-    periodo_publicacion_fin: string
+    tiempo_evaluacion_minutos?: number
+    periodo_evaluacion_inicio?: string
+    periodo_evaluacion_fin?: string
+    periodo_publicacion_inicio?: string
+    periodo_publicacion_fin?: string
+    tiempo_evaluacion_final_minutos?: number
+    periodo_evaluacion_final_inicio?: string
+    periodo_evaluacion_final_fin?: string
+    periodo_publicacion_final_inicio?: string
+    periodo_publicacion_final_fin?: string
   }) {
     return ApiService.put('/api/configuracion/area', data)
   }
@@ -1271,6 +1495,12 @@ export class MedalleroService{
   }
   static async updateMedallero(data: any) {
     return ApiService.put('/api/administrador/medallero', data);
+  }
+}
+
+export class PublicResultsService {
+  static async getMedalleroFinal(): Promise<ApiResponse<PublishedResult>> {
+    return ApiService.get<PublishedResult>("/api/administrador/medallero/final")
   }
 }
 

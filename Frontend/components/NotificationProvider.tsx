@@ -58,7 +58,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     setNotifications(prev => [...prev, newNotification])
 
-    // Auto-remove notification after duration
+    
     if (newNotification.duration && newNotification.duration > 0) {
       setTimeout(() => {
         removeNotification(id)
@@ -90,7 +90,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       type: 'error',
       title,
       message,
-      duration: 0, // Error notifications don't auto-dismiss
+      duration: 0, 
       ...options,
     })
   }, [addNotification])
@@ -159,19 +159,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       {children}
       
       {/* Notification Container */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 space-y-2 w-full max-w-md px-4">
         {notifications.map((notification) => (
           <Alert
             key={notification.id}
             variant={getNotificationVariant(notification.type)}
             className="shadow-lg border-l-4 border-l-current"
           >
-            <div className="flex items-start space-x-2">
+            <div className="flex items-start space-x-3">
               {getNotificationIcon(notification.type)}
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm">{notification.title}</div>
+                <div className="font-semibold text-base">{notification.title}</div>
                 {notification.message && (
-                  <AlertDescription className="text-xs mt-1">
+                  <AlertDescription className="text-sm mt-1">
                     {notification.message}
                   </AlertDescription>
                 )}

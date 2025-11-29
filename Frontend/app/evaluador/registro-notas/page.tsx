@@ -42,6 +42,8 @@ import {
 
   RefreshCw,
 
+  Award,
+
   AlertCircle
 
 } from 'lucide-react'
@@ -64,9 +66,11 @@ interface Participante {
 
   nivel: string
 
+  grado_escolaridad?: string
+
   nota_actual?: number
 
-  estado: 'pendiente' | 'evaluado' | 'revisado' | 'desclasificado' | 'clasificado' | 'no_clasificado'
+  estado: 'pendiente' | 'evaluado' | 'revisado' | 'desclasificado' | 'clasificado' | 'no_clasificado' | 'oro' | 'plata' | 'bronce' | 'mencion_honor' | 'sin_medalla'
 
   inscripcion_estado?: string
 
@@ -131,6 +135,8 @@ export default function RegistroNotas() {
   const [motivoDesclasificacion, setMotivoDesclasificacion] = useState('')
   const [faseCerrada, setFaseCerrada] = useState<boolean>(false)
   const [fechaCierre, setFechaCierre] = useState<string | null>(null)
+  const [faseClasificatoriaCerrada, setFaseClasificatoriaCerrada] = useState<boolean>(false)
+  const [fechaCierreClasificatoria, setFechaCierreClasificatoria] = useState<string | null>(null)
 
 
   
@@ -152,9 +158,13 @@ export default function RegistroNotas() {
       
       const cerrada = responseData.fase_cerrada === true || responseData.fase_cerrada === 'true'
       const fechaCierreData = responseData.fecha_cierre || null
+      const clasificatoriaCerrada = responseData.fase_clasificatoria_cerrada === true || responseData.fase_clasificatoria_cerrada === 'true'
+      const fechaCierreClasificatoriaData = responseData.fecha_cierre_clasificatoria || null
       
       setFaseCerrada(cerrada)
       setFechaCierre(fechaCierreData)
+      setFaseClasificatoriaCerrada(clasificatoriaCerrada)
+      setFechaCierreClasificatoria(fechaCierreClasificatoriaData)
 
       
 
@@ -223,6 +233,8 @@ export default function RegistroNotas() {
         area: row.area || row.area_nombre || '-',
 
         nivel: row.nivel || row.nivel_nombre || '-',
+
+        grado_escolaridad: row.grado_escolaridad || null,
 
         nota_actual: typeof row.nota_actual === 'number' ? row.nota_actual : (typeof row.puntaje === 'number' ? row.puntaje : (typeof row.puntuacion === 'number' ? row.puntuacion : (typeof row.nota === 'number' ? row.nota : (typeof row.puntuacion_final === 'number' ? row.puntuacion_final : undefined)))),
 
@@ -573,7 +585,13 @@ export default function RegistroNotas() {
 
 
   const handleEditNota = (participante: Participante) => {
+    // Si está en fase clasificatoria y está cerrada, bloquear
+    if (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) {
+      error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
+      return
+    }
 
+    // Para fase final, permitir editar (no hay restricción de fase cerrada)
     setEditingParticipant(participante.id)
 
     setNotaTemporal(participante.nota_actual?.toString() || '')
@@ -707,21 +725,24 @@ export default function RegistroNotas() {
 
     if (!tienePermisos) {
 
-      error('Sin permisos', 'No tiene permisos activos para registrar notas. Contacte al coordinador.')
-
+      error('Error', 'No tienes permisos para registrar notas')
       return
-
     }
 
-    
-
-    if (faseCerrada) {
-
-      error('Fase cerrada', 'No se pueden editar notas después del cierre de calificación. La fase ya está cerrada.')
-
+    // Si está en fase clasificatoria y está cerrada, bloquear
+    if (fase === 'clasificacion' && faseCerrada) {
+      error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
-
     }
+
+    // Si está en fase clasificatoria y está cerrada (verificación adicional)
+    if (fase === 'clasificacion' && faseClasificatoriaCerrada) {
+      error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
+      return
+    }
+
+    // Para fase final, no verificar faseCerrada (solo aplica a clasificación)
+    // La fase final puede estar activa aunque la clasificatoria esté cerrada
 
     
 
@@ -866,12 +887,11 @@ export default function RegistroNotas() {
 
         const estadoInscripcion = participante?.inscripcion_estado || participante?.estado
 
-        if (participante && estadoInscripcion !== 'clasificado' && estadoInscripcion !== 'evaluado') {
-
+        // Para evaluación final, permitir si está clasificado o tiene un estado del medallero
+        const estadosValidosFinal = ['clasificado', 'evaluado', 'oro', 'plata', 'bronce', 'mencion_honor', 'sin_medalla']
+        if (participante && !estadosValidosFinal.includes(estadoInscripcion || '')) {
           error('Error', 'Solo se pueden registrar notas finales para participantes clasificados')
-
           return
-
         }
 
         
@@ -902,25 +922,35 @@ export default function RegistroNotas() {
 
       
 
-      setParticipantes(prev => prev.map(p => 
-
-        p.id === participanteId 
-
-          ? { 
-
-              ...p, 
-
-              nota_actual: nota, 
-
-              estado: (nota >= puntuacionMinima ? 'clasificado' : 'no_clasificado') as 'clasificado' | 'no_clasificado',
-
-              fecha_evaluacion: new Date().toISOString().split('T')[0]
-
-            }
-
-          : p
-
-      ))
+      // Para evaluación final, no actualizar el estado aquí - el backend lo calcula basado en el medallero
+      // Solo actualizar la nota y fecha
+      if (fase === 'final') {
+        setParticipantes(prev => prev.map(p => 
+          p.id === participanteId 
+            ? { 
+                ...p, 
+                nota_actual: nota, 
+                fecha_evaluacion: new Date().toISOString().split('T')[0]
+              }
+            : p
+        ))
+        // Recargar participantes para obtener el estado actualizado del backend
+        setTimeout(() => {
+          fetchParticipantes()
+        }, 500)
+      } else {
+        // Para clasificación, mantener la lógica anterior
+        setParticipantes(prev => prev.map(p => 
+          p.id === participanteId 
+            ? { 
+                ...p, 
+                nota_actual: nota, 
+                estado: (nota >= puntuacionMinima ? 'clasificado' : 'no_clasificado') as 'clasificado' | 'no_clasificado',
+                fecha_evaluacion: new Date().toISOString().split('T')[0]
+              }
+            : p
+        ))
+      }
 
       
 
@@ -1094,6 +1124,22 @@ export default function RegistroNotas() {
       case 'desclasificado':
 
         return <Badge variant="destructive" className="flex items-center gap-1"><AlertCircle className="h-3 w-3" />Desclasificado</Badge>
+
+      case 'oro':
+        return <Badge variant="default" className="flex items-center gap-1 bg-yellow-600 hover:bg-yellow-700"><Award className="h-3 w-3" />🥇 Oro</Badge>
+
+      case 'plata':
+        return <Badge variant="default" className="flex items-center gap-1 bg-gray-400 hover:bg-gray-500"><Award className="h-3 w-3" />🥈 Plata</Badge>
+
+      case 'bronce':
+        return <Badge variant="default" className="flex items-center gap-1 bg-orange-600 hover:bg-orange-700"><Award className="h-3 w-3" />🥉 Bronce</Badge>
+
+      case 'mencion_honor':
+        return <Badge variant="outline" className="flex items-center gap-1 border-purple-300 text-purple-700"><Award className="h-3 w-3" />Mención de Honor</Badge>
+
+      case 'sin_medalla':
+        return <Badge variant="outline" className="flex items-center gap-1"><AlertCircle className="h-3 w-3" />Sin Medalla</Badge>
+
       default:
 
         return <Badge variant="outline">{estado}</Badge>
@@ -1107,6 +1153,23 @@ export default function RegistroNotas() {
   const areasUnicas = [...new Set(participantes.map(p => p.area))].filter(a => allowedAreas.length === 0 || allowedAreas.includes(a))
 
   const nivelesUnicos = [...new Set(participantes.map(p => p.nivel))]
+
+  // Agrupar participantes por nivel y luego por grado
+  const participantesAgrupados = participantesFiltrados.reduce((acc, participante) => {
+    const nivel = participante.nivel || 'Sin nivel'
+    const grado = participante.grado_escolaridad || participante.nivel || 'Sin grado'
+    
+    if (!acc[nivel]) {
+      acc[nivel] = {}
+    }
+    
+    if (!acc[nivel][grado]) {
+      acc[nivel][grado] = []
+    }
+    
+    acc[nivel][grado].push(participante)
+    return acc
+  }, {} as Record<string, Record<string, Participante[]>>)
 
 
 
@@ -1131,7 +1194,7 @@ export default function RegistroNotas() {
           
 
           {/* Estado de Cierre de Fase */}
-          {faseCerrada && (
+          {faseCerrada && fase === 'clasificacion' && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-yellow-600" />
@@ -1150,6 +1213,30 @@ export default function RegistroNotas() {
                   })}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Estado de Fase Clasificatoria Cerrada (cuando está en fase final) */}
+          {faseClasificatoriaCerrada && fase === 'final' && (
+            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <span className="text-sm font-medium text-amber-700">
+                  Fase Clasificatoria Archivada
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-amber-600">
+                La fase clasificatoria está cerrada y archivada. Las notas de esta fase no se pueden modificar.
+                {fechaCierreClasificatoria && (
+                  <> Fue cerrada el {new Date(fechaCierreClasificatoria).toLocaleDateString('es-ES', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}.</>
+                )}
+              </p>
             </div>
           )}
 
@@ -1257,7 +1344,17 @@ export default function RegistroNotas() {
 
                 <Label className="text-sm font-medium text-gray-700 mb-2 block">Fase</Label>
 
-                <Select value={fase} onValueChange={(v) => setFase(v as any)}>
+                <Select 
+                  value={fase} 
+                  onValueChange={(v) => {
+                    // Si intenta cambiar a fase clasificatoria y está cerrada, no permitir
+                    if (v === 'clasificacion' && faseClasificatoriaCerrada) {
+                      error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
+                      return
+                    }
+                    setFase(v as any)
+                  }}
+                >
 
                   <SelectTrigger>
 
@@ -1267,13 +1364,23 @@ export default function RegistroNotas() {
 
                   <SelectContent>
 
-                    <SelectItem value="clasificacion">Clasificación</SelectItem>
+                    <SelectItem 
+                      value="clasificacion" 
+                      disabled={faseClasificatoriaCerrada}
+                    >
+                      Clasificación {faseClasificatoriaCerrada && '(Cerrada)'}
+                    </SelectItem>
 
                     <SelectItem value="final">Final</SelectItem>
 
                   </SelectContent>
 
                 </Select>
+                {faseClasificatoriaCerrada && fase === 'final' && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    La fase clasificatoria está cerrada y archivada. Solo puedes registrar notas de la fase final.
+                  </p>
+                )}
 
               </div>
 
@@ -1453,9 +1560,46 @@ export default function RegistroNotas() {
 
                   <TableBody>
 
-                    {participantesFiltrados.map((participante) => (
-
-                      <React.Fragment key={participante.id}>
+                    {Object.entries(participantesAgrupados).flatMap(([nivel, grados]) => {
+                      // Calcular total de participantes en el nivel
+                      const totalEnNivel = Object.values(grados).reduce((sum, p) => sum + p.length, 0)
+                      
+                      return Object.entries(grados).map(([grado, participantesGrado], gradoIndex) => {
+                        const esPrimerGradoDelNivel = gradoIndex === 0
+                        
+                        return (
+                          <React.Fragment key={`${nivel}-${grado}`}>
+                            {/* Encabezado de grupo: Nivel (solo para el primer grado del nivel) */}
+                            {esPrimerGradoDelNivel && (
+                              <TableRow className="bg-blue-50 hover:bg-blue-50">
+                                <TableCell colSpan={8} className="py-2 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="text-sm font-semibold">
+                                      {nivel}
+                                    </Badge>
+                                    <span className="text-xs text-gray-500 ml-2">
+                                      ({totalEnNivel} participante{totalEnNivel !== 1 ? 's' : ''} en total)
+                                    </span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {/* Encabezado de grado */}
+                            <TableRow className="bg-gray-50 hover:bg-gray-50">
+                              <TableCell colSpan={8} className="py-1 px-4 pl-8">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {grado}
+                                  </Badge>
+                                  <span className="text-xs text-gray-500">
+                                    ({participantesGrado.length} participante{participantesGrado.length !== 1 ? 's' : ''})
+                                  </span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            {/* Participantes del grado */}
+                            {participantesGrado.map((participante) => (
+                              <React.Fragment key={participante.id}>
 
                         <TableRow className="hover:bg-gray-50">
 
@@ -1499,11 +1643,16 @@ export default function RegistroNotas() {
 
                           <TableCell>
 
-                            <Badge variant="outline" className="text-xs">
-
-                              {participante.nivel}
-
-                            </Badge>
+                            <div className="flex flex-col gap-1">
+                              <Badge variant="outline" className="text-xs w-fit">
+                                {participante.grado_escolaridad || participante.nivel}
+                              </Badge>
+                              {participante.grado_escolaridad && (
+                                <span className="text-xs text-gray-500">
+                                  {participante.nivel}
+                                </span>
+                              )}
+                            </div>
 
                           </TableCell>
 
@@ -1531,7 +1680,7 @@ export default function RegistroNotas() {
 
                                   placeholder="0-100"
 
-                                  disabled={faseCerrada}
+                                  disabled={fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)}
 
                                 />
 
@@ -1545,7 +1694,7 @@ export default function RegistroNotas() {
 
                                   className="h-8 text-xs w-40"
 
-                                  disabled={faseCerrada}
+                                  disabled={fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)}
 
                                 />
 
@@ -1561,7 +1710,7 @@ export default function RegistroNotas() {
 
                                     className="h-8 text-xs w-48 border-orange-300"
 
-                                    disabled={faseCerrada}
+                                    disabled={fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)}
                                   />
 
                                 )}
@@ -1572,11 +1721,11 @@ export default function RegistroNotas() {
 
                                    onClick={() => handleSaveNota(participante.id)}
 
-                                   disabled={saving || faseCerrada}
+                                   disabled={saving || (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada))}
 
                                    className="h-8 px-2"
 
-                                   title={faseCerrada ? "Fase cerrada - No se pueden guardar notas" : ""}
+                                   title={(fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) ? "Fase cerrada - No se pueden guardar notas" : ""}
                                  >
 
                                   <Save className="h-3 w-3" />
@@ -1659,11 +1808,15 @@ export default function RegistroNotas() {
 
                                    onClick={() => handleEditNota(participante)}
 
-                                   disabled={!tienePermisos || faseCerrada}
+                                   disabled={!tienePermisos || (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada))}
 
                                    className="h-8 w-8 p-0"
 
-                                   title={faseCerrada ? "Fase cerrada - No se pueden editar notas" : (!tienePermisos ? "Sin permisos activos" : "Editar nota")}
+                                   title={
+                                     (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) 
+                                       ? "Fase cerrada - No se pueden editar notas" 
+                                       : (!tienePermisos ? "Sin permisos activos" : "Editar nota")
+                                   }
 
                                 >
 
@@ -1679,11 +1832,11 @@ export default function RegistroNotas() {
                                      variant="destructive"
 
                                      onClick={() => handleDesclasificar(participante)}
-                                     disabled={!tienePermisos || faseCerrada}
+                                     disabled={!tienePermisos || (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada))}
 
                                      className="h-8 w-8 p-0"
 
-                                     title={faseCerrada ? "Fase cerrada - No se pueden desclasificar participantes" : (!tienePermisos ? "Sin permisos activos" : "Desclasificar participante")}
+                                     title={(fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) ? "Fase cerrada - No se pueden desclasificar participantes" : (!tienePermisos ? "Sin permisos activos" : "Desclasificar participante")}
 
                                   >
 
@@ -1726,11 +1879,11 @@ export default function RegistroNotas() {
 
                         
 
-                        {/* Sección de Desclasificación Expandible */}
-                        {participanteDesclasificando === participante.id && (
-                          <TableRow>
+                          {/* Sección de Desclasificación Expandible */}
+                          {participanteDesclasificando === participante.id && (
+                            <TableRow>
 
-                            <TableCell colSpan={8} className="p-0">
+                              <TableCell colSpan={8} className="p-0">
 
                               <div className="bg-red-50 border-t border-red-200 p-4">
 
@@ -1977,11 +2130,14 @@ export default function RegistroNotas() {
 
                           </TableRow>
 
-                        )}
+                          )}
 
-                      </React.Fragment>
-
-                    ))}
+                              </React.Fragment>
+                            ))}
+                          </React.Fragment>
+                        )
+                      })
+                    })}
 
                   </TableBody>
 

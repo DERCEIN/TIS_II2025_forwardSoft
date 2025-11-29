@@ -305,6 +305,11 @@ class ConfiguracionOlimpiadaController
                     'periodo_publicacion_inicio' => $item['periodo_publicacion_inicio'],
                     'periodo_publicacion_fin' => $item['periodo_publicacion_fin'],
                     'tiempo_evaluacion_minutos' => $item['tiempo_evaluacion_minutos'],
+                    'periodo_evaluacion_final_inicio' => $item['periodo_evaluacion_final_inicio'] ?? null,
+                    'periodo_evaluacion_final_fin' => $item['periodo_evaluacion_final_fin'] ?? null,
+                    'periodo_publicacion_final_inicio' => $item['periodo_publicacion_final_inicio'] ?? null,
+                    'periodo_publicacion_final_fin' => $item['periodo_publicacion_final_fin'] ?? null,
+                    'tiempo_evaluacion_final_minutos' => $item['tiempo_evaluacion_final_minutos'] ?? null,
                 ];
             }, $cronograma);
 
@@ -372,41 +377,78 @@ class ConfiguracionOlimpiadaController
                 return;
             }
 
-            
-            $required = [
-                'periodo_evaluacion_inicio',
-                'periodo_evaluacion_fin',
-                'periodo_publicacion_inicio',
-                'periodo_publicacion_fin'
-            ];
+            // Validar fase clasificatoria si se proporciona
+            if (isset($input['periodo_evaluacion_inicio']) && !empty($input['periodo_evaluacion_inicio'])) {
+                $requiredClasificatoria = [
+                    'periodo_evaluacion_inicio',
+                    'periodo_evaluacion_fin',
+                    'periodo_publicacion_inicio',
+                    'periodo_publicacion_fin'
+                ];
 
-            foreach ($required as $field) {
-                if (empty($input[$field])) {
-                    Response::validationError([$field => "El campo $field es requerido"]);
+                foreach ($requiredClasificatoria as $field) {
+                    if (empty($input[$field])) {
+                        Response::validationError([$field => "El campo $field es requerido para la fase clasificatoria"]);
+                        return;
+                    }
+                }
+
+                $evalInicio = new \DateTime($input['periodo_evaluacion_inicio']);
+                $evalFin = new \DateTime($input['periodo_evaluacion_fin']);
+                $pubInicio = new \DateTime($input['periodo_publicacion_inicio']);
+                $pubFin = new \DateTime($input['periodo_publicacion_fin']);
+
+                if ($evalInicio >= $evalFin) {
+                    Response::validationError(['periodo_evaluacion_fin' => 'La fecha de fin de evaluación debe ser posterior a la fecha de inicio']);
+                    return;
+                }
+
+                if ($pubInicio >= $pubFin) {
+                    Response::validationError(['periodo_publicacion_fin' => 'La fecha de fin de publicación debe ser posterior a la fecha de inicio']);
+                    return;
+                }
+
+                if ($evalFin > $pubInicio) {
+                    Response::validationError(['periodo_publicacion_inicio' => 'El periodo de evaluación debe terminar antes del periodo de publicación']);
                     return;
                 }
             }
 
-            
-            
-            $evalInicio = new \DateTime($input['periodo_evaluacion_inicio']);
-            $evalFin = new \DateTime($input['periodo_evaluacion_fin']);
-            $pubInicio = new \DateTime($input['periodo_publicacion_inicio']);
-            $pubFin = new \DateTime($input['periodo_publicacion_fin']);
+            // Validar fase final si se proporciona
+            if (isset($input['periodo_evaluacion_final_inicio']) && !empty($input['periodo_evaluacion_final_inicio'])) {
+                $requiredFinal = [
+                    'periodo_evaluacion_final_inicio',
+                    'periodo_evaluacion_final_fin',
+                    'periodo_publicacion_final_inicio',
+                    'periodo_publicacion_final_fin'
+                ];
 
-            if ($evalInicio >= $evalFin) {
-                Response::validationError(['periodo_evaluacion_fin' => 'La fecha de fin de evaluación debe ser posterior a la fecha de inicio']);
-                return;
-            }
+                foreach ($requiredFinal as $field) {
+                    if (empty($input[$field])) {
+                        Response::validationError([$field => "El campo $field es requerido para la fase final"]);
+                        return;
+                    }
+                }
 
-            if ($pubInicio >= $pubFin) {
-                Response::validationError(['periodo_publicacion_fin' => 'La fecha de fin de publicación debe ser posterior a la fecha de inicio']);
-                return;
-            }
+                $evalFinalInicio = new \DateTime($input['periodo_evaluacion_final_inicio']);
+                $evalFinalFin = new \DateTime($input['periodo_evaluacion_final_fin']);
+                $pubFinalInicio = new \DateTime($input['periodo_publicacion_final_inicio']);
+                $pubFinalFin = new \DateTime($input['periodo_publicacion_final_fin']);
 
-            if ($evalFin > $pubInicio) {
-                Response::validationError(['periodo_publicacion_inicio' => 'El periodo de evaluación debe terminar antes del periodo de publicación']);
-                return;
+                if ($evalFinalInicio >= $evalFinalFin) {
+                    Response::validationError(['periodo_evaluacion_final_fin' => 'La fecha de fin de evaluación debe ser posterior a la fecha de inicio']);
+                    return;
+                }
+
+                if ($pubFinalInicio >= $pubFinalFin) {
+                    Response::validationError(['periodo_publicacion_final_fin' => 'La fecha de fin de publicación debe ser posterior a la fecha de inicio']);
+                    return;
+                }
+
+                if ($evalFinalFin > $pubFinalInicio) {
+                    Response::validationError(['periodo_publicacion_final_inicio' => 'El periodo de evaluación debe terminar antes del periodo de publicación']);
+                    return;
+                }
             }
 
             $result = $this->configAreaModel->createOrUpdate($areaId, $input);

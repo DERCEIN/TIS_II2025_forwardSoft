@@ -53,7 +53,12 @@ class ConfiguracionAreaEvaluacion
                 cae.periodo_evaluacion_fin,
                 cae.periodo_publicacion_inicio,
                 cae.periodo_publicacion_fin,
-                cae.tiempo_evaluacion_minutos
+                cae.tiempo_evaluacion_minutos,
+                cae.periodo_evaluacion_final_inicio,
+                cae.periodo_evaluacion_final_fin,
+                cae.periodo_publicacion_final_inicio,
+                cae.periodo_publicacion_final_fin,
+                cae.tiempo_evaluacion_final_minutos
             FROM areas_competencia ac
             LEFT JOIN {$this->table} cae ON cae.area_competencia_id = ac.id
             WHERE ac.is_active = true
@@ -90,18 +95,28 @@ class ConfiguracionAreaEvaluacion
                 periodo_evaluacion_inicio,
                 periodo_evaluacion_fin,
                 periodo_publicacion_inicio,
-                periodo_publicacion_fin
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                periodo_publicacion_fin,
+                tiempo_evaluacion_final_minutos,
+                periodo_evaluacion_final_inicio,
+                periodo_evaluacion_final_fin,
+                periodo_publicacion_final_inicio,
+                periodo_publicacion_final_fin
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
 
         try {
             $stmt = $this->db->query($sql, [
                 $areaId,
                 $data['tiempo_evaluacion_minutos'] ?? 120,
-                $data['periodo_evaluacion_inicio'],
-                $data['periodo_evaluacion_fin'],
-                $data['periodo_publicacion_inicio'],
-                $data['periodo_publicacion_fin']
+                $data['periodo_evaluacion_inicio'] ?? null,
+                $data['periodo_evaluacion_fin'] ?? null,
+                $data['periodo_publicacion_inicio'] ?? null,
+                $data['periodo_publicacion_fin'] ?? null,
+                $data['tiempo_evaluacion_final_minutos'] ?? 120,
+                $data['periodo_evaluacion_final_inicio'] ?? null,
+                $data['periodo_evaluacion_final_fin'] ?? null,
+                $data['periodo_publicacion_final_inicio'] ?? null,
+                $data['periodo_publicacion_final_fin'] ?? null
             ]);
 
             return $this->db->lastInsertId();
@@ -122,7 +137,12 @@ class ConfiguracionAreaEvaluacion
             'periodo_evaluacion_inicio',
             'periodo_evaluacion_fin',
             'periodo_publicacion_inicio',
-            'periodo_publicacion_fin'
+            'periodo_publicacion_fin',
+            'tiempo_evaluacion_final_minutos',
+            'periodo_evaluacion_final_inicio',
+            'periodo_evaluacion_final_fin',
+            'periodo_publicacion_final_inicio',
+            'periodo_publicacion_final_fin'
         ];
         
         foreach ($fields as $field) {

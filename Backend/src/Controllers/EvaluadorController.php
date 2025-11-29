@@ -96,6 +96,7 @@ class EvaluadorController
                         ia.estado as inscripcion_estado,
                         o.nombre_completo as competidor,
                         o.documento_identidad,
+                        o.grado_escolaridad,
                         ac.nombre as area_nombre,
                         nc.nombre as nivel_nombre,
                         COALESCE(ue.nombre, 'Sin institución') as institucion_nombre,
@@ -154,6 +155,7 @@ class EvaluadorController
                     'nivel_competencia_id' => $eval['nivel_competencia_id'],
                     'competidor' => $eval['competidor'],
                     'documento' => $eval['documento_identidad'],
+                    'grado_escolaridad' => $eval['grado_escolaridad'] ?? null,
                     'area' => $eval['area_nombre'],
                     'nivel' => $eval['nivel_nombre'],
                     'institucion' => $eval['institucion_nombre'],
@@ -169,7 +171,57 @@ class EvaluadorController
                 ];
             }, $evaluaciones);
 
-            Response::success($resultado, 'Lista de evaluaciones asignadas');
+            // Verificar si la fase clasificatoria está cerrada
+            $faseClasificatoriaCerrada = false;
+            $fechaCierreClasificatoria = null;
+            if ($fase === 'clasificacion' || $fase === 'final') {
+                // Obtener el área del primer evaluado (si existe)
+                $areaId = null;
+                if (!empty($evaluaciones)) {
+                    $areaId = $evaluaciones[0]['area_competencia_id'] ?? null;
+                }
+                
+                // Si no hay evaluaciones, intentar obtener el área desde las asignaciones
+                if (!$areaId) {
+                    $sqlArea = "SELECT DISTINCT ia.area_competencia_id 
+                                FROM asignaciones_evaluacion ae
+                                JOIN inscripciones_areas ia ON ia.id = ae.inscripcion_area_id
+                                WHERE ae.evaluador_id = :userId
+                                LIMIT 1";
+                    $stmtArea = $this->pdo->prepare($sqlArea);
+                    $stmtArea->bindValue(':userId', $userId, \PDO::PARAM_INT);
+                    $stmtArea->execute();
+                    $areaData = $stmtArea->fetch(\PDO::FETCH_ASSOC);
+                    $areaId = $areaData['area_competencia_id'] ?? null;
+                }
+                
+                if ($areaId) {
+                    $sqlCierre = "SELECT estado, fecha_cierre 
+                                  FROM cierre_fase_areas 
+                                  WHERE area_competencia_id = :areaId 
+                                  AND nivel_competencia_id IS NULL
+                                  AND estado = 'cerrada'
+                                  ORDER BY fecha_cierre DESC
+                                  LIMIT 1";
+                    $stmtCierre = $this->pdo->prepare($sqlCierre);
+                    $stmtCierre->bindValue(':areaId', $areaId, \PDO::PARAM_INT);
+                    $stmtCierre->execute();
+                    $cierre = $stmtCierre->fetch(\PDO::FETCH_ASSOC);
+                    
+                    if ($cierre && $cierre['estado'] === 'cerrada') {
+                        $faseClasificatoriaCerrada = true;
+                        $fechaCierreClasificatoria = $cierre['fecha_cierre'];
+                    }
+                }
+            }
+
+            Response::success([
+                'evaluaciones' => $resultado,
+                'fase_cerrada' => $fase === 'clasificacion' ? $faseClasificatoriaCerrada : false,
+                'fecha_cierre' => $fase === 'clasificacion' ? $fechaCierreClasificatoria : null,
+                'fase_clasificatoria_cerrada' => $faseClasificatoriaCerrada,
+                'fecha_cierre_clasificatoria' => $fechaCierreClasificatoria
+            ], 'Lista de evaluaciones asignadas');
         } catch (\Exception $e) {
             error_log('Error en evaluaciones: ' . $e->getMessage());
             Response::serverError('Error al obtener evaluaciones: ' . $e->getMessage());

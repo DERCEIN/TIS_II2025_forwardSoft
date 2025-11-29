@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, ChevronRight, BookOpen, LogIn, CalendarDays, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { ConfiguracionService } from "@/lib/api";
@@ -16,6 +17,10 @@ interface CronogramaArea {
   evalFin: string | null;
   pubInicio: string | null;
   pubFin: string | null;
+  evalFinalInicio: string | null;
+  evalFinalFin: string | null;
+  pubFinalInicio: string | null;
+  pubFinalFin: string | null;
 }
 
 export default function LandingPage() {
@@ -23,6 +28,7 @@ export default function LandingPage() {
   const [cronogramaAreas, setCronogramaAreas] = useState<CronogramaArea[]>([]);
   const [loadingCronograma, setLoadingCronograma] = useState(true);
   const [cronogramaError, setCronogramaError] = useState<string | null>(null);
+  const [faseSeleccionada, setFaseSeleccionada] = useState<'clasificatoria' | 'final'>('clasificatoria');
 
   useEffect(() => {
     const cargarCronograma = async () => {
@@ -43,11 +49,19 @@ export default function LandingPage() {
             evalFin: item.periodo_evaluacion_fin || null,
             pubInicio: item.periodo_publicacion_inicio || null,
             pubFin: item.periodo_publicacion_fin || null,
+            evalFinalInicio: item.periodo_evaluacion_final_inicio || null,
+            evalFinalFin: item.periodo_evaluacion_final_fin || null,
+            pubFinalInicio: item.periodo_publicacion_final_inicio || null,
+            pubFinalFin: item.periodo_publicacion_final_fin || null,
           }))
-          .filter((area: CronogramaArea) => area.evalInicio && area.evalFin)
+          .filter((area: CronogramaArea) => {
+            
+            return (area.evalInicio && area.evalFin) || (area.evalFinalInicio && area.evalFinalFin);
+          })
           .sort((a: CronogramaArea, b: CronogramaArea) => {
-            const fechaA = new Date(a.evalInicio as string).getTime();
-            const fechaB = new Date(b.evalInicio as string).getTime();
+            
+            const fechaA = new Date((a.evalInicio || a.evalFinalInicio) as string).getTime();
+            const fechaB = new Date((b.evalInicio || b.evalFinalInicio) as string).getTime();
             return fechaA - fechaB;
           });
 
@@ -136,14 +150,6 @@ export default function LandingPage() {
     },
   ];
 
-  const competitionAreas = [
-    { name: "Matemáticas", participants: 245, icon: "📐" },
-    { name: "Física", participants: 198, icon: "⚛️" },
-    { name: "Química", participants: 167, icon: "🧪" },
-    { name: "Biología", participants: 134, icon: "🧬" },
-    { name: "Informática", participants: 103, icon: "💻" },
-    { name: "Robótica", participants: 89, icon: "🤖" },
-  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -160,17 +166,17 @@ export default function LandingPage() {
               <a href="#inicio" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Inicio
               </a>
-              <a
-                href="#areas"
-                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-              >
-                Áreas de Competencia
-              </a>
               <Link
                 href="/resultados"
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
               >
                 Resultados
+              </Link>
+              <Link
+                href="/medallero"
+                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                Medallero
               </Link>
               <a
                 href="#noticias"
@@ -246,48 +252,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Competition Areas */}
-      <section id="areas" className="py-20">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-heading font-bold text-foreground mb-4">Áreas de Competencia</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Participa en las diferentes disciplinas científicas y tecnológicas de nuestra olimpiada
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {competitionAreas.map((area, index) => (
-              <Card key={index} className="hover:shadow-lg transition-shadow cursor-pointer group">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-3xl">{area.icon}</div>
-                    <Badge variant="secondary" className="text-xs">
-                      {area.participants} inscritos
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardTitle className="text-lg mb-2 group-hover:text-primary transition-colors">{area.name}</CardTitle>
-                  <CardDescription className="text-sm">
-                    Demuestra tus conocimientos en {area.name.toLowerCase()} y compite con los mejores estudiantes del
-                    país
-                  </CardDescription>
-                  <div className="flex items-center mt-4 text-sm text-primary">
-                    <Link href={`/resultados?area=${encodeURIComponent(area.name)}`}>
-                      <span className="flex items-center cursor-pointer">
-                        Ver resultados
-                        <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                      </span>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Cronograma Section */}
       <section id="cronograma" className="py-20 bg-gradient-to-b from-background via-muted/30 to-background">
         <div className="container mx-auto px-6">
@@ -300,8 +264,7 @@ export default function LandingPage() {
               Fechas oficiales por área de competencia
             </h2>
             <p className="text-lg text-muted-foreground">
-              Consulta cuándo se realizarán las evaluaciones de la fase clasificatoria para cada área. Mantente atento
-              para prepararte con tiempo.
+              Consulta cuándo se realizarán las evaluaciones para cada área. Mantente atento para prepararte con tiempo.
             </p>
           </div>
 
@@ -329,77 +292,168 @@ export default function LandingPage() {
             </div>
           ) : (
             <>
-              <div className="rounded-2xl overflow-hidden shadow-xl border border-primary/10 bg-white">
-                <div className="px-6 py-4 bg-primary text-primary-foreground flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.2em] font-semibold opacity-80">1ra. Etapa</p>
-                    <p className="text-xl font-heading font-bold">Fase clasificatoria · Unidades Educativas</p>
-                  </div>
-                  <p className="text-sm text-primary-foreground/80">Horarios oficiales aprobados por el comité central</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-primary/5">
-                      <tr className="text-left">
-                        <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[28%]">
-                          Área
-                        </th>
-                        <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Periodo de evaluación
-                        </th>
-                        <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Publicación de resultados
-                        </th>
-                        <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[15%]">
-                          Estado
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {cronogramaAreas.map((area) => {
-                        const estado = obtenerEstadoPeriodo(area.evalInicio, area.evalFin);
-                        return (
-                          <tr key={area.id} className="hover:bg-muted/40 transition-colors">
-                            <td className="px-6 py-5 align-top">
-                              <p className="text-base font-semibold text-foreground">{area.nombre}</p>
-                              {area.descripcion && (
-                                <p className="text-xs text-muted-foreground mt-1 leading-snug">{area.descripcion}</p>
-                              )}
-                            </td>
-                            <td className="px-6 py-5 align-top">
-                              <p className="text-sm font-medium text-foreground">{formatearRango(area.evalInicio, area.evalFin)}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Inicio: {formatearFecha(area.evalInicio)} <span className="mx-1">•</span> Fin:{" "}
-                                {formatearFecha(area.evalFin)}
-                              </p>
-                            </td>
-                            <td className="px-6 py-5 align-top">
-                              {area.pubInicio && area.pubFin ? (
-                                <>
-                                  <p className="text-sm font-medium text-foreground">
-                                    {formatearRango(area.pubInicio, area.pubFin)}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Inicio: {formatearFecha(area.pubInicio)} <span className="mx-1">•</span> Fin:{" "}
-                                    {formatearFecha(area.pubFin)}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="text-sm font-medium text-muted-foreground">Por confirmar</p>
-                              )}
-                            </td>
-                            <td className="px-6 py-5 align-top">
-                              <Badge className={`border ${estadoClasses[estado] || estadoClasses["sin-fecha"]}`}>
-                                {estadoLabels[estado]}
-                              </Badge>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="max-w-2xl mx-auto mb-6">
+                <Tabs value={faseSeleccionada} onValueChange={(value) => setFaseSeleccionada(value as 'clasificatoria' | 'final')}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="clasificatoria">Fase Clasificatoria</TabsTrigger>
+                    <TabsTrigger value="final">Fase Final</TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
+
+              <Tabs value={faseSeleccionada} onValueChange={(value) => setFaseSeleccionada(value as 'clasificatoria' | 'final')}>
+                <TabsContent value="clasificatoria" className="mt-0">
+                  <div className="rounded-2xl overflow-hidden shadow-xl border border-primary/10 bg-white">
+                    <div className="px-6 py-4 bg-primary text-primary-foreground flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.2em] font-semibold opacity-80">1ra. Etapa</p>
+                        <p className="text-xl font-heading font-bold">Fase clasificatoria · Unidades Educativas</p>
+                      </div>
+                      <p className="text-sm text-primary-foreground/80">Horarios oficiales aprobados por el comité central</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-primary/5">
+                          <tr className="text-left">
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[28%]">
+                              Área
+                            </th>
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Periodo de evaluación
+                            </th>
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Publicación de resultados
+                            </th>
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[15%]">
+                              Estado
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {cronogramaAreas
+                            .filter((area) => area.evalInicio && area.evalFin)
+                            .map((area) => {
+                              const estado = obtenerEstadoPeriodo(area.evalInicio, area.evalFin);
+                              return (
+                                <tr key={area.id} className="hover:bg-muted/40 transition-colors">
+                                  <td className="px-6 py-5 align-top">
+                                    <p className="text-base font-semibold text-foreground">{area.nombre}</p>
+                                    {area.descripcion && (
+                                      <p className="text-xs text-muted-foreground mt-1 leading-snug">{area.descripcion}</p>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-5 align-top">
+                                    <p className="text-sm font-medium text-foreground">{formatearRango(area.evalInicio, area.evalFin)}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Inicio: {formatearFecha(area.evalInicio)} <span className="mx-1">•</span> Fin:{" "}
+                                      {formatearFecha(area.evalFin)}
+                                    </p>
+                                  </td>
+                                  <td className="px-6 py-5 align-top">
+                                    {area.pubInicio && area.pubFin ? (
+                                      <>
+                                        <p className="text-sm font-medium text-foreground">
+                                          {formatearRango(area.pubInicio, area.pubFin)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Inicio: {formatearFecha(area.pubInicio)} <span className="mx-1">•</span> Fin:{" "}
+                                          {formatearFecha(area.pubFin)}
+                                        </p>
+                                      </>
+                                    ) : (
+                                      <p className="text-sm font-medium text-muted-foreground">Por confirmar</p>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-5 align-top">
+                                    <Badge className={`border ${estadoClasses[estado] || estadoClasses["sin-fecha"]}`}>
+                                      {estadoLabels[estado]}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="final" className="mt-0">
+                  <div className="rounded-2xl overflow-hidden shadow-xl border border-purple-200 bg-white">
+                    <div className="px-6 py-4 bg-purple-600 text-white flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.2em] font-semibold opacity-80">2da. Etapa</p>
+                        <p className="text-xl font-heading font-bold">Fase final · Competencia Nacional</p>
+                      </div>
+                      <p className="text-sm text-white/80">Horarios oficiales aprobados por el comité central</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-purple-50">
+                          <tr className="text-left">
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[28%]">
+                              Área
+                            </th>
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Periodo de evaluación
+                            </th>
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Publicación de resultados
+                            </th>
+                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[15%]">
+                              Estado
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {cronogramaAreas
+                            .filter((area) => area.evalFinalInicio && area.evalFinalFin)
+                            .map((area) => {
+                              const estado = obtenerEstadoPeriodo(area.evalFinalInicio, area.evalFinalFin);
+                              return (
+                                <tr key={area.id} className="hover:bg-muted/40 transition-colors">
+                                  <td className="px-6 py-5 align-top">
+                                    <p className="text-base font-semibold text-foreground">{area.nombre}</p>
+                                    {area.descripcion && (
+                                      <p className="text-xs text-muted-foreground mt-1 leading-snug">{area.descripcion}</p>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-5 align-top">
+                                    <p className="text-sm font-medium text-foreground">{formatearRango(area.evalFinalInicio, area.evalFinalFin)}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Inicio: {formatearFecha(area.evalFinalInicio)} <span className="mx-1">•</span> Fin:{" "}
+                                      {formatearFecha(area.evalFinalFin)}
+                                    </p>
+                                  </td>
+                                  <td className="px-6 py-5 align-top">
+                                    {area.pubFinalInicio && area.pubFinalFin ? (
+                                      <>
+                                        <p className="text-sm font-medium text-foreground">
+                                          {formatearRango(area.pubFinalInicio, area.pubFinalFin)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Inicio: {formatearFecha(area.pubFinalInicio)} <span className="mx-1">•</span> Fin:{" "}
+                                          {formatearFecha(area.pubFinalFin)}
+                                        </p>
+                                      </>
+                                    ) : (
+                                      <p className="text-sm font-medium text-muted-foreground">Por confirmar</p>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-5 align-top">
+                                    <Badge className={`border ${estadoClasses[estado] || estadoClasses["sin-fecha"]}`}>
+                                      {estadoLabels[estado]}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
 
               <div className="mt-8 rounded-2xl border border-amber-100 bg-amber-50 p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Notas importantes</h3>
@@ -504,11 +558,6 @@ export default function LandingPage() {
                 <li>
                   <a href="#" className="hover:text-primary transition-colors">
                     Inicio
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-primary transition-colors">
-                    Áreas de Competencia
                   </a>
                 </li>
                 <li>

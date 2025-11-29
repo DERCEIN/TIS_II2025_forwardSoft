@@ -14,9 +14,35 @@ class ConfiguracionMedallero
         $this->db = Database::getInstance();
     }
 
-    public function getByAreaAndLevel($areaId, $nivelId = null)
+    public function getByAreaAndLevel($areaId, $nivelId = null, $gradoEscolaridad = null)
     {
-        $sql = "SELECT * FROM {$this->table} WHERE area_competencia_id = ?";
+        // Primero intentar obtener configuración específica por grado
+        if ($gradoEscolaridad) {
+            $sql = "SELECT * FROM {$this->table} 
+                    WHERE area_competencia_id = ? 
+                    AND grado_escolaridad = ?";
+            $params = [$areaId, $gradoEscolaridad];
+            
+            if ($nivelId) {
+                $sql .= " AND nivel_competencia_id = ?";
+                $params[] = $nivelId;
+            } else {
+                $sql .= " AND nivel_competencia_id IS NULL";
+            }
+            
+            $stmt = $this->db->query($sql, $params);
+            $result = $stmt->fetch();
+            
+            // Si hay configuración específica por grado, retornarla
+            if ($result) {
+                return $result;
+            }
+        }
+        
+        // Si no hay configuración por grado, buscar por nivel (o general)
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE area_competencia_id = ? 
+                AND (grado_escolaridad IS NULL OR grado_escolaridad = '')";
         $params = [$areaId];
         
         if ($nivelId) {
@@ -25,6 +51,8 @@ class ConfiguracionMedallero
         } else {
             $sql .= " AND nivel_competencia_id IS NULL";
         }
+        
+        $sql .= " ORDER BY grado_escolaridad NULLS LAST LIMIT 1";
         
         $stmt = $this->db->query($sql, $params);
         return $stmt->fetch();

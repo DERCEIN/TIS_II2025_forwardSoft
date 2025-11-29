@@ -66,9 +66,16 @@ class Router
         $this->addRoute('GET', '/api/admin/cierre-fase/reporte-consolidado', [AdminController::class, 'generarReporteConsolidado'], ['auth', 'admin']);
         
         // Rutas de medallero (administrador)
-        $this->addRoute('GET', '/api/administrador/medallero', [MedalleroController::class, 'getMedallero'], ['auth', 'admin']);
+        // IMPORTANTE: Las rutas más específicas deben ir ANTES de las generales
+        $this->addRoute('GET', '/api/administrador/medallero/final', [MedalleroController::class, 'getMedalleroFinal'], []); // Público
         $this->addRoute('GET', '/api/administrador/medallero/areas', [MedalleroController::class, 'getAreas'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/administrador/medallero', [MedalleroController::class, 'getMedallero'], ['auth', 'admin']);
         $this->addRoute('PUT', '/api/administrador/medallero', [MedalleroController::class, 'updateMedallero'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/administrador/medallero/final', [MedalleroController::class, 'getMedalleroFinal'],[]);
+        
+        // Rutas de certificados y premiación (administrador)
+        $this->addRoute('GET', '/api/admin/certificados/areas', [AdminController::class, 'getAreasAprobadas'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/admin/certificados/participantes-premiados/{areaId}', [AdminController::class, 'getParticipantesPremiadosPorArea'], ['auth', 'admin']);
         
         // Rutas de configuración general
         $this->addRoute('GET', '/api/configuracion', [ConfiguracionOlimpiadaController::class, 'getConfiguracion'], ['auth']);
@@ -112,6 +119,16 @@ class Router
         $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-pdf', [CoordinadorController::class, 'descargarReportePDFCierreFase'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-excel', [CoordinadorController::class, 'descargarReporteExcelClasificados'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/cierre-fase/descargar-estadisticas', [CoordinadorController::class, 'descargarReportePDFEstadisticasDetalladas'], ['auth', 'coordinador']);
+        
+        // Rutas de cierre de fase final
+        $this->addRoute('POST', '/api/coordinador/cierre-fase-final/cerrar', [CoordinadorController::class, 'cerrarFaseFinal'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase-final/reporte-pdf', [CoordinadorController::class, 'descargarReportePDFCierreFaseFinal'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase-final/reporte-excel', [CoordinadorController::class, 'descargarReporteExcelParticipantesFaseFinal'], ['auth', 'coordinador']);
+        $this->addRoute('GET', '/api/coordinador/cierre-fase-final/reporte-estadisticas', [CoordinadorController::class, 'descargarReportePDFEstadisticasFaseFinal'], ['auth', 'coordinador']);
+        
+        // Rutas de certificados (coordinador)
+        $this->addRoute('GET', '/api/coordinador/certificados/participantes-premiados', [CoordinadorController::class, 'getParticipantesPremiados'], ['auth', 'coordinador']);
+        $this->addRoute('POST', '/api/coordinador/certificados/aprobar', [CoordinadorController::class, 'aprobarCertificados'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/cierre-fase/listar-pdfs', [CoordinadorController::class, 'listarReportesPDF'], ['auth', 'coordinador']);
         $this->addRoute('POST', '/api/coordinador/firma/guardar', [CoordinadorController::class, 'guardarFirma'], ['auth', 'coordinador']);
         $this->addRoute('GET', '/api/coordinador/firma/obtener', [CoordinadorController::class, 'obtenerFirma'], ['auth', 'coordinador']);

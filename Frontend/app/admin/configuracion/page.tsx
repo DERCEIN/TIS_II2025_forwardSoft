@@ -114,25 +114,25 @@ export default function ConfiguracionPage() {
             }))
           } else {
             setInfoFechaExtendida(null)
-            setConfig(prev => ({
-              ...prev,
-              olimpiada: {
-                nombre: data.nombre || prev.olimpiada.nombre,
-                descripcion: data.descripcion || prev.olimpiada.descripcion,
+          setConfig(prev => ({
+            ...prev,
+            olimpiada: {
+              nombre: data.nombre || prev.olimpiada.nombre,
+              descripcion: data.descripcion || prev.olimpiada.descripcion,
                 estado: data.estado !== undefined ? data.estado : prev.olimpiada.estado,
-                fechaInicio: data.fecha_inicio || prev.olimpiada.fechaInicio,
-                fechaFin: data.fecha_fin || prev.olimpiada.fechaFin,
+              fechaInicio: data.fecha_inicio || prev.olimpiada.fechaInicio,
+              fechaFin: data.fecha_fin || prev.olimpiada.fechaFin,
                 clasificacion_fecha_inicio: convertirFechaParaInput(data.clasificacion_fecha_inicio || ''),
                 clasificacion_fecha_fin: convertirFechaParaInput(data.clasificacion_fecha_fin || ''),
                 final_fecha_inicio: convertirFechaParaInput(data.final_fecha_inicio || ''),
                 final_fecha_fin: convertirFechaParaInput(data.final_fecha_fin || ''),
-              },
-              evaluacion: {
-                ...prev.evaluacion,
-                tiempoEvaluacion: data.tiempo_evaluacion || prev.evaluacion.tiempoEvaluacion,
+            },
+            evaluacion: {
+              ...prev.evaluacion,
+              tiempoEvaluacion: data.tiempo_evaluacion || prev.evaluacion.tiempoEvaluacion,
                 puntuacionMinimaClasificacion: data.clasificacion_puntuacion_minima || prev.evaluacion.puntuacionMinimaClasificacion,
-              }
-            }))
+            }
+          }))
           }
         }
       } catch (error) {
@@ -457,8 +457,8 @@ export default function ConfiguracionPage() {
                         value={config.olimpiada.fechaInicio}
                         onChange={(e) => {
                           setConfig(prev => ({
-                            ...prev,
-                            olimpiada: { ...prev.olimpiada, fechaInicio: e.target.value }
+                          ...prev,
+                          olimpiada: { ...prev.olimpiada, fechaInicio: e.target.value }
                           }))
                           // Limpiar error al cambiar
                           if (errores.fechaInicio) {
@@ -486,8 +486,8 @@ export default function ConfiguracionPage() {
                         value={config.olimpiada.fechaFin}
                         onChange={(e) => {
                           setConfig(prev => ({
-                            ...prev,
-                            olimpiada: { ...prev.olimpiada, fechaFin: e.target.value }
+                          ...prev,
+                          olimpiada: { ...prev.olimpiada, fechaFin: e.target.value }
                           }))
                           // Limpiar error al cambiar
                           if (errores.fechaFin) {
@@ -544,8 +544,8 @@ export default function ConfiguracionPage() {
                           value={config.olimpiada.clasificacion_fecha_inicio}
                           onChange={(e) => {
                             setConfig(prev => ({
-                              ...prev,
-                              olimpiada: { ...prev.olimpiada, clasificacion_fecha_inicio: e.target.value }
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, clasificacion_fecha_inicio: e.target.value }
                             }))
                             
                             if (errores.clasificacion_fecha_inicio) {
@@ -573,8 +573,8 @@ export default function ConfiguracionPage() {
                           value={config.olimpiada.clasificacion_fecha_fin}
                           onChange={(e) => {
                             setConfig(prev => ({
-                              ...prev,
-                              olimpiada: { ...prev.olimpiada, clasificacion_fecha_fin: e.target.value }
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, clasificacion_fecha_fin: e.target.value }
                             }))
                             // Limpiar error al cambiar
                             if (errores.clasificacion_fecha_fin) {
@@ -616,8 +616,8 @@ export default function ConfiguracionPage() {
                           value={config.olimpiada.final_fecha_inicio}
                           onChange={(e) => {
                             setConfig(prev => ({
-                              ...prev,
-                              olimpiada: { ...prev.olimpiada, final_fecha_inicio: e.target.value }
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, final_fecha_inicio: e.target.value }
                             }))
                             
                             if (errores.final_fecha_inicio) {
@@ -645,8 +645,8 @@ export default function ConfiguracionPage() {
                           value={config.olimpiada.final_fecha_fin}
                           onChange={(e) => {
                             setConfig(prev => ({
-                              ...prev,
-                              olimpiada: { ...prev.olimpiada, final_fecha_fin: e.target.value }
+                            ...prev,
+                            olimpiada: { ...prev.olimpiada, final_fecha_fin: e.target.value }
                             }))
                             
                             if (errores.final_fecha_fin) {

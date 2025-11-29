@@ -28,8 +28,8 @@ class JWTManager
         }
 
         $tokenPayload = [
-            'iss' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
-            'aud' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
+            'iss' => $_ENV['APP_URL'] ?? 'http://forwardsoft.tis.cs.umss.edu.bo/',
+            'aud' => $_ENV['APP_URL'] ?? 'http://forwardsoft.tis.cs.umss.edu.bo/',
             'iat' => time(),
             'exp' => $expiration,
             'data' => $payload

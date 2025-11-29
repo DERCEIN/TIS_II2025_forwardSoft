@@ -674,7 +674,7 @@ public function encontrarAreaPorID($areaId): mixed
                     <li><strong>Motivo del cambio:</strong> {$motivo}</li>
                 </ul>
                 <p>Por favor, acceda al sistema para revisar y aprobar o rechazar este cambio.</p>
-                <p><a href='" . ($_ENV['FRONTEND_URL'] ?? 'http://localhost:3000') . "/coordinador/log-auditoria' style='background-color:#004aad;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;'>Ir al Log de Auditoría</a></p>
+                <p><a href='" . ($_ENV['FRONTEND_URL'] ?? 'http://forwardsoft.tis.cs.umss.edu.bo/') . "/coordinador/log-auditoria' style='background-color:#004aad;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;'>Ir al Log de Auditoría</a></p>
                 <br>
                 <p>Atentamente,</p>
                 <p><b>Sistema Olimpiada Oh! - SanSi</b></p>

@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { LogIn } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { PublicacionResultadosService } from "@/lib/api";
-import { CatalogoService } from "@/lib/api";
+import type { Area, Level } from "@/lib/types";
+import { areas, niveles } from "@/lib/data";
 
 interface Resultado {
   numero: number;
@@ -22,122 +22,100 @@ interface Resultado {
   observaciones: string;
 }
 
-interface Area {
-  id: number;
-  nombre: string;
-}
-
 export default function ResultadosPage() {
-  const searchParams = useSearchParams();
-  const [areas, setAreas] = useState<Area[]>([]);
-  const [areaSeleccionada, setAreaSeleccionada] = useState<number | null>(null);
   const [resultados, setResultados] = useState<Resultado[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchName, setSearchName] = useState("");
+  const [selectedArea, setSelectedArea] = useState<Area | "">("");
+  const [selectedLevel, setSelectedLevel] = useState<Level | "">("");
   const [filtros, setFiltros] = useState({ 
-    nivel: "", 
     departamento: "", 
     unidad: "", 
     observaciones: "" 
   });
-  const [search, setSearch] = useState("");
   const [departamentos, setDepartamentos] = useState<string[]>([]);
   const [unidades, setUnidades] = useState<string[]>([]);
 
-  
+  // Cargar todos los resultados desde el inicio
   useEffect(() => {
-    const cargarAreas = async () => {
+    const cargarTodosResultados = async () => {
+      setLoading(true);
       try {
-        const response = await PublicacionResultadosService.getAreasPublicadas();
-        if (response.success && response.data) {
-          setAreas(response.data.map((a: any) => ({
-            id: a.area_competencia_id,
-            nombre: a.area_nombre
-          })));
+        // Obtener todas las áreas publicadas
+        const areasResponse = await PublicacionResultadosService.getAreasPublicadas();
+        if (areasResponse.success && areasResponse.data) {
+          const areasData = areasResponse.data;
+          const todosResultados: Resultado[] = [];
+
+          // Cargar resultados de cada área
+          for (const area of areasData) {
+            try {
+              const response = await PublicacionResultadosService.getResultadosPublicados({
+                area_id: area.area_competencia_id
+              });
+              
+              if (response.success && response.data) {
+                const resultadosData = response.data.resultados || [];
+                todosResultados.push(...resultadosData);
+              }
+            } catch (error) {
+              console.error(`Error al cargar resultados del área ${area.area_nombre}:`, error);
+            }
+          }
+
+          setResultados(todosResultados);
+          
+          // Extraer departamentos y unidades únicos
+          const depts = [...new Set(todosResultados.map((r: Resultado) => r.departamento).filter(Boolean))] as string[];
+          const unids = [...new Set(todosResultados.map((r: Resultado) => r.unidad_educativa).filter(Boolean))] as string[];
+          setDepartamentos(depts.sort());
+          setUnidades(unids.sort());
         }
       } catch (error) {
-        console.error("Error al cargar áreas:", error);
+        console.error("Error al cargar resultados:", error);
       } finally {
         setLoading(false);
       }
     };
-    cargarAreas();
+    cargarTodosResultados();
   }, []);
 
-  
-  useEffect(() => {
-    const areaParam = searchParams.get("area");
-    if (areaParam) {
-      const areaEncontrada = areas.find(a => 
-        a.nombre.toLowerCase() === areaParam.toLowerCase()
-      );
-      if (areaEncontrada) {
-        setAreaSeleccionada(areaEncontrada.id);
-      }
-    }
-  }, [searchParams, areas]);
-
-  
-  useEffect(() => {
-    if (areaSeleccionada) {
-      cargarResultados();
-    } else {
-      setResultados([]);
-    }
-  }, [areaSeleccionada]);
-
-  const cargarResultados = async () => {
-    if (!areaSeleccionada) return;
-    
-    setLoading(true);
-    try {
-      const response = await PublicacionResultadosService.getResultadosPublicados({
-        area_id: areaSeleccionada
-      });
-      
-      if (response.success && response.data) {
-        const resultadosData = response.data.resultados || [];
-        setResultados(resultadosData);
-        
-        
-        const depts = [...new Set(resultadosData.map((r: Resultado) => r.departamento).filter(Boolean))] as string[];
-        const unids = [...new Set(resultadosData.map((r: Resultado) => r.unidad_educativa).filter(Boolean))] as string[];
-        setDepartamentos(depts.sort());
-        setUnidades(unids.sort());
-      }
-    } catch (error) {
-      console.error("Error al cargar resultados:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const dataFiltrada = useMemo(() => {
+  // Filtrar resultados
+  const filteredResults = useMemo(() => {
     return resultados.filter((item) => {
-      if (filtros.nivel && item.nivel !== filtros.nivel) return false;
+      // Filtro por nombre
+      if (searchName && !item.nombre_completo.toLowerCase().includes(searchName.toLowerCase())) {
+        return false;
+      }
+      
+      // Filtro por área
+      if (selectedArea && item.area !== selectedArea) {
+        return false;
+      }
+      
+      // Filtro por nivel
+      if (selectedLevel && item.nivel !== selectedLevel) {
+        return false;
+      }
+      
+      // Filtros adicionales
       if (filtros.departamento && item.departamento !== filtros.departamento) return false;
       if (filtros.unidad && item.unidad_educativa !== filtros.unidad) return false;
       if (filtros.observaciones && item.observaciones !== filtros.observaciones) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          item.nombre_completo.toLowerCase().includes(q) ||
-          item.unidad_educativa.toLowerCase().includes(q) ||
-          (item.departamento && item.departamento.toLowerCase().includes(q))
-        );
-      }
+      
       return true;
     });
-  }, [resultados, filtros, search]);
+  }, [resultados, searchName, selectedArea, selectedLevel, filtros]);
 
-  
+  // Separar por nivel
   const resultadosPrimaria = useMemo(() => 
-    dataFiltrada.filter(r => r.nivel === "Primaria"), 
-    [dataFiltrada]
+    filteredResults.filter(r => r.nivel === "Primaria"), 
+    [filteredResults]
   );
   
   const resultadosSecundaria = useMemo(() => 
-    dataFiltrada.filter(r => r.nivel === "Secundaria"), 
-    [dataFiltrada]
+    filteredResults.filter(r => r.nivel === "Secundaria"), 
+    [filteredResults]
   );
 
   function handleExportPDF() {
@@ -150,16 +128,16 @@ export default function ResultadosPage() {
     doc.setFontSize(16);
     doc.text("Resultados - Fase Clasificatoria", margin, margin + 7);
     
-    const areaNombre = areas.find(a => a.id === areaSeleccionada)?.nombre || "";
-    if (areaNombre) {
-        doc.setFontSize(12);
-      doc.text(`Área: ${areaNombre}`, margin, margin + 14);
+    if (selectedArea) {
+      doc.setFontSize(12);
+      doc.text(`Área: ${selectedArea}`, margin, margin + 14);
     }
 
-    const columns = ["#", "Nombre Completo", "Departamento", "Unidad Educativa", "Curso", "Puntaje", "Observaciones"];
-    const rows = dataFiltrada.map((r) => [
+    const columns = ["#", "Nombre Completo", "Área", "Departamento", "Unidad Educativa", "Curso", "Puntaje", "Estado"];
+    const rows = filteredResults.map((r) => [
       r.numero.toString(),
       r.nombre_completo,
+      r.area,
       r.departamento || "-",
       r.unidad_educativa || "-",
       r.curso || "-",
@@ -168,25 +146,22 @@ export default function ResultadosPage() {
     ]);
 
     autoTable(doc, {
-        head: [columns],
-        body: rows,
+      head: [columns],
+      body: rows,
       startY: margin + 20,
-        margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin },
       styles: { fontSize: 9 },
-        headStyles: { fillColor: [37, 99, 235], textColor: 255 },
-        theme: "grid",
-        tableWidth: pageWidth - margin * 2,
+      headStyles: { fillColor: [37, 99, 235], textColor: 255 },
+      theme: "grid",
+      tableWidth: pageWidth - margin * 2,
     });
 
-    const filename = `Resultados_${areaNombre.replace(/\s+/g, "_")}.pdf`;
+    const filename = `Resultados_${selectedArea ? selectedArea.replace(/\s+/g, "_") : "Todos"}.pdf`;
     doc.save(filename);
   }
 
-  const areaNombre = areas.find(a => a.id === areaSeleccionada)?.nombre || "";
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
+    <div className="space-y-8">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -196,7 +171,7 @@ export default function ResultadosPage() {
             </div>
 
             <nav className="hidden md:flex items-center space-x-8">
-              <Link href="/#inicio" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              <Link href="/#inicio" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Inicio
               </Link>
               <Link
@@ -210,6 +185,12 @@ export default function ResultadosPage() {
                 className="text-sm font-medium text-foreground hover:text-primary transition-colors"
               >
                 Resultados
+              </Link>
+              <Link
+                href="/medallero"
+                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                Medallero
               </Link>
               <Link
                 href="/#noticias"
@@ -235,174 +216,179 @@ export default function ResultadosPage() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
-        {/* Page Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-            <h1 className="text-3xl font-heading font-bold text-foreground">
-              Resultados - Fase Clasificatoria
-            </h1>
-            <div className="text-sm text-muted-foreground mt-1">
-              {areaNombre ? `Área: ${areaNombre}` : "Selecciona un área para ver los resultados"}
+      {/* Banner */}
+      <div className="bg-gradient-to-r from-yellow-400 via-gray-300 to-orange-600 text-white text-center py-8 px-4 rounded-xl shadow-lg">
+        <h1 className="text-3xl font-bold drop-shadow-md">📊 Resultados - Fase Clasificatoria 📊</h1>
+        <p className="mt-2 text-lg font-medium drop-shadow-sm">Consulta los resultados de la fase clasificatoria</p>
+      </div>
+
+      {/* Panel de filtros similar al medallero */}
+      <div className="bg-card rounded-lg p-6 shadow-md border border-border max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          {/* Búsqueda por nombre */}
+          <div>
+            <label className="block text-sm font-semibold mb-2">Buscar Participante</label>
+            <input
+              type="text"
+              placeholder="Nombre..."
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
+          {/* Filtro por área */}
+          <div>
+            <label className="block text-sm font-semibold mb-2">Área</label>
+            <select
+              value={selectedArea}
+              onChange={(e) => setSelectedArea((e.target.value as Area) || "")}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Todas las áreas</option>
+              {areas.map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro por nivel */}
+          <div>
+            <label className="block text-sm font-semibold mb-2">Nivel</label>
+            <select
+              value={selectedLevel}
+              onChange={(e) => setSelectedLevel((e.target.value as Level) || "")}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Todos los niveles</option>
+              {niveles.map((nivel) => (
+                <option key={nivel} value={nivel}>
+                  {nivel}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
-          {areaSeleccionada && (
-        <div className="flex gap-3 items-center">
-          <input
-            placeholder="Buscar por nombre / unidad / departamento..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="px-3 py-2 border rounded-md w-64"
-          />
-              <button 
-                onClick={handleExportPDF} 
-                className="px-4 py-2 rounded bg-[var(--secondary)] text-white font-semibold hover:opacity-95"
-                disabled={dataFiltrada.length === 0}
-              >
+        {/* Filtros adicionales */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-semibold mb-2">Departamento</label>
+            <select 
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" 
+              value={filtros.departamento} 
+              onChange={(e) => setFiltros({ ...filtros, departamento: e.target.value })}
+            >
+              <option value="">Todos</option>
+              {departamentos.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2">Unidad Educativa</label>
+            <select 
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" 
+              value={filtros.unidad} 
+              onChange={(e) => setFiltros({ ...filtros, unidad: e.target.value })}
+            >
+              <option value="">Todas</option>
+              {unidades.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2">Estado</label>
+            <select 
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" 
+              value={filtros.observaciones} 
+              onChange={(e) => setFiltros({ ...filtros, observaciones: e.target.value })}
+            >
+              <option value="">Todos</option>
+              <option value="Clasificado">Clasificado</option>
+              <option value="No Clasificado">No Clasificado</option>
+              <option value="Desclasificado">Desclasificado</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Resultados encontrados: <strong className="text-foreground">{filteredResults.length}</strong>
+          </div>
+          <button 
+            onClick={handleExportPDF} 
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition disabled:opacity-50"
+            disabled={filteredResults.length === 0}
+          >
             Exportar PDF
           </button>
         </div>
-          )}
       </div>
 
-      {/* AREAS */}
-      <div className="bg-[var(--card)] rounded-xl p-4 shadow mb-6">
-        <div className="text-sm text-[var(--muted-foreground)] mb-2">Selecciona un área</div>
-        {loading && areas.length === 0 ? (
-          <div className="text-center py-4">Cargando áreas...</div>
-        ) : areas.length === 0 ? (
-          <div className="text-center py-4 text-[var(--muted-foreground)]">
-            No hay áreas con resultados publicados
-          </div>
-        ) : (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            {areas.map((area) => (
-            <button
-                key={area.id}
-                onClick={() => setAreaSeleccionada(area.id === areaSeleccionada ? null : area.id)}
-              className={`px-3 py-2 rounded-lg font-medium border transition ${
-                  area.id === areaSeleccionada
-                  ? "bg-[var(--color-primary)] text-white"
-                  : "bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--muted)]"
-              }`}
-            >
-                {area.nombre}
-            </button>
-          ))}
+      {/* Resultados */}
+      {loading ? (
+        <div className="w-full py-20 flex justify-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent"></div>
         </div>
-        )}
-      </div>
-
-      {/* CONTENIDO DE TABLA */}
-      {areaSeleccionada && (
-      <div id="pdf-area">
-        {/* FILTROS */}
-        <div className="bg-[var(--card)] rounded-xl p-4 shadow mb-6 flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="block text-sm text-[var(--muted-foreground)] mb-1">Nivel</label>
-              <select 
-                className="px-3 py-2 border rounded-md" 
-                value={filtros.nivel} 
-                onChange={(e) => setFiltros({ ...filtros, nivel: e.target.value })}
-              >
-              <option value="">Todos</option>
-              <option value="Primaria">Primaria</option>
-              <option value="Secundaria">Secundaria</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm text-[var(--muted-foreground)] mb-1">Departamento</label>
-              <select 
-                className="px-3 py-2 border rounded-md" 
-                value={filtros.departamento} 
-                onChange={(e) => setFiltros({ ...filtros, departamento: e.target.value })}
-              >
-              <option value="">Todos</option>
-                {departamentos.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm text-[var(--muted-foreground)] mb-1">Unidad Educativa</label>
-              <select 
-                className="px-3 py-2 border rounded-md" 
-                value={filtros.unidad} 
-                onChange={(e) => setFiltros({ ...filtros, unidad: e.target.value })}
-              >
-              <option value="">Todas</option>
-                {unidades.map((u) => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-            </select>
-          </div>
-
-          <div>
-              <label className="block text-sm text-[var(--muted-foreground)] mb-1">Estado</label>
-              <select 
-                className="px-3 py-2 border rounded-md" 
-                value={filtros.observaciones} 
-                onChange={(e) => setFiltros({ ...filtros, observaciones: e.target.value })}
-              >
-              <option value="">Todos</option>
-                <option value="Clasificado">Clasificado</option>
-                <option value="No Clasificado">No Clasificado</option>
-                <option value="Desclasificado">Desclasificado</option>
-            </select>
-          </div>
-
-          <div className="ml-auto text-sm text-[var(--muted-foreground)]">
-            Resultados: <strong>{dataFiltrada.length}</strong>
-          </div>
-        </div>
-
-        {/* TABLA */}
-          {loading ? (
-            <div className="text-center py-8">Cargando resultados...</div>
+      ) : (
+        <>
+          {filteredResults.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <p className="text-lg">No se encontraron resultados con los filtros seleccionados.</p>
+            </div>
           ) : (
-            <>
+            <div id="pdf-area" className="max-w-6xl mx-auto px-4 space-y-12">
               {/* Resultados Primaria */}
               {resultadosPrimaria.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="text-xl font-bold mb-3 text-[var(--color-primary)]">Nivel Primaria</h2>
-                  <div className="bg-white rounded-xl p-3 shadow overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead className="bg-gray-100">
-              <tr>
-                          <th className="p-2 text-left border-b">#</th>
-                          <th className="p-2 text-left border-b">Nombre Completo</th>
-                <th className="p-2 text-left border-b">Departamento</th>
-                <th className="p-2 text-left border-b">Unidad Educativa</th>
-                          <th className="p-2 text-left border-b">Curso</th>
-                          <th className="p-2 text-left border-b">Puntaje</th>
-                          <th className="p-2 text-left border-b">Observaciones</th>
-              </tr>
-            </thead>
-            <tbody>
+                <div>
+                  <h2 className="text-3xl font-bold mb-6 text-primary text-center md:text-left">
+                    📚 Nivel Primaria
+                  </h2>
+                  <div className="bg-card rounded-xl shadow-lg overflow-x-auto border border-border">
+                    <table className="w-full min-w-[800px]">
+                      <thead>
+                        <tr className="bg-primary text-primary-foreground">
+                          <th className="px-4 py-3 text-left font-semibold">#</th>
+                          <th className="px-4 py-3 text-left font-semibold">Nombre Completo</th>
+                          <th className="px-4 py-3 text-left font-semibold">Área</th>
+                          <th className="px-4 py-3 text-left font-semibold">Departamento</th>
+                          <th className="px-4 py-3 text-left font-semibold">Unidad Educativa</th>
+                          <th className="px-4 py-3 text-left font-semibold">Curso</th>
+                          <th className="px-4 py-3 text-left font-semibold">Puntaje</th>
+                          <th className="px-4 py-3 text-left font-semibold">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {resultadosPrimaria.map((r, i) => (
-                <tr key={i} className="even:bg-gray-50">
-                            <td className="p-2 border-b">{r.numero}</td>
-                            <td className="p-2 border-b">{r.nombre_completo}</td>
-                            <td className="p-2 border-b">{r.departamento || "-"}</td>
-                            <td className="p-2 border-b">{r.unidad_educativa || "-"}</td>
-                            <td className="p-2 border-b">{r.curso || "-"}</td>
-                            <td className="p-2 border-b">{r.puntaje.toFixed(2)}</td>
-                            <td className="p-2 border-b">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                r.observaciones === "Clasificado" ? "bg-green-100 text-green-800" :
-                                r.observaciones === "No Clasificado" ? "bg-yellow-100 text-yellow-800" :
-                                r.observaciones === "Desclasificado" ? "bg-red-100 text-red-800" :
-                                "bg-gray-100 text-gray-800"
+                          <tr
+                            key={i}
+                            className={i % 2 === 0 ? "bg-background" : "bg-muted"}
+                          >
+                            <td className="px-4 py-3 font-semibold text-primary">#{r.numero}</td>
+                            <td className="px-4 py-3">{r.nombre_completo}</td>
+                            <td className="px-4 py-3">{r.area}</td>
+                            <td className="px-4 py-3">{r.departamento || "-"}</td>
+                            <td className="px-4 py-3">{r.unidad_educativa || "-"}</td>
+                            <td className="px-4 py-3">{r.curso || "-"}</td>
+                            <td className="px-4 py-3 font-semibold">{r.puntaje.toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full border text-xs ${
+                                r.observaciones === "Clasificado" ? "bg-green-100 text-green-800 border-green-300" :
+                                r.observaciones === "No Clasificado" ? "bg-yellow-100 text-yellow-800 border-yellow-300" :
+                                r.observaciones === "Desclasificado" ? "bg-red-100 text-red-800 border-red-300" :
+                                "bg-gray-100 text-gray-800 border-gray-300"
                               }`}>
                                 {r.observaciones}
                               </span>
                             </td>
-                </tr>
-              ))}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -411,60 +397,58 @@ export default function ResultadosPage() {
 
               {/* Resultados Secundaria */}
               {resultadosSecundaria.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="text-xl font-bold mb-3 text-[var(--color-primary)]">Nivel Secundaria</h2>
-                  <div className="bg-white rounded-xl p-3 shadow overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th className="p-2 text-left border-b">#</th>
-                          <th className="p-2 text-left border-b">Nombre Completo</th>
-                          <th className="p-2 text-left border-b">Departamento</th>
-                          <th className="p-2 text-left border-b">Unidad Educativa</th>
-                          <th className="p-2 text-left border-b">Curso</th>
-                          <th className="p-2 text-left border-b">Puntaje</th>
-                          <th className="p-2 text-left border-b">Observaciones</th>
+                <div>
+                  <h2 className="text-3xl font-bold mb-6 text-primary text-center md:text-left">
+                    🎓 Nivel Secundaria
+                  </h2>
+                  <div className="bg-card rounded-xl shadow-lg overflow-x-auto border border-border">
+                    <table className="w-full min-w-[800px]">
+                      <thead>
+                        <tr className="bg-primary text-primary-foreground">
+                          <th className="px-4 py-3 text-left font-semibold">#</th>
+                          <th className="px-4 py-3 text-left font-semibold">Nombre Completo</th>
+                          <th className="px-4 py-3 text-left font-semibold">Área</th>
+                          <th className="px-4 py-3 text-left font-semibold">Departamento</th>
+                          <th className="px-4 py-3 text-left font-semibold">Unidad Educativa</th>
+                          <th className="px-4 py-3 text-left font-semibold">Curso</th>
+                          <th className="px-4 py-3 text-left font-semibold">Puntaje</th>
+                          <th className="px-4 py-3 text-left font-semibold">Estado</th>
                         </tr>
                       </thead>
                       <tbody>
                         {resultadosSecundaria.map((r, i) => (
-                          <tr key={i} className="even:bg-gray-50">
-                            <td className="p-2 border-b">{r.numero}</td>
-                            <td className="p-2 border-b">{r.nombre_completo}</td>
-                            <td className="p-2 border-b">{r.departamento || "-"}</td>
-                            <td className="p-2 border-b">{r.unidad_educativa || "-"}</td>
-                            <td className="p-2 border-b">{r.curso || "-"}</td>
-                            <td className="p-2 border-b">{r.puntaje.toFixed(2)}</td>
-                            <td className="p-2 border-b">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                r.observaciones === "Clasificado" ? "bg-green-100 text-green-800" :
-                                r.observaciones === "No Clasificado" ? "bg-yellow-100 text-yellow-800" :
-                                r.observaciones === "Desclasificado" ? "bg-red-100 text-red-800" :
-                                "bg-gray-100 text-gray-800"
+                          <tr
+                            key={i}
+                            className={i % 2 === 0 ? "bg-background" : "bg-muted"}
+                          >
+                            <td className="px-4 py-3 font-semibold text-primary">#{r.numero}</td>
+                            <td className="px-4 py-3">{r.nombre_completo}</td>
+                            <td className="px-4 py-3">{r.area}</td>
+                            <td className="px-4 py-3">{r.departamento || "-"}</td>
+                            <td className="px-4 py-3">{r.unidad_educativa || "-"}</td>
+                            <td className="px-4 py-3">{r.curso || "-"}</td>
+                            <td className="px-4 py-3 font-semibold">{r.puntaje.toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full border text-xs ${
+                                r.observaciones === "Clasificado" ? "bg-green-100 text-green-800 border-green-300" :
+                                r.observaciones === "No Clasificado" ? "bg-yellow-100 text-yellow-800 border-yellow-300" :
+                                r.observaciones === "Desclasificado" ? "bg-red-100 text-red-800 border-red-300" :
+                                "bg-gray-100 text-gray-800 border-gray-300"
                               }`}>
                                 {r.observaciones}
                               </span>
-                  </td>
-                </tr>
+                            </td>
+                          </tr>
                         ))}
-            </tbody>
-          </table>
-        </div>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
-
-              {dataFiltrada.length === 0 && !loading && (
-                <div className="bg-white rounded-xl p-8 shadow text-center">
-                  <p className="text-[var(--muted-foreground)]">
-                    No existen resultados para los filtros seleccionados.
-                  </p>
-                </div>
-              )}
-            </>
+            </div>
           )}
-        </div>
+        </>
       )}
-      </div>
     </div>
   );
 }
