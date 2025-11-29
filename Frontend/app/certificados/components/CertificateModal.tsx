@@ -242,52 +242,31 @@ export default function CertificateModal({
       }
 
       
-      const ringX = margin + 55;
+      const ringX = margin + 45;
       const ringY = pageHeight / 2;
-      pdf.setDrawColor(31, 78, 141);
-      pdf.setLineWidth(1.5);
-      pdf.circle(ringX, ringY, 42);
-      pdf.setFillColor(255, 255, 255);
-      pdf.circle(ringX, ringY, 40, "F");
 
       if (logoImg) {
-        pdf.addImage(logoImg, "PNG", ringX - 24, ringY - 24, 48, 48);
+        const logoSize = 130; // Logo más grande para que se vea mejor
+        pdf.addImage(logoImg, "PNG", ringX - logoSize / 2, ringY - logoSize / 2, logoSize, logoSize);
       }
-
-      const miniIcons = ["MAT", "FIS", "QUI", "BIO", "ROB", "TEC"];
-      miniIcons.forEach((label, index) => {
-        const angle = (index / miniIcons.length) * Math.PI * 2 - Math.PI / 2;
-        const radius = 60;
-        const x = ringX + Math.cos(angle) * radius;
-        const y = ringY + Math.sin(angle) * radius;
-        pdf.setFillColor(233, 238, 252);
-        pdf.circle(x, y, 10, "F");
-        pdf.setTextColor(40, 63, 120);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(7);
-        pdf.text(label, x, y + 2, { align: "center" });
-      });
 
      
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(40);
-      pdf.setTextColor(217, 38, 38);
-      pdf.text("SanSi", pageWidth - margin - 18, margin + 30, { align: "right" });
       pdf.setFontSize(13);
       pdf.setTextColor(33, 63, 118);
-      pdf.text(["Olimpiada de", "Ciencia y Tecnología"], pageWidth - margin - 18, margin + 42, { align: "right" });
+      pdf.text(["Olimpiada de", "Ciencia y Tecnología"], pageWidth - margin - 18, margin + 15, { align: "right" });
       pdf.setFontSize(24);
-      pdf.text(yearLabel, pageWidth - margin - 18, margin + 66, { align: "right" });
+      pdf.text(yearLabel, pageWidth - margin - 18, margin + 33, { align: "right" });
 
       
       const contentX = pageWidth / 2 + 35;
       pdf.setTextColor(23, 45, 95);
       pdf.setFont("times", "bold");
       pdf.setFontSize(36);
-      pdf.text("CERTIFICADO", contentX, margin + 32, { align: "center" });
+      pdf.text("CERTIFICADO", contentX, margin + 42, { align: "center" });
       pdf.setFont("times", "italic");
       pdf.setFontSize(16);
-      pdf.text("ENTREGADO A", contentX, margin + 47, { align: "center" });
+      pdf.text("ENTREGADO A", contentX, margin + 57, { align: "center" });
 
       // nombre
       pdf.setFont("times", "bold");
@@ -303,13 +282,13 @@ export default function CertificateModal({
 
       pdf.setFont("times", "normal");
       pdf.setFontSize(14);
-      pdf.text(bodyText, contentX, margin + 116, {
+      pdf.text(bodyText, contentX, margin + 100, {
         align: "center",
         maxWidth: innerWidth - 120
       });
 
       // bloque de datos
-      const dataBoxY = margin + 135;
+      const dataBoxY = margin + 119;
       pdf.setDrawColor(194, 202, 230);
       pdf.setFillColor(255, 255, 255);
       pdf.roundedRect(contentX - 90, dataBoxY, 180, 32, 3, 3, "FD");
@@ -334,13 +313,13 @@ export default function CertificateModal({
       pdf.setFont("times", "italic");
       pdf.setFontSize(12);
       pdf.setTextColor(24, 74, 131);
-      pdf.text("Olimpiada de", ringX, ringY + 58, { align: "center" });
-      pdf.text("Ciencia y Tecnología", ringX, ringY + 68, { align: "center" });
+      pdf.text("Olimpiada de", ringX, ringY + 50, { align: "center" });
+      pdf.text("Ciencia y Tecnología", ringX, ringY + 60, { align: "center" });
 
       // zona de firmas
-      const signatureY = pageHeight - 55;
-      const leftSigX = ringX + 85;
-      const rightSigX = pageWidth - margin - 80;
+      const signatureY = pageHeight - 35;
+      const leftSigX = ringX + 60;
+      const rightSigX = pageWidth - margin - 60;
       pdf.setDrawColor(60, 60, 60);
       pdf.setLineWidth(0.5);
       pdf.line(leftSigX - 40, signatureY, leftSigX + 40, signatureY);
@@ -348,14 +327,14 @@ export default function CertificateModal({
       pdf.setFont("times", "italic");
       pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
-      pdf.text("Coordinador de Área", leftSigX, signatureY + 8, { align: "center" });
-      pdf.text("Director / Autoridad", rightSigX, signatureY + 8, { align: "center" });
+      pdf.text("Coordinador de Área", leftSigX, signatureY + 10, { align: "center" });
+      pdf.text("Director / Autoridad", rightSigX, signatureY + 10, { align: "center" });
 
       // pie de página
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(8);
       pdf.setTextColor(115, 120, 140);
-      pdf.text("SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial", pageWidth / 2, pageHeight - 12, { align: "center" });
+      pdf.text("SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial", pageWidth / 2, pageHeight - 6, { align: "center" });
     }
 
     
