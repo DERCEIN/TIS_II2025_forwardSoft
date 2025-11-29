@@ -560,6 +560,11 @@ class AdminController
                     if (!$cierre && $area['total_participantes'] > 0) {
                         $area['porcentaje_completitud'] = round(($area['total_evaluados'] / $area['total_participantes']) * 100, 2);
                     }
+                    
+                    // Recalcular porcentaje solo si la fase NO está cerrada
+                    if ($cierre && $cierre['estado'] !== 'cerrada' && $area['total_participantes'] > 0) {
+                        $area['porcentaje_completitud'] = round(($area['total_evaluados'] / $area['total_participantes']) * 100, 2);
+                    }
                 }
                 
             } catch (PDOException $e) {
@@ -611,8 +616,12 @@ class AdminController
                 
                 $tieneParticipantes = isset($area['total_participantes']) && $area['total_participantes'] > 0;
                 
+                // NO actualizar áreas cerradas - excluir explícitamente
+                $estaCerrada = isset($area['estado']) && $area['estado'] === 'cerrada';
+                $tieneFechaCierre = isset($area['fecha_cierre']) && $area['fecha_cierre'] !== null;
                 
-                if ($tieneParticipantes && ($area['estado'] === 'pendiente' || !isset($area['estado'])) && isset($area['id'])) {
+                // Solo actualizar si NO está cerrada (ni por estado ni por fecha_cierre)
+                if ($tieneParticipantes && !$estaCerrada && !$tieneFechaCierre && ($area['estado'] === 'pendiente' || $area['estado'] === 'activa' || !isset($area['estado'])) && isset($area['id'])) {
                     try {
                         $stmtUpdate = $this->pdo->prepare("
                             INSERT INTO cierre_fase_areas (
@@ -621,14 +630,27 @@ class AdminController
                             ) VALUES (?, NULL, ?, ?, ?, NOW())
                             ON CONFLICT (area_competencia_id, nivel_competencia_id) 
                             DO UPDATE SET 
-                                porcentaje_completitud = EXCLUDED.porcentaje_completitud,
-                                cantidad_clasificados = EXCLUDED.cantidad_clasificados,
+                                porcentaje_completitud = CASE 
+                                    WHEN cierre_fase_areas.estado = 'cerrada' THEN cierre_fase_areas.porcentaje_completitud
+                                    WHEN cierre_fase_areas.fecha_cierre IS NOT NULL THEN cierre_fase_areas.porcentaje_completitud
+                                    ELSE EXCLUDED.porcentaje_completitud
+                                END,
+                                cantidad_clasificados = CASE 
+                                    WHEN cierre_fase_areas.estado = 'cerrada' THEN cierre_fase_areas.cantidad_clasificados
+                                    WHEN cierre_fase_areas.fecha_cierre IS NOT NULL THEN cierre_fase_areas.cantidad_clasificados
+                                    ELSE EXCLUDED.cantidad_clasificados
+                                END,
                                 estado = CASE 
                                     WHEN cierre_fase_areas.estado = 'cerrada' THEN 'cerrada'
+                                    WHEN cierre_fase_areas.fecha_cierre IS NOT NULL THEN 'cerrada'
                                     WHEN EXCLUDED.porcentaje_completitud = 100 THEN 'activa'
                                     ELSE 'pendiente'
                                 END,
-                                updated_at = NOW()
+                                updated_at = CASE 
+                                    WHEN cierre_fase_areas.estado = 'cerrada' THEN cierre_fase_areas.updated_at
+                                    WHEN cierre_fase_areas.fecha_cierre IS NOT NULL THEN cierre_fase_areas.updated_at
+                                    ELSE NOW()
+                                END
                         ");
                         
                         $estadoActual = $area['estado'] ?? null;
@@ -835,7 +857,9 @@ class AdminController
                         COUNT(DISTINCT ac.id) as total,
                         COUNT(DISTINCT CASE WHEN cfa.estado = 'cerrada' AND cfa.nivel_competencia_id IS NULL THEN ac.id END) as cerradas
                     FROM areas_competencia ac
-                    LEFT JOIN cierre_fase_areas cfa ON cfa.area_competencia_id = ac.id AND cfa.nivel_competencia_id IS NULL
+                    LEFT JOIN cierre_fase_areas cfa ON cfa.area_competencia_id = ac.id 
+                        AND cfa.nivel_competencia_id IS NULL 
+                        AND cfa.fase = 'clasificacion'
                     WHERE ac.is_active = true
                 ");
                 $stmt->execute();
@@ -1733,6 +1757,227 @@ class AdminController
         } catch (\Exception $e) {
             error_log("Error al encontrar área por nombre: " . $e->getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Obtener todas las áreas con estado de aprobación de certificados
+     */
+    public function getAreasAprobadas()
+    {
+        try {
+            $userData = JWTManager::getCurrentUser();
+            
+            if (!$userData || $userData['role'] !== 'admin') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            // Obtener todas las áreas con información de aprobación
+            $sql = "
+                SELECT 
+                    ac.id,
+                    ac.nombre,
+                    COUNT(DISTINCT ac2.id) FILTER (WHERE ac2.aprobado = true) as aprobaciones_count,
+                    COUNT(DISTINCT ac2.id) as total_aprobaciones,
+                    MAX(ac2.fecha_aprobacion) FILTER (WHERE ac2.aprobado = true) as ultima_aprobacion,
+                    COUNT(DISTINCT ia.id) FILTER (WHERE ia.medalla_asignada IS NOT NULL) as participantes_premiados,
+                    CASE 
+                        WHEN EXISTS (
+                            SELECT 1 FROM cierre_fase_areas 
+                            WHERE area_competencia_id = ac.id AND fase = 'final'
+                        ) THEN true
+                        ELSE false
+                    END as fase_final_cerrada
+                FROM areas_competencia ac
+                LEFT JOIN aprobaciones_certificados ac2 ON ac2.area_competencia_id = ac.id
+                LEFT JOIN inscripciones_areas ia ON ia.area_competencia_id = ac.id 
+                    AND ia.estado = 'clasificado' 
+                    AND ia.medalla_asignada IS NOT NULL
+                WHERE ac.is_active = true
+                GROUP BY ac.id, ac.nombre
+                ORDER BY ac.nombre
+            ";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute();
+            $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Para cada área, obtener información detallada de aprobación
+            foreach ($areas as &$area) {
+                $sqlAprob = "
+                    SELECT 
+                        ac.aprobado,
+                        ac.fecha_aprobacion,
+                        ac.observaciones,
+                        u.name as coordinador_nombre,
+                        u.email as coordinador_email
+                    FROM aprobaciones_certificados ac
+                    JOIN users u ON u.id = ac.coordinador_id
+                    WHERE ac.area_competencia_id = ? AND ac.aprobado = true
+                    ORDER BY ac.fecha_aprobacion DESC
+                    LIMIT 1
+                ";
+                $stmtAprob = $this->pdo->prepare($sqlAprob);
+                $stmtAprob->execute([$area['id']]);
+                $aprobacion = $stmtAprob->fetch(PDO::FETCH_ASSOC);
+                
+                $area['aprobado'] = $aprobacion ? (bool)$aprobacion['aprobado'] : false;
+                $area['fecha_aprobacion'] = $aprobacion['fecha_aprobacion'] ?? null;
+                $area['observaciones'] = $aprobacion['observaciones'] ?? null;
+                $area['coordinador_nombre'] = $aprobacion['coordinador_nombre'] ?? null;
+                $area['coordinador_email'] = $aprobacion['coordinador_email'] ?? null;
+                $area['participantes_premiados'] = (int)$area['participantes_premiados'];
+                $area['fase_final_cerrada'] = (bool)$area['fase_final_cerrada'];
+            }
+            unset($area);
+            
+            Response::success($areas, 'Áreas obtenidas correctamente');
+            
+        } catch (\Exception $e) {
+            error_log('Error obteniendo áreas aprobadas: ' . $e->getMessage());
+            Response::serverError('Error al obtener áreas aprobadas');
+        }
+    }
+
+    /**
+     * Obtener participantes premiados por área (basado en medalla_asignada)
+     */
+    public function getParticipantesPremiadosPorArea($areaId)
+    {
+        try {
+            $userData = JWTManager::getCurrentUser();
+            
+            if (!$userData || $userData['role'] !== 'admin') {
+                Response::unauthorized('Acceso no autorizado');
+                return;
+            }
+            
+            // Verificar que el área existe
+            $sqlArea = "SELECT id, nombre FROM areas_competencia WHERE id = ? AND is_active = true";
+            $stmtArea = $this->pdo->prepare($sqlArea);
+            $stmtArea->execute([$areaId]);
+            $area = $stmtArea->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$area) {
+                Response::error('Área no encontrada', 404);
+                return;
+            }
+            
+            // Verificar si la fase final está cerrada
+            $sqlFaseCerrada = "
+                SELECT COUNT(*) as cerrada
+                FROM cierre_fase_areas
+                WHERE area_competencia_id = ? AND fase = 'final'
+            ";
+            $stmtFase = $this->pdo->prepare($sqlFaseCerrada);
+            $stmtFase->execute([$areaId]);
+            $faseCerrada = $stmtFase->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$faseCerrada || $faseCerrada['cerrada'] == 0) {
+                Response::error('La fase final aún no ha sido cerrada para esta área', 400);
+                return;
+            }
+            
+            // Obtener participantes premiados basados en medalla_asignada
+            $sqlParticipantes = "
+                SELECT 
+                    ia.id,
+                    o.id as olimpista_id,
+                    o.nombre_completo as nombre,
+                    o.unidad_educativa as unidad,
+                    nc.nombre as nivel,
+                    nc.id as nivel_id,
+                    ia.medalla_asignada,
+                    ef.puntuacion as puntaje,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY nc.id
+                        ORDER BY 
+                            CASE 
+                                WHEN ia.medalla_asignada = 'oro' THEN 1
+                                WHEN ia.medalla_asignada = 'plata' THEN 2
+                                WHEN ia.medalla_asignada = 'bronce' THEN 3
+                                WHEN ia.medalla_asignada IS NULL THEN 4
+                                ELSE 5
+                            END,
+                            ef.puntuacion DESC
+                    ) as puesto
+                FROM inscripciones_areas ia
+                JOIN olimpistas o ON o.id = ia.olimpista_id
+                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
+                WHERE ia.area_competencia_id = ?
+                AND ia.estado = 'clasificado'
+                AND (
+                    ia.medalla_asignada IN ('oro', 'plata', 'bronce')
+                    OR ia.medalla_asignada IS NULL
+                )
+                ORDER BY 
+                    nc.orden_display,
+                    CASE 
+                        WHEN ia.medalla_asignada = 'oro' THEN 1
+                        WHEN ia.medalla_asignada = 'plata' THEN 2
+                        WHEN ia.medalla_asignada = 'bronce' THEN 3
+                        WHEN ia.medalla_asignada IS NULL THEN 4
+                        ELSE 5
+                    END,
+                    ef.puntuacion DESC
+            ";
+            
+            $stmt = $this->pdo->prepare($sqlParticipantes);
+            $stmt->execute([$areaId]);
+            $participantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Agrupar por nivel
+            $participantesPorNivel = [];
+            foreach ($participantes as $participante) {
+                $nivelId = $participante['nivel_id'];
+                if (!isset($participantesPorNivel[$nivelId])) {
+                    $participantesPorNivel[$nivelId] = [
+                        'nivel_id' => $nivelId,
+                        'nivel_nombre' => $participante['nivel'],
+                        'participantes' => []
+                    ];
+                }
+                $participantesPorNivel[$nivelId]['participantes'][] = $participante;
+            }
+            
+            // Contar por tipo de medalla
+            $estadisticas = [
+                'oro' => 0,
+                'plata' => 0,
+                'bronce' => 0,
+                'mencion_honor' => 0,
+                'total' => count($participantes)
+            ];
+            
+            foreach ($participantes as $participante) {
+                $medalla = $participante['medalla_asignada'];
+                if (isset($estadisticas[$medalla])) {
+                    $estadisticas[$medalla]++;
+                }
+            }
+            
+            // Verificar aprobación
+            $sqlAprob = "
+                SELECT COUNT(*) as aprobada
+                FROM aprobaciones_certificados
+                WHERE area_competencia_id = ? AND aprobado = true
+            ";
+            $stmtAprob = $this->pdo->prepare($sqlAprob);
+            $stmtAprob->execute([$areaId]);
+            $aprobacion = $stmtAprob->fetch(PDO::FETCH_ASSOC);
+            
+            Response::success([
+                'area' => $area,
+                'participantes' => array_values($participantesPorNivel),
+                'estadisticas' => $estadisticas,
+                'aprobado' => $aprobacion && $aprobacion['aprobada'] > 0
+            ], 'Participantes premiados obtenidos correctamente');
+            
+        } catch (\Exception $e) {
+            error_log('Error obteniendo participantes premiados por área: ' . $e->getMessage());
+            Response::serverError('Error al obtener participantes premiados');
         }
     }
 }
