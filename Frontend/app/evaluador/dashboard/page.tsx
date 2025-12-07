@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AuthService } from "@/lib/api"
+import { AuthService, EvaluadorService } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   Trophy,
@@ -127,38 +127,19 @@ export default function EvaluatorDashboard() {
         setLoadingStats(true)
         console.log('Obteniendo estadísticas reales de evaluaciones...')
         
+        const response = await EvaluadorService.getEstadisticas()
+        console.log('Estadísticas reales obtenidas:', response)
         
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'}/api/evaluador/estadisticas`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          console.log('Estadísticas reales obtenidas:', data)
-          
-          if (data.success && data.data) {
-            setEvaluationStats({
-              totalAssigned: data.data.total_asignadas || 0,
-              completed: data.data.completadas || 0,
-              pending: data.data.pendientes || 0,
-              averageScore: data.data.promedio_calificacion || 0
-            })
-          } else {
-            console.error('Error en respuesta del backend:', data.message)
-            
-            setEvaluationStats({
-              totalAssigned: 0,
-              completed: 0,
-              pending: 0,
-              averageScore: 0
-            })
-          }
+        if (response.success && response.data) {
+          // El backend devuelve: total_asignadas, total_evaluadas, pendientes, promedio_puntuacion
+          setEvaluationStats({
+            totalAssigned: response.data.total_asignadas || 0,
+            completed: response.data.total_evaluadas || 0,
+            pending: response.data.pendientes || 0,
+            averageScore: parseFloat(response.data.promedio_puntuacion) || 0
+          })
         } else {
-          console.error('Error HTTP:', response.status, response.statusText)
+          console.error('Error en respuesta del backend:', response.message)
           
           setEvaluationStats({
             totalAssigned: 0,

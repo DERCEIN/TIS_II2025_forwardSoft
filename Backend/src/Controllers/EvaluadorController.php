@@ -174,6 +174,9 @@ class EvaluadorController
             
             $faseClasificatoriaCerrada = false;
             $fechaCierreClasificatoria = null;
+            $faseFinalCerrada = false;
+            $fechaCierreFinal = null;
+            
             if ($fase === 'clasificacion' || $fase === 'final') {
                
                 $areaId = null;
@@ -196,10 +199,12 @@ class EvaluadorController
                 }
                 
                 if ($areaId) {
+                    // Verificar cierre de fase clasificatoria
                     $sqlCierre = "SELECT estado, fecha_cierre 
                                   FROM cierre_fase_areas 
                                   WHERE area_competencia_id = :areaId 
                                   AND nivel_competencia_id IS NULL
+                                  AND fase = 'clasificacion'
                                   AND estado = 'cerrada'
                                   ORDER BY fecha_cierre DESC
                                   LIMIT 1";
@@ -212,15 +217,36 @@ class EvaluadorController
                         $faseClasificatoriaCerrada = true;
                         $fechaCierreClasificatoria = $cierre['fecha_cierre'];
                     }
+                    
+                    // Verificar cierre de fase final
+                    $sqlCierreFinal = "SELECT estado, fecha_cierre 
+                                       FROM cierre_fase_areas 
+                                       WHERE area_competencia_id = :areaId 
+                                       AND nivel_competencia_id IS NULL
+                                       AND fase = 'final'
+                                       AND estado = 'cerrada'
+                                       ORDER BY fecha_cierre DESC
+                                       LIMIT 1";
+                    $stmtCierreFinal = $this->pdo->prepare($sqlCierreFinal);
+                    $stmtCierreFinal->bindValue(':areaId', $areaId, \PDO::PARAM_INT);
+                    $stmtCierreFinal->execute();
+                    $cierreFinal = $stmtCierreFinal->fetch(\PDO::FETCH_ASSOC);
+                    
+                    if ($cierreFinal && $cierreFinal['estado'] === 'cerrada') {
+                        $faseFinalCerrada = true;
+                        $fechaCierreFinal = $cierreFinal['fecha_cierre'];
+                    }
                 }
             }
 
             Response::success([
                 'evaluaciones' => $resultado,
-                'fase_cerrada' => $fase === 'clasificacion' ? $faseClasificatoriaCerrada : false,
-                'fecha_cierre' => $fase === 'clasificacion' ? $fechaCierreClasificatoria : null,
+                'fase_cerrada' => $fase === 'clasificacion' ? $faseClasificatoriaCerrada : ($fase === 'final' ? $faseFinalCerrada : false),
+                'fecha_cierre' => $fase === 'clasificacion' ? $fechaCierreClasificatoria : ($fase === 'final' ? $fechaCierreFinal : null),
                 'fase_clasificatoria_cerrada' => $faseClasificatoriaCerrada,
-                'fecha_cierre_clasificatoria' => $fechaCierreClasificatoria
+                'fecha_cierre_clasificatoria' => $fechaCierreClasificatoria,
+                'fase_final_cerrada' => $faseFinalCerrada,
+                'fecha_cierre_final' => $fechaCierreFinal
             ], 'Lista de evaluaciones asignadas');
         } catch (\Exception $e) {
             error_log('Error en evaluaciones: ' . $e->getMessage());
@@ -234,20 +260,63 @@ class EvaluadorController
             $currentUser = JWTManager::getCurrentUser();
             $userId = $currentUser['id'];
 
-            $sql = "SELECT 
+            // Estadísticas de fase clasificatoria
+            $sqlClasificacion = "SELECT 
                         COUNT(DISTINCT ae.inscripcion_area_id) as total_asignadas,
                         COUNT(CASE WHEN ec.id IS NOT NULL THEN 1 END) as total_evaluadas,
                         COUNT(CASE WHEN ec.id IS NULL THEN 1 END) as pendientes,
                         ROUND(AVG(ec.puntuacion), 2) as promedio_puntuacion
                     FROM asignaciones_evaluacion ae
-                    LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ae.inscripcion honor_id 
+                    LEFT JOIN evaluaciones_clasificacion ec ON ec.inscripcion_area_id = ae.inscripcion_area_id 
                                                               AND ec.evaluador_id = ae.evaluador_id
-                    WHERE ae.evaluador_id = :userId";
+                    WHERE ae.evaluador_id = :userId AND ae.fase = 'clasificacion'";
             
-            $stmt = $this->pdo->prepare($sql);
+            $stmt = $this->pdo->prepare($sqlClasificacion);
             $stmt->bindValue(':userId', $userId, \PDO::PARAM_INT);
             $stmt->execute();
-            $stats = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $statsClasificacion = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            // Estadísticas de fase final
+            $sqlFinal = "SELECT 
+                        COUNT(DISTINCT ae.inscripcion_area_id) as total_asignadas,
+                        COUNT(CASE WHEN ef.id IS NOT NULL THEN 1 END) as total_evaluadas,
+                        COUNT(CASE WHEN ef.id IS NULL THEN 1 END) as pendientes,
+                        ROUND(AVG(ef.puntuacion), 2) as promedio_puntuacion
+                    FROM asignaciones_evaluacion ae
+                    JOIN inscripciones_areas ia ON ia.id = ae.inscripcion_area_id
+                    LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ae.inscripcion_area_id 
+                                                       AND ef.evaluador_id = ae.evaluador_id
+                    WHERE ae.evaluador_id = :userId AND ae.fase = 'final' AND ia.estado = 'clasificado'";
+            
+            $stmt = $this->pdo->prepare($sqlFinal);
+            $stmt->bindValue(':userId', $userId, \PDO::PARAM_INT);
+            $stmt->execute();
+            $statsFinal = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            // Combinar estadísticas de ambas fases
+            $totalAsignadas = (int)$statsClasificacion['total_asignadas'] + (int)$statsFinal['total_asignadas'];
+            $totalEvaluadas = (int)$statsClasificacion['total_evaluadas'] + (int)$statsFinal['total_evaluadas'];
+            $pendientes = (int)$statsClasificacion['pendientes'] + (int)$statsFinal['pendientes'];
+            
+            // Calcular promedio combinado
+            $sumaPuntuaciones = 0;
+            $countPuntuaciones = 0;
+            if ($statsClasificacion['promedio_puntuacion'] && $statsClasificacion['total_evaluadas'] > 0) {
+                $sumaPuntuaciones += (float)$statsClasificacion['promedio_puntuacion'] * (int)$statsClasificacion['total_evaluadas'];
+                $countPuntuaciones += (int)$statsClasificacion['total_evaluadas'];
+            }
+            if ($statsFinal['promedio_puntuacion'] && $statsFinal['total_evaluadas'] > 0) {
+                $sumaPuntuaciones += (float)$statsFinal['promedio_puntuacion'] * (int)$statsFinal['total_evaluadas'];
+                $countPuntuaciones += (int)$statsFinal['total_evaluadas'];
+            }
+            $promedioPuntuacion = $countPuntuaciones > 0 ? round($sumaPuntuaciones / $countPuntuaciones, 2) : 0;
+
+            $stats = [
+                'total_asignadas' => $totalAsignadas,
+                'total_evaluadas' => $totalEvaluadas,
+                'pendientes' => $pendientes,
+                'promedio_puntuacion' => $promedioPuntuacion
+            ];
 
             Response::success($stats, 'Estadísticas del evaluador');
         } catch (\Exception $e) {

@@ -137,6 +137,8 @@ export default function RegistroNotas() {
   const [fechaCierre, setFechaCierre] = useState<string | null>(null)
   const [faseClasificatoriaCerrada, setFaseClasificatoriaCerrada] = useState<boolean>(false)
   const [fechaCierreClasificatoria, setFechaCierreClasificatoria] = useState<string | null>(null)
+  const [faseFinalCerrada, setFaseFinalCerrada] = useState<boolean>(false)
+  const [fechaCierreFinal, setFechaCierreFinal] = useState<string | null>(null)
 
 
   
@@ -160,11 +162,15 @@ export default function RegistroNotas() {
       const fechaCierreData = responseData.fecha_cierre || null
       const clasificatoriaCerrada = responseData.fase_clasificatoria_cerrada === true || responseData.fase_clasificatoria_cerrada === 'true'
       const fechaCierreClasificatoriaData = responseData.fecha_cierre_clasificatoria || null
+      const finalCerrada = responseData.fase_final_cerrada === true || responseData.fase_final_cerrada === 'true'
+      const fechaCierreFinalData = responseData.fecha_cierre_final || null
       
       setFaseCerrada(cerrada)
       setFechaCierre(fechaCierreData)
       setFaseClasificatoriaCerrada(clasificatoriaCerrada)
       setFechaCierreClasificatoria(fechaCierreClasificatoriaData)
+      setFaseFinalCerrada(finalCerrada)
+      setFechaCierreFinal(fechaCierreFinalData)
 
       
 
@@ -574,8 +580,18 @@ export default function RegistroNotas() {
     
     
     const esDesclasificado = participante.estado === 'desclasificado' || participante.inscripcion_estado === 'desclasificado'
-    const matchesEstado = filterEstado === 'todos' || 
-                         (filterEstado === 'desclasificado' ? esDesclasificado : participante.estado === filterEstado)
+    let matchesEstado = filterEstado === 'todos'
+    
+    if (!matchesEstado) {
+      if (filterEstado === 'desclasificado') {
+        matchesEstado = esDesclasificado
+      } else if (filterEstado === 'evaluado' && fase === 'final') {
+        // En fase final, "evaluado" incluye tanto "evaluado" como "clasificado" (que se muestra como "Evaluado")
+        matchesEstado = participante.estado === 'evaluado' || participante.estado === 'clasificado'
+      } else {
+        matchesEstado = participante.estado === filterEstado
+      }
+    }
 
 
     return matchesSearch && matchesArea && matchesNivel && matchesEstado
@@ -584,10 +600,25 @@ export default function RegistroNotas() {
 
 
 
+  // Función helper para verificar si la fase actual está cerrada
+  const isFaseCerrada = () => {
+    if (fase === 'clasificacion') {
+      return faseCerrada || faseClasificatoriaCerrada
+    } else if (fase === 'final') {
+      return faseFinalCerrada
+    }
+    return false
+  }
+
   const handleEditNota = (participante: Participante) => {
     
     if (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) {
       error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
+      return
+    }
+    
+    if (fase === 'final' && faseFinalCerrada) {
+      error('Fase cerrada', 'La fase final está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
     }
 
@@ -730,14 +761,13 @@ export default function RegistroNotas() {
     }
 
    
-    if (fase === 'clasificacion' && faseCerrada) {
+    if (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) {
       error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
     }
 
-    
-    if (fase === 'clasificacion' && faseClasificatoriaCerrada) {
-      error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
+    if (fase === 'final' && faseFinalCerrada) {
+      error('Fase cerrada', 'La fase final está cerrada y archivada. No se pueden editar notas de esta fase.')
       return
     }
 
@@ -1108,7 +1138,10 @@ export default function RegistroNotas() {
         return <Badge variant="default" className="flex items-center gap-1"><CheckCircle className="h-3 w-3" />Evaluado</Badge>
 
       case 'clasificado':
-
+        // En fase final, mostrar "Evaluado" en lugar de "Clasificado"
+        if (fase === 'final') {
+          return <Badge variant="default" className="flex items-center gap-1 bg-green-600 hover:bg-green-700"><CheckCircle className="h-3 w-3" />Evaluado</Badge>
+        }
         return <Badge variant="default" className="flex items-center gap-1 bg-green-600 hover:bg-green-700"><CheckCircle className="h-3 w-3" />Clasificado</Badge>
 
       case 'no_clasificado':
@@ -1191,7 +1224,7 @@ export default function RegistroNotas() {
 
           
 
-          {/* Estado de Cierre de Fase */}
+          {/* Estado de Cierre de Fase Clasificatoria */}
           {faseCerrada && fase === 'clasificacion' && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center gap-2">
@@ -1203,6 +1236,29 @@ export default function RegistroNotas() {
               {fechaCierre && (
                 <p className="mt-1 text-xs text-yellow-600">
                   La fase fue cerrada el {new Date(fechaCierre).toLocaleDateString('es-ES', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Estado de Cierre de Fase Final */}
+          {faseFinalCerrada && fase === 'final' && (
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <span className="text-sm font-medium text-yellow-700">
+                  Fase final cerrada - No se pueden editar notas
+                </span>
+              </div>
+              {fechaCierreFinal && (
+                <p className="mt-1 text-xs text-yellow-600">
+                  La fase final fue cerrada el {new Date(fechaCierreFinal).toLocaleDateString('es-ES', { 
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric',
@@ -1350,6 +1406,11 @@ export default function RegistroNotas() {
                       error('Fase cerrada', 'La fase clasificatoria está cerrada y archivada. No se pueden editar notas de esta fase.')
                       return
                     }
+                    // Si intenta cambiar a fase final y está cerrada, no permitir
+                    if (v === 'final' && faseFinalCerrada) {
+                      error('Fase cerrada', 'La fase final está cerrada y archivada. No se pueden editar notas de esta fase.')
+                      return
+                    }
                     setFase(v as any)
                   }}
                 >
@@ -1369,7 +1430,12 @@ export default function RegistroNotas() {
                       Clasificación {faseClasificatoriaCerrada && '(Cerrada)'}
                     </SelectItem>
 
-                    <SelectItem value="final">Final</SelectItem>
+                    <SelectItem 
+                      value="final"
+                      disabled={faseFinalCerrada}
+                    >
+                      Final {faseFinalCerrada && '(Cerrada)'}
+                    </SelectItem>
 
                   </SelectContent>
 
@@ -1456,11 +1522,18 @@ export default function RegistroNotas() {
 
                     <SelectItem value="pendiente">Pendiente</SelectItem>
 
-                    <SelectItem value="evaluado">Evaluado</SelectItem>
-
-                    <SelectItem value="clasificado">Clasificado</SelectItem>
-
-                    <SelectItem value="no_clasificado">No Clasificado</SelectItem>
+                    {fase === 'final' ? (
+                      <>
+                        {/* En fase final, "evaluado" filtra tanto "evaluado" como "clasificado" */}
+                        <SelectItem value="evaluado">Evaluado</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="evaluado">Evaluado</SelectItem>
+                        <SelectItem value="clasificado">Clasificado</SelectItem>
+                        <SelectItem value="no_clasificado">No Clasificado</SelectItem>
+                      </>
+                    )}
 
                     <SelectItem value="revisado">Revisado</SelectItem>
 
@@ -1678,7 +1751,7 @@ export default function RegistroNotas() {
 
                                   placeholder="0-100"
 
-                                  disabled={fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)}
+                                  disabled={isFaseCerrada()}
 
                                 />
 
@@ -1692,7 +1765,7 @@ export default function RegistroNotas() {
 
                                   className="h-8 text-xs w-40"
 
-                                  disabled={fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)}
+                                  disabled={isFaseCerrada()}
 
                                 />
 
@@ -1708,7 +1781,7 @@ export default function RegistroNotas() {
 
                                     className="h-8 text-xs w-48 border-orange-300"
 
-                                    disabled={fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)}
+                                    disabled={isFaseCerrada()}
                                   />
 
                                 )}
@@ -1719,11 +1792,11 @@ export default function RegistroNotas() {
 
                                    onClick={() => handleSaveNota(participante.id)}
 
-                                   disabled={saving || (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada))}
+                                   disabled={saving || isFaseCerrada()}
 
                                    className="h-8 px-2"
 
-                                   title={(fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) ? "Fase cerrada - No se pueden guardar notas" : ""}
+                                   title={isFaseCerrada() ? "Fase cerrada - No se pueden guardar notas" : ""}
                                  >
 
                                   <Save className="h-3 w-3" />
@@ -1806,12 +1879,12 @@ export default function RegistroNotas() {
 
                                    onClick={() => handleEditNota(participante)}
 
-                                   disabled={!tienePermisos || (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada))}
+                                   disabled={!tienePermisos || isFaseCerrada()}
 
                                    className="h-8 w-8 p-0"
 
                                    title={
-                                     (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) 
+                                     isFaseCerrada()
                                        ? "Fase cerrada - No se pueden editar notas" 
                                        : (!tienePermisos ? "Sin permisos activos" : "Editar nota")
                                    }
@@ -1822,7 +1895,7 @@ export default function RegistroNotas() {
 
                                 </Button>
 
-                                 {(participante.estado !== 'desclasificado' && participante.inscripcion_estado !== 'desclasificado') && (
+                                 {(participante.estado !== 'desclasificado' && participante.inscripcion_estado !== 'desclasificado') && fase !== 'final' && (
                                    <Button
 
                                      size="sm"
@@ -1830,11 +1903,11 @@ export default function RegistroNotas() {
                                      variant="destructive"
 
                                      onClick={() => handleDesclasificar(participante)}
-                                     disabled={!tienePermisos || (fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada))}
+                                     disabled={!tienePermisos || isFaseCerrada()}
 
                                      className="h-8 w-8 p-0"
 
-                                     title={(fase === 'clasificacion' && (faseCerrada || faseClasificatoriaCerrada)) ? "Fase cerrada - No se pueden desclasificar participantes" : (!tienePermisos ? "Sin permisos activos" : "Desclasificar participante")}
+                                     title={isFaseCerrada() ? "Fase cerrada - No se pueden desclasificar participantes" : (!tienePermisos ? "Sin permisos activos" : "Desclasificar participante")}
 
                                   >
 
@@ -2215,7 +2288,7 @@ export default function RegistroNotas() {
 
                 <div>
 
-                  <p className="text-sm font-medium text-gray-600">Clasificados</p>
+                  <p className="text-sm font-medium text-gray-600">{fase === 'final' ? 'Evaluados' : 'Clasificados'}</p>
 
                   <p className="text-2xl font-bold text-green-600">
 
@@ -2308,7 +2381,7 @@ export default function RegistroNotas() {
                   return (
                     <>
                       <p>Evaluaciones completadas: {participantesEvaluados.length} / {participantesEvaluables.length}</p>
-                      <p className="text-sm text-green-600">Clasificados: {participantesClasificados.length}</p>
+                      <p className="text-sm text-green-600">{fase === 'final' ? 'Evaluados' : 'Clasificados'}: {participantesClasificados.length}</p>
                       {participantesDesclasificados.length > 0 && (
                         <p className="text-xs text-gray-500">({participantesDesclasificados.length} desclasificado{participantesDesclasificados.length !== 1 ? 's' : ''} excluido{participantesDesclasificados.length !== 1 ? 's' : ''})</p>
                       )}

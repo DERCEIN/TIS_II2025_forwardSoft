@@ -4222,7 +4222,7 @@ export default function CoordinatorDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 rounded-none border-0 h-auto sm:h-12" style={{backgroundColor: '#1a4e78'}}>
             <TabsTrigger 
               value="progress" 
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
@@ -4242,12 +4242,6 @@ export default function CoordinatorDashboard() {
               className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
             >
               Evaluadores
-            </TabsTrigger>
-            <TabsTrigger 
-              value="evaluations" 
-              className="text-white text-xs sm:text-sm uppercase font-medium data-[state=active]:text-amber-500 data-[state=active]:bg-transparent border-r border-white/20 rounded-none py-2 sm:py-3"
-            >
-              Evaluaciones
             </TabsTrigger>
             <TabsTrigger 
               value="control" 
@@ -4334,13 +4328,6 @@ export default function CoordinatorDashboard() {
           </TabsContent>
 
           {/* Evaluations Tab */}
-          <TabsContent value="evaluations" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-muted-foreground">Módulo en desarrollo - Sprint 3</h3>
-              <p className="text-sm text-muted-foreground mt-2">Sistema de gestión de evaluaciones con calificación automática, seguimiento de progreso y generación de reportes de resultados</p>
-            </div>
-          </TabsContent>
-
           {/* Control Tab - Solo Auditoría */}
           <TabsContent value="control" className="space-y-6">
             {/* Cambios Pendientes */}

@@ -1572,7 +1572,7 @@ export class CoordinadorAccionService {
       const evaluadores = res.data.evaluadores || []
 
       return evaluadores.map((e: any) => ({
-        id: e.id?.toString(),
+        id: Number(e.id),
         name: e.name,
         email: e.email,
         area: e.area_nombre,

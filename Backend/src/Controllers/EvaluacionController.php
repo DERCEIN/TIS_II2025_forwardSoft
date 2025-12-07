@@ -356,13 +356,36 @@ class EvaluacionController
         $currentUser = JWTManager::getCurrentUser();
         
         try {
+            // Verificar si la fase final está cerrada
+            $inscripcion = $this->inscripcionModel->findById($input['inscripcion_area_id']);
+            if ($inscripcion) {
+                $areaId = $inscripcion['area_competencia_id'];
+                $sqlCierreFinal = "
+                    SELECT estado, fecha_cierre FROM cierre_fase_areas
+                    WHERE area_competencia_id = ? AND nivel_competencia_id IS NULL
+                    AND fase = 'final'
+                    AND estado = 'cerrada'
+                    ORDER BY fecha_cierre DESC
+                    LIMIT 1
+                ";
+                $stmtCierreFinal = $this->pdo->prepare($sqlCierreFinal);
+                $stmtCierreFinal->execute([$areaId]);
+                $cierreFinal = $stmtCierreFinal->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($cierreFinal && $cierreFinal['estado'] === 'cerrada') {
+                    Response::validationError([
+                        'general' => 'No se pueden editar notas de la fase final. La fase está cerrada y archivada desde el ' . 
+                                    date('d/m/Y H:i', strtotime($cierreFinal['fecha_cierre']))
+                    ]);
+                    return;
+                }
+            }
             
             if (!$this->canEvaluate($currentUser['id'], $input['inscripcion_area_id'], 'final')) {
                 Response::forbidden('No tienes permisos para evaluar esta inscripción. Verifica tu tiempo de asignación y período de evaluación.');
             }
 
             
-            $inscripcion = $this->inscripcionModel->findById($input['inscripcion_area_id']);
             if (!$inscripcion || $inscripcion['estado'] !== 'clasificado') {
                 Response::validationError(['inscripcion_area_id' => 'La inscripción debe estar clasificada para la evaluación final']);
             }
@@ -696,6 +719,7 @@ class EvaluacionController
                 SELECT estado FROM cierre_fase_areas
                 WHERE area_competencia_id = :areaId 
                 AND nivel_competencia_id IS NULL
+                AND fase = 'clasificacion'
                 AND estado = 'cerrada'
                 ORDER BY fecha_cierre DESC
                 LIMIT 1
@@ -706,6 +730,26 @@ class EvaluacionController
             $cierre = $stmtCierre->fetch(\PDO::FETCH_ASSOC);
             
             if ($cierre && $cierre['estado'] === 'cerrada') {
+                return false;
+            }
+        }
+        
+        if ($fase === 'final') {
+            $sqlCierreFinal = "
+                SELECT estado FROM cierre_fase_areas
+                WHERE area_competencia_id = :areaId 
+                AND nivel_competencia_id IS NULL
+                AND fase = 'final'
+                AND estado = 'cerrada'
+                ORDER BY fecha_cierre DESC
+                LIMIT 1
+            ";
+            $stmtCierreFinal = $this->pdo->prepare($sqlCierreFinal);
+            $stmtCierreFinal->bindValue(':areaId', $inscripcion['area_competencia_id'], \PDO::PARAM_INT);
+            $stmtCierreFinal->execute();
+            $cierreFinal = $stmtCierreFinal->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($cierreFinal && $cierreFinal['estado'] === 'cerrada') {
                 return false;
             }
         }

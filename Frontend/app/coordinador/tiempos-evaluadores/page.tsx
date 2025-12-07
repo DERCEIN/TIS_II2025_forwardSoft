@@ -16,6 +16,10 @@ import {
   ArrowLeft,
   LogOut,
   Trophy,
+  CheckSquare,
+  Square,
+  Users,
+  Zap,
 } from "lucide-react"
 import { AuthService, CoordinadorService, CoordinadorAccionService } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
@@ -104,26 +108,144 @@ export default function CoordinatorDashboard() {
   const [isEditing, setIsEditing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [coordinadorAreaId, setCoordinadorAreaId] = useState<string | null>(null)
+  const [selectedEvaluators, setSelectedEvaluators] = useState<Set<number>>(new Set())
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
+  const [statusFilter, setStatusFilter] = useState<EvaluatorStatus | "all">("all")
   const [formData, setFormData] = useState({
     startDate: "",
     startTime: "",
     durationDays: "",
   })
 
-  const filteredEvaluators = evaluadores.filter((evaluator) =>
-    evaluator.name.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  const filteredEvaluators = evaluadores.filter((evaluator) => {
+    const matchesSearch = evaluator.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesStatus = statusFilter === "all" || evaluator.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
+
+  const evaluadoresSinPermiso = filteredEvaluators.filter(e => !e.start_date || e.status === "sin-permiso")
 
   const handleSelectEvaluator = (evaluator: Evaluator) => {
-  setSelectedEvaluator(evaluator)
- /* setIsEditing(false)*/
+    if (bulkMode) {
+      // En modo masivo, toggle selección
+      setSelectedEvaluators(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(evaluator.id)) {
+          newSet.delete(evaluator.id)
+        } else {
+          newSet.add(evaluator.id)
+        }
+        return newSet
+      })
+    } else {
+      // Modo normal, seleccionar uno
+      setSelectedEvaluator(evaluator)
+      setFormData({
+        startDate: evaluator.start_date || "",
+        startTime: evaluator.start_time || "",
+        durationDays: evaluator.duration_days?.toString() || "",
+      })
+    }
+  }
 
-  setFormData({
-    startDate: evaluator.start_date || "",
-    startTime: evaluator.start_time || "",
-    durationDays: evaluator.duration_days?.toString() || "",
-  })
-}
+  const handleToggleBulkMode = () => {
+    setBulkMode(!bulkMode)
+    setSelectedEvaluators(new Set())
+    setSelectedEvaluator(null)
+  }
+
+  const handleSelectAll = () => {
+    if (selectedEvaluators.size === filteredEvaluators.length) {
+      setSelectedEvaluators(new Set())
+    } else {
+      setSelectedEvaluators(new Set(filteredEvaluators.map(e => e.id)))
+    }
+  }
+
+  const handleSelectAllWithoutPermission = () => {
+    setSelectedEvaluators(new Set(evaluadoresSinPermiso.map(e => e.id)))
+  }
+
+  const handleBulkAssign = async () => {
+    if (selectedEvaluators.size === 0) {
+      toast({
+        title: "Error",
+        description: "Selecciona al menos un evaluador",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!formData.startDate || !formData.startTime || !formData.durationDays) {
+      toast({
+        title: "Error",
+        description: "Completa todos los campos del formulario",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const profileResponse = await AuthService.getProfile()
+    const evaluadoresIds = Array.from(selectedEvaluators)
+    
+    setBulkProgress({ current: 0, total: evaluadoresIds.length })
+    setSaving(true)
+
+    let successCount = 0
+    let errorCount = 0
+
+    for (let i = 0; i < evaluadoresIds.length; i++) {
+      const evaluadorId = evaluadoresIds[i]
+      setBulkProgress({ current: i + 1, total: evaluadoresIds.length })
+
+      const data: NuevoTiempoEvaluador = {
+        coordinador_id: profileResponse.data.id,
+        evaluador_id: evaluadorId,
+        start_date: formData.startDate,
+        start_time: formData.startTime,
+        duration_days: Number(formData.durationDays),
+        status: "activo",
+      }
+
+      try {
+        const response = await CoordinadorAccionService.postTiemposEvaluadores(data)
+        if (response && response.success) {
+          successCount++
+        } else {
+          errorCount++
+        }
+      } catch (error) {
+        errorCount++
+        console.error(`Error asignando tiempo a evaluador ${evaluadorId}:`, error)
+      }
+    }
+
+    setSaving(false)
+    setBulkProgress({ current: 0, total: 0 })
+    
+    toast({
+      title: "Asignación completada",
+      description: `${successCount} evaluadores actualizados. ${errorCount > 0 ? `${errorCount} errores.` : ''}`,
+    })
+
+    // Recargar datos
+    await loadData()
+    setSelectedEvaluators(new Set())
+    setBulkMode(false)
+  }
+
+  const applyQuickTemplate = (days: number) => {
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    
+    setFormData({
+      startDate: tomorrow.toISOString().split('T')[0],
+      startTime: "08:00",
+      durationDays: days.toString(),
+    })
+  }
 
 
 
@@ -453,7 +575,46 @@ export default function CoordinatorDashboard() {
           {/* Left Panel - Evaluators List */}
           <Card className="flex flex-col border-blue-200 bg-blue-50 p-6">
             <div className="mb-4 space-y-4">
-              <h2 className="text-lg font-heading font-semibold text-blue-900">Lista de Evaluadores</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-heading font-semibold text-blue-900">Lista de Evaluadores</h2>
+                <Button
+                  variant={bulkMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleToggleBulkMode}
+                  className={bulkMode ? "bg-blue-600 text-white" : ""}
+                >
+                  {bulkMode ? <CheckSquare className="h-4 w-4 mr-1" /> : <Square className="h-4 w-4 mr-1" />}
+                  {bulkMode ? "Modo Individual" : "Modo Masivo"}
+                </Button>
+              </div>
+              
+              {bulkMode && (
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAll}
+                    className="text-xs"
+                  >
+                    {selectedEvaluators.size === filteredEvaluators.length ? "Deseleccionar Todos" : "Seleccionar Todos"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllWithoutPermission}
+                    className="text-xs"
+                  >
+                    <Users className="h-3 w-3 mr-1" />
+                    Sin Permiso ({evaluadoresSinPermiso.length})
+                  </Button>
+                  {selectedEvaluators.size > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedEvaluators.size} seleccionados
+                    </Badge>
+                  )}
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 <Input
@@ -462,6 +623,34 @@ export default function CoordinatorDashboard() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 bg-white border-blue-200"
                 />
+              </div>
+
+              {/* Filtro por estado */}
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={statusFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("all")}
+                  className={statusFilter === "all" ? "bg-blue-600 text-white" : "text-xs"}
+                >
+                  Todos
+                </Button>
+                <Button
+                  variant={statusFilter === "sin-permiso" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("sin-permiso")}
+                  className={statusFilter === "sin-permiso" ? "bg-blue-600 text-white" : "text-xs"}
+                >
+                  Sin Permiso
+                </Button>
+                <Button
+                  variant={statusFilter === "activo" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("activo")}
+                  className={statusFilter === "activo" ? "bg-blue-600 text-white" : "text-xs"}
+                >
+                  Activos
+                </Button>
               </div>
             </div>
 
@@ -486,29 +675,46 @@ export default function CoordinatorDashboard() {
                   </div>
                 </div>
               ) : (
-                filteredEvaluators.map((evaluator) => (
-                  <button
-                    key={evaluator.id}
-                    onClick={() => handleSelectEvaluator(evaluator)}
-                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                      selectedEvaluator?.id === evaluator.id
-                        ? "border-blue-500 bg-white shadow-sm"
-                        : "border-blue-200 bg-white hover:bg-blue-100"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 space-y-1">
-                        <p className="font-medium text-gray-900">{evaluator.name}</p>
-                        <Badge
-                          className={`text-xs ${statusConfig[evaluator.status].bgColor} ${statusConfig[evaluator.status].textColor} border-0`}
-                        >
-                          {statusConfig[evaluator.status].label}
-                        </Badge>
+                filteredEvaluators.map((evaluator) => {
+                  const isSelected = bulkMode 
+                    ? selectedEvaluators.has(evaluator.id)
+                    : selectedEvaluator?.id === evaluator.id
+                  
+                  return (
+                    <button
+                      key={evaluator.id}
+                      onClick={() => handleSelectEvaluator(evaluator)}
+                      className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                        isSelected
+                          ? "border-blue-500 bg-white shadow-sm"
+                          : "border-blue-200 bg-white hover:bg-blue-100"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        {bulkMode && (
+                          <div className="mt-1">
+                            {isSelected ? (
+                              <CheckSquare className="h-5 w-5 text-blue-600" />
+                            ) : (
+                              <Square className="h-5 w-5 text-gray-400" />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex-1 space-y-1">
+                          <p className="font-medium text-gray-900">{evaluator.name}</p>
+                          <Badge
+                            className={`text-xs ${statusConfig[evaluator.status].bgColor} ${statusConfig[evaluator.status].textColor} border-0`}
+                          >
+                            {statusConfig[evaluator.status].label}
+                          </Badge>
+                        </div>
+                        {!bulkMode && selectedEvaluator?.id === evaluator.id && (
+                          <div className="h-2 w-2 rounded-full bg-blue-600" />
+                        )}
                       </div>
-                      {selectedEvaluator?.id === evaluator.id && <div className="h-2 w-2 rounded-full bg-blue-600" />}
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  )
+                })
               )}
             </div>
 
@@ -538,7 +744,161 @@ export default function CoordinatorDashboard() {
 
           {/* Right Panel - Evaluator Details */}
           <Card className="border-pink-200 bg-pink-50 p-6">
-            {selectedEvaluator ? (
+            {bulkMode && selectedEvaluators.size > 0 ? (
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <h2 className="text-lg font-heading font-semibold text-blue-900">
+                    Asignación Masiva
+                  </h2>
+                  <div className="rounded-lg border border-pink-200 bg-white p-4">
+                    <p className="text-sm text-gray-600 mb-2">
+                      Has seleccionado <strong>{selectedEvaluators.size}</strong> evaluador{selectedEvaluators.size !== 1 ? 'es' : ''}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Completa el formulario y se asignará el mismo período a todos los evaluadores seleccionados.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="h-px bg-pink-200" />
+
+                {/* Form for bulk assignment */}
+                <div className="space-y-4">
+                  <div className="space-y-4 rounded-lg border border-pink-200 bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-heading font-semibold text-blue-900">
+                        Asignar Periodo de Evaluación
+                      </h3>
+                      {selectedEvaluators.size > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {selectedEvaluators.size} seleccionados
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Plantillas rápidas */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-gray-700">Plantillas Rápidas:</Label>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => applyQuickTemplate(7)}
+                          className="text-xs"
+                        >
+                          <Zap className="h-3 w-3 mr-1" />
+                          7 días
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => applyQuickTemplate(14)}
+                          className="text-xs"
+                        >
+                          <Zap className="h-3 w-3 mr-1" />
+                          14 días
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => applyQuickTemplate(30)}
+                          className="text-xs"
+                        >
+                          <Zap className="h-3 w-3 mr-1" />
+                          30 días
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="bulkStartDate" className="text-xs text-gray-700">
+                            Fecha de Inicio
+                          </Label>
+                          <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                            <Input
+                              id="bulkStartDate"
+                              type="date"
+                              value={formData.startDate}
+                              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                              className="pl-9 border-blue-200"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="bulkStartTime" className="text-xs text-gray-700">
+                            Hora de Inicio
+                          </Label>
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                            <Input
+                              id="bulkStartTime"
+                              type="time"
+                              value={formData.startTime}
+                              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                              className="pl-9 border-blue-200"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bulkDurationDays" className="text-xs text-gray-700">
+                          Duración (días)
+                        </Label>
+                        <div className="relative">
+                          <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                          <Input
+                            id="bulkDurationDays"
+                            type="number"
+                            min="1"
+                            placeholder="Ej: 7"
+                            value={formData.durationDays}
+                            onChange={(e) => setFormData({ ...formData, durationDays: e.target.value })}
+                            className="pl-9 border-pink-200"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Número de días que los evaluadores tendrán acceso al sistema
+                        </p>
+                      </div>
+                      
+                      {bulkProgress.total > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs text-gray-600">
+                            <span>Progreso: {bulkProgress.current} / {bulkProgress.total}</span>
+                            <span>{Math.round((bulkProgress.current / bulkProgress.total) * 100)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <Button
+                        onClick={handleBulkAssign}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={saving || selectedEvaluators.size === 0}
+                        size="lg"
+                      >
+                        {saving ? (
+                          <>Procesando... ({bulkProgress.current}/{bulkProgress.total})</>
+                        ) : (
+                          <>Asignar a {selectedEvaluators.size} evaluador{selectedEvaluators.size !== 1 ? 'es' : ''}</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : selectedEvaluator ? (
               <div className="space-y-6">
                 <div className="space-y-4">
                   <h2 className="text-lg font-heading font-semibold text-blue-900">Detalles del Evaluador</h2>
@@ -695,17 +1055,47 @@ export default function CoordinatorDashboard() {
                             Número de días que el evaluador tendrá acceso al sistema
                           </p>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={handleCancel}
-                            className="flex-1 bg-white border-blue-300 text-blue-700 hover:bg-blue-50"
-                            disabled={saving}
-                          >
-                            Cancelar
-                          </Button>
-
-                        </div>
+                        {bulkMode ? (
+                          <div className="space-y-2">
+                            {bulkProgress.total > 0 && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-xs text-gray-600">
+                                  <span>Progreso: {bulkProgress.current} / {bulkProgress.total}</span>
+                                  <span>{Math.round((bulkProgress.current / bulkProgress.total) * 100)}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                    style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                            <Button
+                              onClick={handleBulkAssign}
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                              disabled={saving || selectedEvaluators.size === 0}
+                              size="lg"
+                            >
+                              {saving ? (
+                                <>Procesando... ({bulkProgress.current}/{bulkProgress.total})</>
+                              ) : (
+                                <>Asignar a {selectedEvaluators.size} evaluador{selectedEvaluators.size !== 1 ? 'es' : ''}</>
+                              )}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={handleCancel}
+                              className="flex-1 bg-white border-blue-300 text-blue-700 hover:bg-blue-50"
+                              disabled={saving}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-start gap-2 rounded-md bg-pink-50 p-3">
                         <AlertCircle className="mt-0.5 h-4 w-4 text-pink-600" />
@@ -728,7 +1118,18 @@ export default function CoordinatorDashboard() {
               </div>
             ) : (
               <div className="flex h-full items-center justify-center text-gray-500">
-                <p>Selecciona un evaluador para ver sus detalles</p>
+                <div className="text-center space-y-2">
+                  <p>
+                    {bulkMode 
+                      ? "Selecciona uno o más evaluadores para asignar tiempos"
+                      : "Selecciona un evaluador para ver sus detalles"}
+                  </p>
+                  {bulkMode && (
+                    <p className="text-xs text-gray-400">
+                      Usa los botones "Seleccionar Todos" o "Sin Permiso" para seleccionar grupos rápidamente
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </Card>
