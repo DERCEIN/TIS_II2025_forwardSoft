@@ -84,6 +84,7 @@ class Router
         // Rutas de configuración por área
         $this->addRoute('GET', '/api/configuracion/areas', [ConfiguracionOlimpiadaController::class, 'getConfiguracionesPorArea'], ['auth', 'admin']);
         $this->addRoute('GET', '/api/public/cronograma', [ConfiguracionOlimpiadaController::class, 'getCronogramaPublico']);
+        $this->addRoute('GET', '/api/public/contactos', [ConfiguracionOlimpiadaController::class, 'getContactosPublico']);
         $this->addRoute('GET', '/api/configuracion/area', [ConfiguracionOlimpiadaController::class, 'getConfiguracionPorArea'], ['auth', 'admin']);
         $this->addRoute('PUT', '/api/configuracion/area', [ConfiguracionOlimpiadaController::class, 'updateConfiguracionPorArea'], ['auth', 'admin']);
         $this->addRoute('POST', '/api/configuracion/validar-choques', [ConfiguracionOlimpiadaController::class, 'validarChoquesHorarios'], ['auth']);

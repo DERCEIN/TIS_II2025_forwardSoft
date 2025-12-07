@@ -320,6 +320,60 @@ class ConfiguracionOlimpiadaController
         }
     }
 
+    public function getContactosPublico()
+    {
+        try {
+            $db = \ForwardSoft\Config\Database::getInstance();
+            
+            $sql = "
+                SELECT 
+                    ac.id AS area_competencia_id,
+                    ac.nombre AS area_nombre,
+                    ac.descripcion AS area_descripcion,
+                    u.id AS coordinador_id,
+                    u.name AS coordinador_nombre,
+                    u.email AS coordinador_email
+                FROM areas_competencia ac
+                LEFT JOIN responsables_academicos ra ON ra.area_competencia_id = ac.id AND ra.is_active = true
+                LEFT JOIN users u ON u.id = ra.user_id AND u.is_active = true
+                WHERE ac.is_active = true
+                ORDER BY ac.orden_display, ac.nombre
+            ";
+
+            $stmt = $db->query($sql);
+            $resultados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $contactosPorArea = [];
+            foreach ($resultados as $row) {
+                $areaId = $row['area_competencia_id'];
+                
+                if (!isset($contactosPorArea[$areaId])) {
+                    $contactosPorArea[$areaId] = [
+                        'area_competencia_id' => $areaId,
+                        'area_nombre' => $row['area_nombre'],
+                        'area_descripcion' => $row['area_descripcion'],
+                        'coordinadores' => []
+                    ];
+                }
+
+                if ($row['coordinador_id']) {
+                    $contactosPorArea[$areaId]['coordinadores'][] = [
+                        'id' => $row['coordinador_id'],
+                        'nombre' => $row['coordinador_nombre'],
+                        'email' => $row['coordinador_email']
+                    ];
+                }
+            }
+
+            $formatted = array_values($contactosPorArea);
+
+            Response::success($formatted, 'Contactos públicos obtenidos');
+        } catch (\Exception $e) {
+            error_log('Error en getContactosPublico: ' . $e->getMessage());
+            Response::serverError('Error al obtener contactos públicos: ' . $e->getMessage());
+        }
+    }
+
   
     public function getConfiguracionPorArea()
     {

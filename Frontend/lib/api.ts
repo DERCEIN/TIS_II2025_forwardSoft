@@ -1417,6 +1417,10 @@ export class ConfiguracionService {
     return ApiService.get('/api/public/cronograma')
   }
 
+  static async getContactosPublico() {
+    return ApiService.get('/api/public/contactos')
+  }
+
   static async getConfiguracionPorArea(areaId: number) {
     return ApiService.get(`/api/configuracion/area?area_id=${areaId}`)
   }

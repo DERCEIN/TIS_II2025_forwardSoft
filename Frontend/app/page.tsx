@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trophy, ChevronRight, BookOpen, LogIn, CalendarDays, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Trophy, ChevronRight, LogIn, ChevronLeft, Download, Microscope, Atom, Globe, Calculator, FlaskConical, FileText } from "lucide-react";
 import Link from "next/link";
-import { ConfiguracionService } from "@/lib/api";
+import jsPDF from "jspdf";
+import { ConfiguracionService, CatalogoService } from "@/lib/api";
+interface Coordinador {
+  id: number;
+  nombre: string;
+  email: string;
+}
 
-interface CronogramaArea {
+interface AreaConvocatoria {
   id: number;
   nombre: string;
   descripcion?: string | null;
@@ -21,27 +25,49 @@ interface CronogramaArea {
   evalFinalFin: string | null;
   pubFinalInicio: string | null;
   pubFinalFin: string | null;
+  coordinadores?: Coordinador[];
 }
 
+const areaIcons: Record<string, { icon: any; color: string }> = {
+  'Biología': { icon: Microscope, color: 'bg-green-500' },
+  'Biologia': { icon: Microscope, color: 'bg-green-500' },
+  'Física': { icon: Atom, color: 'bg-blue-500' },
+  'Fisica': { icon: Atom, color: 'bg-blue-500' },
+  'Geografía': { icon: Globe, color: 'bg-purple-500' },
+  'Geografia': { icon: Globe, color: 'bg-purple-500' },
+  'Matemáticas': { icon: Calculator, color: 'bg-teal-500' },
+  'Matematicas': { icon: Calculator, color: 'bg-teal-500' },
+  'Química': { icon: FlaskConical, color: 'bg-purple-500' },
+  'Quimica': { icon: FlaskConical, color: 'bg-purple-500' },
+  'Informática': { icon: FileText, color: 'bg-indigo-500' },
+  'Informatica': { icon: FileText, color: 'bg-indigo-500' },
+};
+
 export default function LandingPage() {
-  const [activeNews, setActiveNews] = useState(0);
-  const [cronogramaAreas, setCronogramaAreas] = useState<CronogramaArea[]>([]);
-  const [loadingCronograma, setLoadingCronograma] = useState(true);
-  const [cronogramaError, setCronogramaError] = useState<string | null>(null);
-  const [faseSeleccionada, setFaseSeleccionada] = useState<'clasificatoria' | 'final'>('clasificatoria');
+  const [areas, setAreas] = useState<AreaConvocatoria[]>([]);
+  const [loadingAreas, setLoadingAreas] = useState(true);
+  const [contactos, setContactos] = useState<any[]>([]);
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const cargarCronograma = async () => {
-      setLoadingCronograma(true);
-      setCronogramaError(null);
+    const cargarDatos = async () => {
+      setLoadingAreas(true);
       try {
-        const response = await ConfiguracionService.getCronogramaPublico();
+        // Cargar cronograma y contactos en paralelo
+        const [cronogramaResponse, contactosResponse] = await Promise.all([
+          ConfiguracionService.getCronogramaPublico(),
+          ConfiguracionService.getContactosPublico(),
+        ]);
 
-        const cronogramaData =
-          response?.success && Array.isArray(response.data) ? response.data : [];
+        const areasData = cronogramaResponse?.success && Array.isArray(cronogramaResponse.data) ? cronogramaResponse.data : [];
+        const contactosData = contactosResponse?.success && Array.isArray(contactosResponse.data) ? contactosResponse.data : [];
+        
+        setContactos(contactosData);
 
-        const merged: CronogramaArea[] = cronogramaData
-          .map((item: any) => ({
+        // Mapear áreas y agregar coordinadores
+        const mappedAreas: AreaConvocatoria[] = areasData.map((item: any) => {
+          const contactoArea = contactosData.find((c: any) => c.area_competencia_id === item.area_competencia_id);
+          return {
             id: item.area_competencia_id,
             nombre: item.area_nombre,
             descripcion: item.area_descripcion || null,
@@ -53,35 +79,24 @@ export default function LandingPage() {
             evalFinalFin: item.periodo_evaluacion_final_fin || null,
             pubFinalInicio: item.periodo_publicacion_final_inicio || null,
             pubFinalFin: item.periodo_publicacion_final_fin || null,
-          }))
-          .filter((area: CronogramaArea) => {
-            
-            return (area.evalInicio && area.evalFin) || (area.evalFinalInicio && area.evalFinalFin);
-          })
-          .sort((a: CronogramaArea, b: CronogramaArea) => {
-            
-            const fechaA = new Date((a.evalInicio || a.evalFinalInicio) as string).getTime();
-            const fechaB = new Date((b.evalInicio || b.evalFinalInicio) as string).getTime();
-            return fechaA - fechaB;
-          });
-
-        setCronogramaAreas(merged);
+            coordinadores: contactoArea?.coordinadores || [],
+          };
+        });
+        setAreas(mappedAreas);
       } catch (error) {
-        console.error("Error al cargar cronograma:", error);
-        setCronogramaAreas([]);
-        setCronogramaError("No se pudo cargar el cronograma en este momento.");
+        console.error("Error al cargar datos:", error);
+        setAreas([]);
       } finally {
-        setLoadingCronograma(false);
+        setLoadingAreas(false);
       }
     };
-
-    cargarCronograma();
+    cargarDatos();
   }, []);
 
   const formatearFecha = (fecha: string | null) => {
-    if (!fecha) return "Sin definir";
+    if (!fecha) return "Por confirmar";
     const parsed = new Date(fecha);
-    if (Number.isNaN(parsed.getTime())) return "Sin definir";
+    if (Number.isNaN(parsed.getTime())) return "Por confirmar";
     return parsed.toLocaleDateString("es-BO", {
       day: "2-digit",
       month: "long",
@@ -89,66 +104,428 @@ export default function LandingPage() {
     });
   };
 
-  const obtenerEstadoPeriodo = (inicio: string | null, fin: string | null) => {
-    if (!inicio || !fin) return "sin-fecha";
-    const ahora = new Date();
-    const fechaInicio = new Date(inicio);
-    const fechaFin = new Date(fin);
-
-    if (Number.isNaN(fechaInicio.getTime()) || Number.isNaN(fechaFin.getTime())) return "sin-fecha";
-    if (ahora < fechaInicio) return "proximo";
-    if (ahora > fechaFin) return "concluido";
-    return "en-curso";
-  };
-
-  const estadoLabels: Record<string, string> = {
-    "en-curso": "En curso",
-    proximo: "Próximo",
-    concluido: "Concluido",
-    "sin-fecha": "Sin fecha",
-  };
-
-  const estadoClasses: Record<string, string> = {
-    "en-curso": "bg-green-100 text-green-800 border-green-200",
-    proximo: "bg-amber-50 text-amber-800 border-amber-200",
-    concluido: "bg-slate-100 text-slate-700 border-slate-200",
-    "sin-fecha": "bg-gray-100 text-gray-600 border-gray-200",
-  };
-
   const formatearRango = (inicio: string | null, fin: string | null) => {
     if (!inicio || !fin) return "Por confirmar";
-
     const fechaInicio = new Date(inicio);
     const fechaFin = new Date(fin);
     if (Number.isNaN(fechaInicio.getTime()) || Number.isNaN(fechaFin.getTime())) return "Por confirmar";
-
     const opciones: Intl.DateTimeFormatOptions = { day: "2-digit", month: "long" };
     const inicioStr = fechaInicio.toLocaleDateString("es-BO", opciones);
     const finStr = fechaFin.toLocaleDateString("es-BO", opciones);
-    const incluyeAño = fechaInicio.getFullYear() !== fechaFin.getFullYear();
-    const año = fechaFin.getFullYear();
-
-    return `Del ${inicioStr} al ${finStr}${incluyeAño ? ` de ${año}` : ""}`;
+    return `Del ${inicioStr} al ${finStr}`;
   };
 
-  const notasCronograma = [
-    "Las fechas publicadas para la fase clasificatoria son únicas e inamovibles. No se programarán ampliaciones ni segundas fechas para estudiantes rezagados.",
-    "Si un área publica un anuncio adicional (por ejemplo, cupos especiales o cambios de sede), se comunicará por los canales oficiales del comité organizador.",
-    "Presentarse con 30 minutos de anticipación y portar documento de identidad. Cualquier actualización extraordinaria será notificada por correo y redes oficiales.",
-  ];
+  const getMaterialesPorArea = (nombreArea: string): string[] => {
+    const materiales: Record<string, string[]> = {
+      'Matemáticas': [
+        'Calculadora científica (si está permitida)',
+        'Lápiz, borrador y regla',
+        'Compás y transportador',
+        'Papel cuadriculado',
+      ],
+      'Física': [
+        'Calculadora científica',
+        'Formulario de física (si está permitido)',
+        'Lápiz, borrador y regla',
+        'Papel milimetrado para gráficos',
+      ],
+      'Química': [
+        'Tabla periódica (si está permitida)',
+        'Calculadora científica',
+        'Lápiz, borrador y regla',
+        'Formulario de química (si está permitido)',
+      ],
+      'Biología': [
+        'Lápiz, borrador y regla',
+        'Lupa (opcional)',
+        'Formulario de biología (si está permitido)',
+        'Tabla de clasificación taxonómica (si está permitida)',
+      ],
+      'Geografía': [
+        'Atlas geográfico (si está permitido)',
+        'Lápiz, borrador y regla',
+        'Calculadora básica',
+        'Mapas de referencia (si están permitidos)',
+      ],
+      'Astronomía': [
+        'Calculadora científica',
+        'Tablas astronómicas (si están permitidas)',
+        'Lápiz, borrador y regla',
+        'Formulario de astronomía (si está permitido)',
+      ],
+    };
+    return materiales[nombreArea] || [
+      'Material de escritura (lápiz, borrador, regla)',
+      'Calculadora (si está permitida)',
+      'Material específico según instrucciones del coordinador',
+    ];
+  };
 
-  const newsItems = [
-    {
-      date: "2025.03.15",
-      title: "Nuevas áreas de competencia: Robótica e Inteligencia Artificial se suman a la olimpiada",
-      category: "Novedades",
-    },
-    {
-      date: "2025.03.10",
-      title: "Resultados 2024: 847 estudiantes participaron en la olimpiada más grande de Bolivia",
-      category: "Resultados",
-    },
-  ];
+  const getRequisitosPorArea = (nombreArea: string): string[] => {
+    const requisitos: Record<string, string[]> = {
+      'Matemáticas': [
+        'Estudiantes de Primaria (1ro a 6to) o Secundaria (1ro a 6to)',
+        'Conocimientos sólidos en aritmética, álgebra y geometría',
+        'Habilidad para resolver problemas matemáticos complejos',
+        'Capacidad de razonamiento lógico y abstracto',
+      ],
+      'Física': [
+        'Estudiantes de Secundaria (preferentemente 4to a 6to)',
+        'Conocimientos básicos de matemáticas y física',
+        'Comprensión de conceptos de mecánica, termodinámica y electromagnetismo',
+        'Habilidad para aplicar fórmulas y resolver problemas prácticos',
+      ],
+      'Química': [
+        'Estudiantes de Secundaria (preferentemente 3ro a 6to)',
+        'Conocimientos de química general e inorgánica',
+        'Familiaridad con la tabla periódica',
+        'Capacidad para balancear ecuaciones y resolver problemas estequiométricos',
+      ],
+      'Biología': [
+        'Estudiantes de Primaria y Secundaria',
+        'Conocimientos de biología general',
+        'Comprensión de conceptos de botánica, zoología y ecología',
+        'Habilidad para identificar y clasificar organismos',
+      ],
+      'Geografía': [
+        'Estudiantes de Primaria y Secundaria',
+        'Conocimientos de geografía física y humana',
+        'Familiaridad con mapas y coordenadas geográficas',
+        'Comprensión de fenómenos naturales y sociales',
+      ],
+    };
+    return requisitos[nombreArea] || [
+      'Estudiantes de Primaria o Secundaria',
+      'Interés y conocimientos básicos en el área',
+      'Compromiso con el proceso de evaluación',
+    ];
+  };
+
+  const generarPDFConvocatoria = (area: AreaConvocatoria) => {
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const margin = 20;
+    let y = margin;
+
+    // Logo y encabezado
+    pdf.setFontSize(20);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("Olimpiada Oh! SanSi", pageWidth / 2, y, { align: "center" });
+    y += 8;
+
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "normal");
+    pdf.text("Olimpiada en Ciencias y Tecnología", pageWidth / 2, y, { align: "center" });
+    y += 6;
+    pdf.text("Universidad Mayor de San Simón", pageWidth / 2, y, { align: "center" });
+    y += 6;
+    pdf.text("Cochabamba, Bolivia", pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Título de la convocatoria
+    pdf.setFontSize(18);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("CONVOCATORIA ESPECÍFICA", pageWidth / 2, y, { align: "center" });
+    y += 8;
+
+    // Línea decorativa
+    pdf.setDrawColor(37, 99, 235);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    // Área
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(`ÁREA: ${area.nombre.toUpperCase()}`, margin, y);
+    y += 10;
+
+    // Descripción
+    if (area.descripcion) {
+      pdf.setFontSize(11);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("DESCRIPCIÓN DEL ÁREA:", margin, y);
+      y += 6;
+      pdf.setFont("helvetica", "normal");
+      const descLines = pdf.splitTextToSize(area.descripcion, pageWidth - 2 * margin);
+      pdf.text(descLines, margin, y);
+      y += descLines.length * 5 + 8;
+    }
+
+    // Requisitos de Participación
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("REQUISITOS DE PARTICIPACIÓN", margin, y);
+    y += 8;
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    const requisitos = getRequisitosPorArea(area.nombre);
+    requisitos.forEach((req, index) => {
+      pdf.text(`${index + 1}. ${req}`, margin + 5, y);
+      y += 5;
+    });
+    y += 5;
+
+    // Materiales Necesarios
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("MATERIALES Y RECURSOS NECESARIOS", margin, y);
+    y += 8;
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    const materiales = getMaterialesPorArea(area.nombre);
+    materiales.forEach((mat, index) => {
+      pdf.text(`• ${mat}`, margin + 5, y);
+      y += 5;
+    });
+    y += 5;
+
+    // Fase Clasificatoria
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    if (area.evalInicio && area.evalFin) {
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFillColor(37, 99, 235);
+      pdf.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.text("FASE CLASIFICATORIA", margin + 2, y + 2);
+      pdf.setTextColor(0, 0, 0);
+      y += 10;
+
+      pdf.setFontSize(11);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Período de Evaluación:", margin, y);
+      y += 6;
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`  ${formatearRango(area.evalInicio, area.evalFin)}`, margin, y);
+      y += 6;
+      pdf.text(`  Fecha de Inicio: ${formatearFecha(area.evalInicio)}`, margin + 5, y);
+      y += 5;
+      pdf.text(`  Fecha de Cierre: ${formatearFecha(area.evalFin)}`, margin + 5, y);
+      y += 8;
+
+      if (area.pubInicio && area.pubFin) {
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Publicación de Resultados:", margin, y);
+        y += 6;
+        pdf.setFont("helvetica", "normal");
+        pdf.text(`  ${formatearRango(area.pubInicio, area.pubFin)}`, margin, y);
+        y += 6;
+        pdf.text(`  Fecha de Inicio: ${formatearFecha(area.pubInicio)}`, margin + 5, y);
+        y += 5;
+        pdf.text(`  Fecha de Cierre: ${formatearFecha(area.pubFin)}`, margin + 5, y);
+        y += 8;
+      }
+    }
+
+    // Fase Final
+    if (area.evalFinalInicio && area.evalFinalFin) {
+      if (y > 240) {
+        pdf.addPage();
+        y = margin;
+      }
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFillColor(249, 115, 22);
+      pdf.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.text("FASE FINAL", margin + 2, y + 2);
+      pdf.setTextColor(0, 0, 0);
+      y += 10;
+
+      pdf.setFontSize(11);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Período de Evaluación:", margin, y);
+      y += 6;
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`  ${formatearRango(area.evalFinalInicio, area.evalFinalFin)}`, margin, y);
+      y += 6;
+      pdf.text(`  Fecha de Inicio: ${formatearFecha(area.evalFinalInicio)}`, margin + 5, y);
+      y += 5;
+      pdf.text(`  Fecha de Cierre: ${formatearFecha(area.evalFinalFin)}`, margin + 5, y);
+      y += 8;
+
+      if (area.pubFinalInicio && area.pubFinalFin) {
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Publicación de Resultados:", margin, y);
+        y += 6;
+        pdf.setFont("helvetica", "normal");
+        pdf.text(`  ${formatearRango(area.pubFinalInicio, area.pubFinalFin)}`, margin, y);
+        y += 6;
+        pdf.text(`  Fecha de Inicio: ${formatearFecha(area.pubFinalInicio)}`, margin + 5, y);
+        y += 5;
+        pdf.text(`  Fecha de Cierre: ${formatearFecha(area.pubFinalFin)}`, margin + 5, y);
+        y += 8;
+      }
+    }
+
+    // Información de Contacto
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    if (area.coordinadores && area.coordinadores.length > 0) {
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("INFORMACIÓN DE CONTACTO", margin, y);
+      y += 8;
+      pdf.setFontSize(11);
+      pdf.setFont("helvetica", "normal");
+      pdf.text("Coordinador(es) del Área:", margin, y);
+      y += 6;
+      area.coordinadores.forEach((coord) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.text(`  ${coord.nombre}`, margin + 5, y);
+        y += 5;
+        pdf.setFont("helvetica", "normal");
+        pdf.text(`  Email: ${coord.email}`, margin + 5, y);
+        y += 6;
+      });
+      y += 5;
+    }
+
+    // Premios y Reconocimientos
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("PREMIOS Y RECONOCIMIENTOS", margin, y);
+    y += 8;
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    const premios = [
+      "Medallas de Oro, Plata y Bronce para los primeros lugares",
+      "Menciones de Honor para participantes destacados",
+      "Certificados de participación para todos los competidores",
+      "Reconocimiento público en la ceremonia de premiación",
+      "Oportunidad de representar a Bolivia en competencias internacionales (según corresponda)",
+    ];
+    premios.forEach((premio, index) => {
+      pdf.text(`${index + 1}. ${premio}`, margin + 5, y);
+      y += 5;
+    });
+    y += 5;
+
+    // Proceso de Evaluación
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("PROCESO DE EVALUACIÓN", margin, y);
+    y += 8;
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    const proceso = [
+      "La evaluación se realizará mediante pruebas escritas y/o prácticas según el área",
+      "Los participantes serán evaluados por un jurado calificado de la Universidad Mayor de San Simón",
+      "Los criterios de evaluación incluyen: precisión, razonamiento, creatividad y aplicación de conocimientos",
+      "Los resultados serán publicados en el sitio web oficial de la olimpiada",
+      "Los participantes clasificados a la fase final serán notificados por correo electrónico",
+      "Las decisiones del jurado son inapelables y se basan en criterios objetivos y transparentes",
+    ];
+    proceso.forEach((item, index) => {
+      pdf.text(`${index + 1}. ${item}`, margin + 5, y);
+      y += 5;
+    });
+    y += 5;
+
+    // Notas importantes
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFillColor(239, 68, 68);
+    pdf.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.text("NOTAS IMPORTANTES", margin + 2, y + 2);
+    pdf.setTextColor(0, 0, 0);
+    y += 10;
+
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    const notas = [
+      "Las fechas publicadas son únicas e inamovibles. No se programarán ampliaciones ni segundas fechas.",
+      "Presentarse con 30 minutos de anticipación al lugar de evaluación y portar documento de identidad original.",
+      "Cualquier actualización extraordinaria será notificada por correo electrónico y redes sociales oficiales.",
+      "El uso de dispositivos electrónicos no autorizados durante la evaluación resultará en descalificación inmediata.",
+      "Los participantes deben respetar las normas de conducta establecidas por la organización.",
+      "La inscripción debe realizarse a través del portal oficial de la olimpiada antes de la fecha límite.",
+      "Para consultas específicas sobre el área, contactar directamente al coordinador correspondiente.",
+      "Los resultados de la fase clasificatoria determinarán el acceso a la fase final.",
+    ];
+    notas.forEach((nota, index) => {
+      const notaLines = pdf.splitTextToSize(`${index + 1}. ${nota}`, pageWidth - 2 * margin - 10);
+      pdf.text(notaLines, margin + 5, y);
+      y += notaLines.length * 4.5 + 3;
+    });
+    y += 5;
+
+    // Lugar de Evaluación
+    if (y > 240) {
+      pdf.addPage();
+      y = margin;
+    }
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("LUGAR DE EVALUACIÓN", margin, y);
+    y += 8;
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    const lugar = [
+      "Universidad Mayor de San Simón",
+      "Campus Central - Cochabamba, Bolivia",
+      "El lugar específico será comunicado con anticipación a los participantes inscritos",
+      "Se recomienda llegar con anticipación para familiarizarse con las instalaciones",
+    ];
+    lugar.forEach((item, index) => {
+      pdf.text(`${index + 1}. ${item}`, margin + 5, y);
+      y += 5;
+    });
+
+    // Pie de página
+    const totalPages = pdf.internal.pages.length - 1;
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(
+        `Universidad Mayor de San Simón - Cochabamba, Bolivia`,
+        pageWidth / 2,
+        pdf.internal.pageSize.getHeight() - 10,
+        { align: "center" }
+      );
+    }
+
+    pdf.save(`Convocatoria-${area.nombre.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
+  const scrollCarousel = (direction: "left" | "right") => {
+    if (carouselRef.current) {
+      const scrollAmount = 300;
+      const currentScroll = carouselRef.current.scrollLeft;
+      const newScroll = direction === "left" 
+        ? currentScroll - scrollAmount 
+        : currentScroll + scrollAmount;
+      carouselRef.current.scrollTo({ left: newScroll, behavior: "smooth" });
+    }
+  };
 
 
   return (
@@ -157,15 +534,21 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+            <Link href="/" className="flex items-center space-x-3">
               <img src="/sansi-logo.png" alt="SanSi Logo" className="h-10 w-auto" />
               <span className="text-xl font-heading font-bold text-foreground">Olimpiada Oh! SanSi</span>
-            </div>
+            </Link>
 
             <nav className="hidden md:flex items-center space-x-8">
               <a href="#inicio" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Inicio
               </a>
+              <Link
+                href="/cronograma"
+                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                Etapas
+              </Link>
               <Link
                 href="/resultados"
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
@@ -178,18 +561,12 @@ export default function LandingPage() {
               >
                 Medallero
               </Link>
-              <a
-                href="#noticias"
-                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-              >
-                Noticias
-              </a>
-              <a
-                href="#contacto"
+              <Link
+                href="/contactos"
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
               >
                 Contacto
-              </a>
+              </Link>
             </nav>
 
             <Link href="/login">
@@ -202,34 +579,25 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section id="inicio" className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-secondary/10" />
-        <div className="relative h-[600px]">
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/80 to-primary/60" />
-          <div className="relative container mx-auto px-6 h-full flex items-center">
-            <div className="max-w-2xl text-white">
-              <h1 className="text-5xl md:text-6xl font-heading font-bold mb-6 text-balance">Olimpiada Oh! SanSi</h1>
-              <p className="text-xl md:text-2xl mb-8 text-pretty opacity-90">
-                Olimpiada en Ciencias y Tecnología de la Universidad Mayor de San Simón
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-white text-white hover:bg-white hover:text-primary bg-transparent"
-                >
-                  <BookOpen className="h-5 w-5 mr-2" />
-                  Conocer Más
-                </Button>
-              </div>
-            </div>
-          </div>
+      {/* Banner Section */}
+      <section id="inicio" className="relative py-16 bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 overflow-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }} />
+        </div>
+        <div className="relative container mx-auto px-6 text-center">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-heading font-bold text-blue-900 mb-4">
+            Olimpiada Oh! SanSi
+          </h1>
+          <p className="text-xl md:text-2xl text-blue-800 font-medium">
+            Olimpiada en Ciencias y Tecnología
+          </p>
         </div>
       </section>
 
       {/* Stats Section */}
-      <section className="py-16 bg-muted/50">
+      <section className="py-16 bg-gradient-to-b from-white to-blue-50">
         <div className="container mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="text-center">
@@ -252,321 +620,115 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Cronograma Section */}
-      <section id="cronograma" className="py-20 bg-gradient-to-b from-background via-muted/30 to-background">
+      {/* Convocatorias Específicas Section */}
+      <section className="py-20 bg-gradient-to-b from-blue-50 to-white">
         <div className="container mx-auto px-6">
-          <div className="text-center mb-14 max-w-3xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-semibold mb-4">
-              <CalendarDays className="h-4 w-4" />
-              Cronograma de Evaluaciones
-            </div>
-            <h2 className="text-3xl md:text-4xl font-heading font-bold text-foreground mb-4">
-              Fechas oficiales por área de competencia
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-heading font-bold text-blue-900 mb-2">
+              CONVOCATORIAS ESPECÍFICAS
             </h2>
-            <p className="text-lg text-muted-foreground">
-              Consulta cuándo se realizarán las evaluaciones para cada área. Mantente atento para prepararte con tiempo.
-            </p>
+            <div className="w-24 h-1 bg-blue-600 mx-auto"></div>
           </div>
 
-          {loadingCronograma ? (
-            <div className="text-center py-12 text-muted-foreground">Cargando cronograma...</div>
-          ) : cronogramaError ? (
-            <div className="max-w-2xl mx-auto">
-              <Card className="border-red-200 bg-red-50">
-                <CardContent className="flex items-center gap-3 py-6">
-                  <AlertCircle className="h-5 w-5 text-red-500" />
-                  <div className="text-sm text-red-700">{cronogramaError}</div>
-                </CardContent>
-              </Card>
-            </div>
-          ) : cronogramaAreas.length === 0 ? (
-            <div className="max-w-2xl mx-auto">
-              <Card className="border-dashed">
-                <CardContent className="text-center py-8 space-y-2">
-                  <p className="text-base font-medium text-foreground">Aún no hay fechas publicadas.</p>
-                  <p className="text-sm text-muted-foreground">
-                    Cuando la organización confirme los periodos de evaluación, podrás verlos aquí.
-                  </p>
-                </CardContent>
-              </Card>
+          {loadingAreas ? (
+            <div className="text-center py-12 text-muted-foreground">Cargando convocatorias...</div>
+          ) : areas.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Aún no hay convocatorias disponibles.
             </div>
           ) : (
-            <>
-              <div className="max-w-2xl mx-auto mb-6">
-                <Tabs value={faseSeleccionada} onValueChange={(value) => setFaseSeleccionada(value as 'clasificatoria' | 'final')}>
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="clasificatoria">Fase Clasificatoria</TabsTrigger>
-                    <TabsTrigger value="final">Fase Final</TabsTrigger>
-                  </TabsList>
-                </Tabs>
+            <div className="relative">
+              <button
+                onClick={() => scrollCarousel("left")}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors"
+                aria-label="Anterior"
+              >
+                <ChevronLeft className="h-6 w-6 text-gray-700" />
+              </button>
+
+              <div
+                ref={carouselRef}
+                className="flex gap-6 overflow-x-auto scroll-smooth px-12 hide-scrollbar"
+              >
+                {areas.map((area) => {
+                  const areaNameKey = area.nombre.replace(/[áéíóúÁÉÍÓÚ]/g, (char) => {
+                    const map: Record<string, string> = { á: "a", é: "e", í: "i", ó: "o", ú: "u", Á: "A", É: "E", Í: "I", Ó: "O", Ú: "U" };
+                    return map[char] || char;
+                  });
+                  const iconConfig = areaIcons[area.nombre] || areaIcons[areaNameKey] || { icon: FileText, color: "bg-blue-500" };
+                  const IconComponent = iconConfig.icon;
+
+                  return (
+                    <div key={area.id} className="flex-shrink-0 w-64">
+                      <Card className="border-2 border-blue-200 hover:border-blue-400 transition-all hover:shadow-lg">
+                        <CardContent className="p-6 text-center">
+                          <div className="relative w-28 h-28 mx-auto mb-4">
+                            <div className={`w-full h-full rounded-full ${iconConfig.color} flex items-center justify-center shadow-lg border-4 border-white`}>
+                              <IconComponent className="h-14 w-14 text-white" />
+                            </div>
+                            <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 w-full px-2 py-1 rounded-full ${iconConfig.color} border-2 border-white shadow-md`}>
+                              <span className="text-xs font-bold text-white">{area.nombre.toUpperCase()}</span>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => generarPDFConvocatoria(area)}
+                            variant="outline"
+                            className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 mt-8"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            {area.nombre}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })}
               </div>
 
-              <Tabs value={faseSeleccionada} onValueChange={(value) => setFaseSeleccionada(value as 'clasificatoria' | 'final')}>
-                <TabsContent value="clasificatoria" className="mt-0">
-                  <div className="rounded-2xl overflow-hidden shadow-xl border border-primary/10 bg-white">
-                    <div className="px-6 py-4 bg-primary text-primary-foreground flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.2em] font-semibold opacity-80">1ra. Etapa</p>
-                        <p className="text-xl font-heading font-bold">Fase clasificatoria · Unidades Educativas</p>
-                      </div>
-                      <p className="text-sm text-primary-foreground/80">Horarios oficiales aprobados por el comité central</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead className="bg-primary/5">
-                          <tr className="text-left">
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[28%]">
-                              Área
-                            </th>
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Periodo de evaluación
-                            </th>
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Publicación de resultados
-                            </th>
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[15%]">
-                              Estado
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {cronogramaAreas
-                            .filter((area) => area.evalInicio && area.evalFin)
-                            .map((area) => {
-                              const estado = obtenerEstadoPeriodo(area.evalInicio, area.evalFin);
-                              return (
-                                <tr key={area.id} className="hover:bg-muted/40 transition-colors">
-                                  <td className="px-6 py-5 align-top">
-                                    <p className="text-base font-semibold text-foreground">{area.nombre}</p>
-                                    {area.descripcion && (
-                                      <p className="text-xs text-muted-foreground mt-1 leading-snug">{area.descripcion}</p>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-5 align-top">
-                                    <p className="text-sm font-medium text-foreground">{formatearRango(area.evalInicio, area.evalFin)}</p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Inicio: {formatearFecha(area.evalInicio)} <span className="mx-1">•</span> Fin:{" "}
-                                      {formatearFecha(area.evalFin)}
-                                    </p>
-                                  </td>
-                                  <td className="px-6 py-5 align-top">
-                                    {area.pubInicio && area.pubFin ? (
-                                      <>
-                                        <p className="text-sm font-medium text-foreground">
-                                          {formatearRango(area.pubInicio, area.pubFin)}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Inicio: {formatearFecha(area.pubInicio)} <span className="mx-1">•</span> Fin:{" "}
-                                          {formatearFecha(area.pubFin)}
-                                        </p>
-                                      </>
-                                    ) : (
-                                      <p className="text-sm font-medium text-muted-foreground">Por confirmar</p>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-5 align-top">
-                                    <Badge className={`border ${estadoClasses[estado] || estadoClasses["sin-fecha"]}`}>
-                                      {estadoLabels[estado]}
-                                    </Badge>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="final" className="mt-0">
-                  <div className="rounded-2xl overflow-hidden shadow-xl border border-purple-200 bg-white">
-                    <div className="px-6 py-4 bg-purple-600 text-white flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.2em] font-semibold opacity-80">2da. Etapa</p>
-                        <p className="text-xl font-heading font-bold">Fase final · Competencia Nacional</p>
-                      </div>
-                      <p className="text-sm text-white/80">Horarios oficiales aprobados por el comité central</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead className="bg-purple-50">
-                          <tr className="text-left">
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[28%]">
-                              Área
-                            </th>
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Periodo de evaluación
-                            </th>
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Publicación de resultados
-                            </th>
-                            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 w-[15%]">
-                              Estado
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {cronogramaAreas
-                            .filter((area) => area.evalFinalInicio && area.evalFinalFin)
-                            .map((area) => {
-                              const estado = obtenerEstadoPeriodo(area.evalFinalInicio, area.evalFinalFin);
-                              return (
-                                <tr key={area.id} className="hover:bg-muted/40 transition-colors">
-                                  <td className="px-6 py-5 align-top">
-                                    <p className="text-base font-semibold text-foreground">{area.nombre}</p>
-                                    {area.descripcion && (
-                                      <p className="text-xs text-muted-foreground mt-1 leading-snug">{area.descripcion}</p>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-5 align-top">
-                                    <p className="text-sm font-medium text-foreground">{formatearRango(area.evalFinalInicio, area.evalFinalFin)}</p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Inicio: {formatearFecha(area.evalFinalInicio)} <span className="mx-1">•</span> Fin:{" "}
-                                      {formatearFecha(area.evalFinalFin)}
-                                    </p>
-                                  </td>
-                                  <td className="px-6 py-5 align-top">
-                                    {area.pubFinalInicio && area.pubFinalFin ? (
-                                      <>
-                                        <p className="text-sm font-medium text-foreground">
-                                          {formatearRango(area.pubFinalInicio, area.pubFinalFin)}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Inicio: {formatearFecha(area.pubFinalInicio)} <span className="mx-1">•</span> Fin:{" "}
-                                          {formatearFecha(area.pubFinalFin)}
-                                        </p>
-                                      </>
-                                    ) : (
-                                      <p className="text-sm font-medium text-muted-foreground">Por confirmar</p>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-5 align-top">
-                                    <Badge className={`border ${estadoClasses[estado] || estadoClasses["sin-fecha"]}`}>
-                                      {estadoLabels[estado]}
-                                    </Badge>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              <div className="mt-8 rounded-2xl border border-amber-100 bg-amber-50 p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Notas importantes</h3>
-                <ul className="space-y-3 text-sm text-amber-900">
-                  {notasCronograma.map((nota, index) => (
-                    <li key={index} className="leading-relaxed">
-                      <span className="font-semibold mr-1">NOTA {index + 1}:</span>
-                      {nota}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
+              <button
+                onClick={() => scrollCarousel("right")}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors"
+                aria-label="Siguiente"
+              >
+                <ChevronRight className="h-6 w-6 text-gray-700" />
+              </button>
+            </div>
           )}
         </div>
       </section>
 
-      {/* News Section */}
-      <section id="noticias" className="py-20 bg-muted/30">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-between mb-12">
-            <div>
-              <h2 className="text-3xl md:text-4xl font-heading font-bold text-foreground mb-4">Noticias y Anuncios</h2>
-              <div className="w-12 h-1 bg-secondary rounded-full" />
-            </div>
-            <Button variant="outline" className="hidden md:flex bg-transparent">
-              Ver todas las noticias
-              <ChevronRight className="h-4 w-4 ml-2" />
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-6">
-              {newsItems.map((item, index) => (
-                <Card
-                  key={index}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    activeNews === index ? "ring-2 ring-primary" : ""
-                  }`}
-                  onClick={() => setActiveNews(index)}
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-3">
-                      <Badge variant="outline" className="text-xs text-secondary">
-                        {item.category}
-                      </Badge>
-                      <span className="text-sm font-mono text-secondary font-semibold">{item.date}</span>
-                    </div>
-                    <h3 className="text-lg font-semibold text-foreground leading-tight">{item.title}</h3>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            <div className="lg:pl-8">
-              <Card className="h-full">
-                <CardContent className="p-8">
-                  <div className="mb-6">
-                    <Badge variant="outline" className="text-xs text-secondary mb-4">
-                      {newsItems[activeNews].category}
-                    </Badge>
-                    <h3 className="text-2xl font-heading font-bold text-foreground mb-4 leading-tight">
-                      {newsItems[activeNews].title}
-                    </h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      La Olimpiada Oh! SanSi continúa creciendo y evolucionando para ofrecer la mejor experiencia
-                      educativa a los estudiantes de Bolivia. Este año incorporamos nuevas tecnologías y metodologías
-                      para hacer la competencia más accesible y emocionante.
-                    </p>
-                  </div>
-                  <Button className="w-full">
-                    Leer más
-                    <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Footer */}
-      <footer className="py-12 bg-card border-t">
+      <footer className="py-12 bg-slate-50 border-t">
         <div className="container mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div>
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Trophy className="h-5 w-5 text-primary-foreground" />
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <Trophy className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-xl font-heading font-bold text-foreground">Olimpiada Oh! SanSi</span>
+                <span className="text-xl font-heading font-bold text-slate-800">Olimpiada Oh! SanSi</span>
               </div>
-              <p className="text-muted-foreground mb-4 max-w-md">
+              <p className="text-sm text-slate-700 max-w-md">
                 Olimpiada en Ciencias y Tecnología de la Universidad Mayor de San Simón, promoviendo la excelencia
                 académica en Bolivia desde 2010.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-foreground mb-4">Enlaces</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <h3 className="font-semibold text-slate-800 mb-4">Enlaces</h3>
+              <ul className="space-y-2 text-sm text-slate-700">
                 <li>
-                  <a href="#" className="hover:text-primary transition-colors">
+                  <a href="#inicio" className="hover:text-blue-600 transition-colors">
                     Inicio
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-primary transition-colors">
+                  <Link href="/cronograma" className="hover:text-blue-600 transition-colors">
                     Cronograma
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <Link href="/resultados" className="hover:text-primary transition-colors">
+                  <Link href="/resultados" className="hover:text-blue-600 transition-colors">
                     Resultados
                   </Link>
                 </li>
@@ -574,8 +736,8 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-foreground mb-4">Contacto</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <h3 className="font-semibold text-slate-800 mb-4">Contacto</h3>
+              <ul className="space-y-2 text-sm text-slate-700">
                 <li>Universidad Mayor de San Simón</li>
                 <li>Cochabamba, Bolivia</li>
                 <li>info@olimpiadaohsansi.edu.bo</li>
@@ -584,7 +746,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground">
+          <div className="border-t border-slate-200 mt-8 pt-8 text-center text-sm text-slate-600">
             <p>&copy; 2025 Olimpiada Oh! SanSi - Universidad Mayor de San Simón. Todos los derechos reservados.</p>
           </div>
         </div>

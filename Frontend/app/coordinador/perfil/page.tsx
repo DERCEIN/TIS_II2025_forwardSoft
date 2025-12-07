@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProfileService } from "@/lib/api"
 import Link from "next/link"
+import { Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react"
 
 export default function PerfilCoordinador() {
   const { user, refreshUser } = useAuth() as any
@@ -18,6 +19,9 @@ export default function PerfilCoordinador() {
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [submittingPwd, setSubmittingPwd] = useState(false)
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
@@ -70,6 +74,10 @@ export default function PerfilCoordinador() {
 
   const handleChangePassword = async () => {
     if (!userId) return
+    if (newPassword !== confirmPassword) {
+      alert("Las contraseñas no coinciden")
+      return
+    }
     try {
       setSubmittingPwd(true)
       await ProfileService.changePassword(Number(userId), {
@@ -87,6 +95,9 @@ export default function PerfilCoordinador() {
       setSubmittingPwd(false)
     }
   }
+
+  const passwordsMatch = newPassword && confirmPassword && newPassword === confirmPassword
+  const passwordsDontMatch = newPassword && confirmPassword && newPassword !== confirmPassword
 
   const handleUploadAvatar = async (fileParam?: File) => {
     const fileToUpload = fileParam || avatarFile
@@ -138,11 +149,17 @@ export default function PerfilCoordinador() {
                 <CardTitle className="text-base">Datos de perfil</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 p-0">
-                <Input placeholder="Nombre completo" value={name} onChange={(e)=>setName(e.target.value)} />
-                <Input placeholder="Correo" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} />
-                <Button disabled={!userId} onClick={async()=>{
-                  try { await ProfileService.updateProfile(Number(userId), { name, email }); alert('Perfil actualizado') } catch(e:any){ alert(e?.message||'Error al actualizar perfil') }
-                }}>Guardar perfil</Button>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block">Nombre completo</label>
+                  <Input placeholder="Nombre completo" value={name} disabled readOnly className="bg-muted" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block">Correo electrónico</label>
+                  <Input placeholder="Correo" type="email" value={email} disabled readOnly className="bg-muted" />
+                </div>
+                <p className="text-xs text-muted-foreground italic">
+                  El nombre y correo electrónico no pueden ser modificados. Contacta al administrador si necesitas realizar cambios.
+                </p>
               </CardContent>
             </Card>
             <Card className="p-4">
@@ -150,10 +167,80 @@ export default function PerfilCoordinador() {
                 <CardTitle className="text-base">Cambiar contraseña</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 p-0">
-                <Input type="password" placeholder="Contraseña actual" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                <Input type="password" placeholder="Nueva contraseña" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                <Input type="password" placeholder="Confirmar nueva contraseña" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                <Button onClick={handleChangePassword} disabled={submittingPwd || !userId}>
+                <div className="relative">
+                  <Input 
+                    type={showCurrentPassword ? "text" : "password"} 
+                    placeholder="Contraseña actual" 
+                    value={currentPassword} 
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input 
+                    type={showNewPassword ? "text" : "password"} 
+                    placeholder="Nueva contraseña" 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    placeholder="Confirmar nueva contraseña" 
+                    value={confirmPassword} 
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`pr-10 ${passwordsDontMatch ? 'border-red-500 focus-visible:ring-red-500' : passwordsMatch ? 'border-green-500 focus-visible:ring-green-500' : ''}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                  {passwordsMatch && (
+                    <div className="absolute right-10 top-1/2 -translate-y-1/2 text-green-500">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                  )}
+                  {passwordsDontMatch && (
+                    <div className="absolute right-10 top-1/2 -translate-y-1/2 text-red-500">
+                      <XCircle className="h-4 w-4" />
+                    </div>
+                  )}
+                </div>
+                {passwordsDontMatch && (
+                  <p className="text-xs text-red-500 flex items-center gap-1">
+                    <XCircle className="h-3 w-3" />
+                    Las contraseñas no coinciden
+                  </p>
+                )}
+                {passwordsMatch && (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Las contraseñas coinciden
+                  </p>
+                )}
+                <Button 
+                  onClick={handleChangePassword} 
+                  disabled={submittingPwd || !userId || !currentPassword || !newPassword || !confirmPassword || passwordsDontMatch}
+                >
                   {submittingPwd ? "Guardando..." : "Guardar contraseña"}
                 </Button>
               </CardContent>

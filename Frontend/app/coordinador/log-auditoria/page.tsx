@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useAuth } from '@/contexts/AuthContext'
 import { useNotifications } from '@/components/NotificationProvider'
 import { ApiService, CoordinadorService } from '@/lib/api'
+import * as XLSX from 'xlsx'
+import Link from 'next/link'
 import { 
   Search,
   Filter,
@@ -34,7 +36,8 @@ import {
   ChevronDown,
   Info,
   RefreshCw,
-  Settings
+  Settings,
+  ArrowLeft
 } from 'lucide-react'
 
 interface LogCambio {
@@ -176,17 +179,9 @@ export default function LogAuditoriaPage() {
     setExportando(true)
     try {
       const logsFiltrados = getLogsFiltrados()
-      const csvContent = generarCSV(logsFiltrados)
+      const workbook = generarXLSX(logsFiltrados)
       
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      link.setAttribute('href', url)
-      link.setAttribute('download', `log-auditoria-${new Date().toISOString().split('T')[0]}.csv`)
-      link.style.visibility = 'hidden'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      XLSX.writeFile(workbook, `log-auditoria-${new Date().toISOString().split('T')[0]}.xlsx`)
       
       success('Exportación exitosa', 'Log de auditoría exportado correctamente')
     } catch (err) {
@@ -196,7 +191,7 @@ export default function LogAuditoriaPage() {
     }
   }
 
-  const generarCSV = (logs: LogCambio[]) => {
+  const generarXLSX = (logs: LogCambio[]) => {
     const headers = ['ID', 'Fecha', 'Evaluador', 'Participante', 'Área', 'Nivel', 'Nota Anterior', 'Nota Nueva', 'Diferencia', 'Motivo']
     const rows = logs.map(log => [
       log.id,
@@ -213,10 +208,14 @@ export default function LogAuditoriaPage() {
       log.motivo_cambio || ''
     ])
     
-    return [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Log Auditoría')
+    
+    return workbook
   }
 
-  const generarCSVReclamos = (logs: LogCambio[]) => {
+  const generarXLSXReclamos = (logs: LogCambio[]) => {
     const headers = [
       'ID_Registro', 
       'Fecha_Cambio', 
@@ -256,7 +255,11 @@ export default function LogAuditoriaPage() {
       ]
     })
     
-    return [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Reclamos')
+    
+    return workbook
   }
 
   const fetchLogs = async () => {
@@ -386,8 +389,13 @@ export default function LogAuditoriaPage() {
         {/* Header estilo limpio */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="flex items-center gap-3 mb-1">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <Link href="/coordinador/dashboard">
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                </Link>
                 <h1 className="text-2xl font-semibold text-gray-900">Log de Cambios</h1>
                 {cambiosPendientes > 0 && (
                   <Badge className="bg-orange-500 text-white px-3 py-1">
@@ -396,7 +404,7 @@ export default function LogAuditoriaPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 ml-11">
                 Sistema de trazabilidad completa para rastrear cambios de notas en caso de reclamos o actualizaciones
               </p>
             </div>
@@ -660,16 +668,8 @@ export default function LogAuditoriaPage() {
                   className="border-red-300 text-red-700 hover:bg-red-100"
                   onClick={() => {
                     const logsFiltrados = getLogsFiltrados()
-                    const csvContent = generarCSVReclamos(logsFiltrados)
-                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-                    const link = document.createElement('a')
-                    const url = URL.createObjectURL(blob)
-                    link.setAttribute('href', url)
-                    link.setAttribute('download', `reporte-reclamos-${new Date().toISOString().split('T')[0]}.csv`)
-                    link.style.visibility = 'hidden'
-                    document.body.appendChild(link)
-                    link.click()
-                    document.body.removeChild(link)
+                    const workbook = generarXLSXReclamos(logsFiltrados)
+                    XLSX.writeFile(workbook, `reporte-reclamos-${new Date().toISOString().split('T')[0]}.xlsx`)
                     success('Reporte generado', 'Reporte de reclamos exportado correctamente')
                   }}
                 >
@@ -836,16 +836,8 @@ export default function LogAuditoriaPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                const csvContent = generarCSVReclamos([log])
-                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-                                const link = document.createElement('a')
-                                const url = URL.createObjectURL(blob)
-                                link.setAttribute('href', url)
-                                link.setAttribute('download', `reclamo-${log.id}-${new Date().toISOString().split('T')[0]}.csv`)
-                                link.style.visibility = 'hidden'
-                                document.body.appendChild(link)
-                                link.click()
-                                document.body.removeChild(link)
+                                const workbook = generarXLSXReclamos([log])
+                                XLSX.writeFile(workbook, `reclamo-${log.id}-${new Date().toISOString().split('T')[0]}.xlsx`)
                                 success('Reporte generado', `Reporte individual del cambio ${log.id} exportado`)
                               }}
                               className="h-8 w-8 p-0"
@@ -1008,16 +1000,8 @@ export default function LogAuditoriaPage() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const csvContent = generarCSVReclamos([selectedLog])
-                      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-                      const link = document.createElement('a')
-                      const url = URL.createObjectURL(blob)
-                      link.setAttribute('href', url)
-                      link.setAttribute('download', `reclamo-detallado-${selectedLog.id}-${new Date().toISOString().split('T')[0]}.csv`)
-                      link.style.visibility = 'hidden'
-                      document.body.appendChild(link)
-                      link.click()
-                      document.body.removeChild(link)
+                      const workbook = generarXLSXReclamos([selectedLog])
+                      XLSX.writeFile(workbook, `reclamo-detallado-${selectedLog.id}-${new Date().toISOString().split('T')[0]}.xlsx`)
                       success('Reporte generado', 'Reporte detallado exportado para reclamos')
                     }}
                   >
