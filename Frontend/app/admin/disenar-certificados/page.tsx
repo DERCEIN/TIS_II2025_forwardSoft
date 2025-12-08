@@ -41,14 +41,14 @@ export default function DisenarCertificadosPage() {
       const response = await CertificadosService.getConfiguracion()
       if (response.success) {
         setConfig(response.data)
-        setOriginalConfig(JSON.parse(JSON.stringify(response.data))) // Deep copy
+        setOriginalConfig(JSON.parse(JSON.stringify(response.data))) 
         setIsSaved(true)
-        // Cargar vista previa del logo si existe
+        
         if (response.data.logo_url) {
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
           let logoPath = response.data.logo_url
           if (logoPath.startsWith('/uploads/certificados/logos/')) {
-            // Si es un logo subido, usar la ruta de API
+           
             const filename = logoPath.split('/').pop()
             logoPath = `${apiUrl}/api/certificados/logo/${filename}`
           } else if (logoPath.startsWith('/')) {
@@ -128,7 +128,7 @@ export default function DisenarCertificadosPage() {
   const updateConfig = (key: string, value: any) => {
     setConfig((prev: any) => {
       const newConfig = { ...prev, [key]: value }
-      // Verificar si hay cambios comparando con la configuración original
+      
       const hasChanges = JSON.stringify(newConfig) !== JSON.stringify(originalConfig)
       setIsSaved(!hasChanges)
       return newConfig
@@ -139,7 +139,7 @@ export default function DisenarCertificadosPage() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validar tipo de archivo
+  
     const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
     if (!allowedTypes.includes(file.type)) {
       toast({
@@ -150,7 +150,7 @@ export default function DisenarCertificadosPage() {
       return
     }
 
-    // Validar tamaño (máximo 5MB)
+    
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "Error",
@@ -163,25 +163,25 @@ export default function DisenarCertificadosPage() {
     try {
       setUploadingLogo(true)
 
-      // Mostrar vista previa local
+     
       const reader = new FileReader()
       reader.onloadend = () => {
         setLogoPreview(reader.result as string)
       }
       reader.readAsDataURL(file)
 
-      // Subir al servidor
+     
       const response = await CertificadosService.subirLogo(file)
       if (response.success) {
-        // Actualizar configuración con la nueva URL del logo
+       
         const logoUrl = response.data.logo_url
         updateConfig('logo_url', logoUrl)
         
-        // Actualizar vista previa con la URL completa
+        
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo'
         let fullLogoUrl = logoUrl
         if (logoUrl.startsWith('/uploads/certificados/logos/')) {
-          // Si es un logo subido, usar la ruta de API
+         
           const filename = logoUrl.split('/').pop()
           fullLogoUrl = `${apiUrl}/api/certificados/logo/${filename}`
         } else if (logoUrl.startsWith('/')) {
@@ -204,14 +204,14 @@ export default function DisenarCertificadosPage() {
       setLogoPreview(null)
     } finally {
       setUploadingLogo(false)
-      // Limpiar el input
+      
       event.target.value = ''
     }
   }
 
   const handleRemoveLogo = () => {
     setLogoPreview(null)
-    updateConfig('logo_url', '/sansi-logo.png') // Volver al logo por defecto
+    updateConfig('logo_url', '/sansi-logo.png') 
   }
 
   if (loading || !config) {

@@ -4086,10 +4086,6 @@ export default function CoordinatorDashboard() {
 
             {/* Desktop Navigation */}
             <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
-              <Button variant="outline" size="sm" className="hidden md:flex">
-                <Settings className="h-4 w-4 mr-2" />
-                <span className="hidden lg:inline">Configuración</span>
-              </Button>
               <Button 
                 variant="outline" 
                 size="sm"

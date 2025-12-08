@@ -1977,9 +1977,7 @@ class AdminController
         }
     }
 
-    /**
-     * Obtener configuración de diseño de certificados
-     */
+    
     public function getConfiguracionCertificados()
     {
         try {
@@ -1992,7 +1990,7 @@ class AdminController
             $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$config) {
-                // Retornar configuración por defecto
+                
                 $defaultConfig = [
                     'id' => null,
                     'fondo_color' => '#FDFDFF',
@@ -2034,9 +2032,7 @@ class AdminController
         }
     }
 
-    /**
-     * Guardar configuración de diseño de certificados
-     */
+    
     public function guardarConfiguracionCertificados()
     {
         try {
@@ -2047,13 +2043,13 @@ class AdminController
                 return;
             }
 
-            // Verificar si ya existe una configuración
+          
             $stmt = $this->pdo->prepare("SELECT id FROM configuracion_certificados ORDER BY id DESC LIMIT 1");
             $stmt->execute();
             $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($existing) {
-                // Actualizar configuración existente
+                
                 $sql = "
                     UPDATE configuracion_certificados SET
                         fondo_color = ?,
@@ -2115,7 +2111,7 @@ class AdminController
                     $existing['id']
                 ]);
             } else {
-                // Crear nueva configuración
+               
                 $sql = "
                     INSERT INTO configuracion_certificados (
                         fondo_color, borde_color, borde_secundario_color,
@@ -2168,9 +2164,7 @@ class AdminController
         }
     }
 
-    /**
-     * Subir logo para certificados
-     */
+  
     public function subirLogoCertificados()
     {
         try {
@@ -2181,7 +2175,7 @@ class AdminController
 
             $file = $_FILES['logo_file'];
             
-            // Validar tipo de archivo
+           
             $allowed = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/webp' => 'webp'];
             $mime = mime_content_type($file['tmp_name']);
             if (!isset($allowed[$mime])) {
@@ -2189,7 +2183,7 @@ class AdminController
                 return;
             }
 
-            // Validar tamaño (máximo 5MB)
+            
             if ($file['size'] > 5 * 1024 * 1024) {
                 Response::validationError(['logo_file' => 'El archivo excede 5MB']);
                 return;
@@ -2201,7 +2195,7 @@ class AdminController
                 @mkdir($uploadsDir, 0775, true);
             }
 
-            // Generar nombre único
+           
             $filename = 'logo_certificado_' . time() . '_' . uniqid() . '.' . $ext;
             $destPath = $uploadsDir . '/' . $filename;
             
@@ -2210,10 +2204,10 @@ class AdminController
                 return;
             }
 
-            // Ruta pública del logo
+           
             $publicPath = '/uploads/certificados/logos/' . $filename;
 
-            // Eliminar logo anterior si existe
+           
             try {
                 $stmt = $this->pdo->prepare("SELECT logo_url FROM configuracion_certificados ORDER BY id DESC LIMIT 1");
                 $stmt->execute();

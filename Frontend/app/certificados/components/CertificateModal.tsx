@@ -43,7 +43,7 @@ export default function CertificateModal({
     setSelectedMap(initial);
   }, [approvedAreas, open]);
 
-  // Cargar configuración de certificados
+  
   useEffect(() => {
     const cargarConfig = async () => {
       try {
@@ -53,7 +53,7 @@ export default function CertificateModal({
         }
       } catch (error) {
         console.warn('Error cargando configuración de certificados, usando valores por defecto:', error);
-        // Usar valores por defecto si no se puede cargar la configuración
+        
         setCertConfig(null);
       }
     };
@@ -175,7 +175,7 @@ export default function CertificateModal({
   }
 
   
-  // Función auxiliar para convertir color hex a RGB
+  
   const hexToRgb = (hex: string): [number, number, number] => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
@@ -187,7 +187,7 @@ export default function CertificateModal({
       : [0, 0, 0];
   };
 
-  // Función para reemplazar variables en texto
+  
   const replaceTextVariables = (
     text: string,
     puesto: string | null,
@@ -208,7 +208,7 @@ export default function CertificateModal({
       return;
     }
 
-    // Usar configuración guardada o valores por defecto
+    
     const config = certConfig || {
       fondo_color: '#FDFDFF',
       borde_color: '#173A78',
@@ -237,19 +237,19 @@ export default function CertificateModal({
       radio_borde: 6,
     };
 
-    // Construir URL completa del logo
+   
     let logoSrc = config.logo_url || "/sansi-logo.png";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo';
     
     if (logoSrc.startsWith('/uploads/certificados/logos/')) {
-      // Si es un logo subido, usar la ruta de API
+      
       const filename = logoSrc.split('/').pop();
       logoSrc = `${apiUrl}/api/certificados/logo/${filename}`;
     } else if (logoSrc.startsWith('/uploads/')) {
-      // Si es otra ruta de uploads, construir URL completa
+     
       logoSrc = `${apiUrl}${logoSrc}`;
     } else if (logoSrc.startsWith('/') && !logoSrc.startsWith('//')) {
-      // Si es una ruta relativa que no es uploads, usar la URL base
+      
       logoSrc = `${apiUrl}${logoSrc}`;
     }
     
@@ -308,7 +308,7 @@ export default function CertificateModal({
       const puestoText = formatPuesto(c.puesto);
       const medalText = formatMedal((c as any).estado);
       
-      // Usar textos personalizados de la configuración
+     
       const honorTextTemplate = config.texto_honor || 'Por haber obtenido {puesto} {medalla} en el área de {area}, durante la gestión {gestion}.';
       const participationTextTemplate = config.texto_participacion || 'Por su valiosa participación en el área de {area} durante la gestión {gestion}, demostrando compromiso con la ciencia y la tecnología.';
       
@@ -320,29 +320,29 @@ export default function CertificateModal({
       const innerWidth = pageWidth - margin * 2;
       const innerHeight = pageHeight - margin * 2;
 
-      // Colores de fondo
+      
       const fondoRgb = hexToRgb(config.fondo_color);
       pdf.setFillColor(fondoRgb[0], fondoRgb[1], fondoRgb[2]);
       pdf.rect(0, 0, pageWidth, pageHeight, "F");
       
-      const fondoInternoRgb = hexToRgb('#F5F8FF'); // Color interno fijo
+      const fondoInternoRgb = hexToRgb('#F5F8FF');
       pdf.setFillColor(fondoInternoRgb[0], fondoInternoRgb[1], fondoInternoRgb[2]);
       const radioBorde = config.radio_borde || 6;
       pdf.roundedRect(margin, margin, innerWidth, innerHeight, radioBorde, radioBorde, "F");
       
-      // Borde principal
+     
       const bordeRgb = hexToRgb(config.borde_color);
       pdf.setDrawColor(bordeRgb[0], bordeRgb[1], bordeRgb[2]);
       pdf.setLineWidth(1.5);
       pdf.roundedRect(margin, margin, innerWidth, innerHeight, radioBorde, radioBorde);
       
-      // Borde secundario
+     
       const bordeSecRgb = hexToRgb(config.borde_secundario_color);
       pdf.setDrawColor(bordeSecRgb[0], bordeSecRgb[1], bordeSecRgb[2]);
       pdf.setLineWidth(0.4);
       pdf.roundedRect(margin + 5, margin + 5, innerWidth - 10, innerHeight - 10, 4, 4);
 
-      // Patrón binario lateral
+      
       pdf.setFont("courier", "normal");
       pdf.setFontSize(8);
       pdf.setTextColor(212, 218, 236);
@@ -383,14 +383,14 @@ export default function CertificateModal({
       pdf.setFontSize(16);
       pdf.text("ENTREGADO A", contentX, margin + 57, { align: "center" });
 
-      // nombre
+    
       pdf.setFont(config.nombre_fuente || "times", config.nombre_estilo || "bold");
       pdf.setFontSize(config.nombre_tamano || 54);
       const textoSecundarioRgb = hexToRgb(config.texto_secundario_color);
       pdf.setTextColor(textoSecundarioRgb[0], textoSecundarioRgb[1], textoSecundarioRgb[2]);
       pdf.text(String(c.nombre || ""), contentX, margin + 78, { align: "center" });
 
-      // unidad y cuerpo
+      
       pdf.setFont("times", "italic");
       pdf.setFontSize(15);
       pdf.setTextColor(textoSecundarioRgb[0], textoSecundarioRgb[1], textoSecundarioRgb[2]);
@@ -403,7 +403,7 @@ export default function CertificateModal({
         maxWidth: innerWidth - 120
       });
 
-      // bloque de datos
+      
       const dataBoxY = margin + 119;
       pdf.setDrawColor(194, 202, 230);
       pdf.setFillColor(255, 255, 255);
@@ -425,14 +425,14 @@ export default function CertificateModal({
       pdf.text(puestoMedalla, contentX + 55, dataBoxY + 11, { align: "center" });
       pdf.text(code, contentX + 55, dataBoxY + 21, { align: "center" });
 
-      // leyenda lateral
+     
       pdf.setFont("times", "italic");
       pdf.setFontSize(12);
       pdf.setTextColor(24, 74, 131);
       pdf.text("Olimpiada de", logoPosX, logoPosY + 50, { align: "center" });
       pdf.text("Ciencia y Tecnología", logoPosX, logoPosY + 60, { align: "center" });
 
-      // zona de firmas
+     
       const signatureY = pageHeight - 35;
       const leftSigX = logoPosX + 60;
       const rightSigX = pageWidth - margin - 60;
@@ -446,7 +446,7 @@ export default function CertificateModal({
       pdf.text(config.texto_firma_izquierda || "Coordinador de Área", leftSigX, signatureY + 10, { align: "center" });
       pdf.text(config.texto_firma_derecha || "Director / Autoridad", rightSigX, signatureY + 10, { align: "center" });
 
-      // pie de página
+      
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(8);
       pdf.setTextColor(115, 120, 140);

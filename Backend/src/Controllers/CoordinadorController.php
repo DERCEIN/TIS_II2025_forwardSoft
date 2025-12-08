@@ -1980,40 +1980,78 @@ class CoordinadorController
                                $estadoCierreFaseFinal['estado'] === 'cerrada' && 
                                $estadoCierreFaseFinal['fecha_cierre'] !== null;
             
-            $sqlNiveles = "
-                SELECT 
-                    nc.nombre as nivel_nombre,
-                    COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') as total_clasificados,
-                    COUNT(ef.id) as evaluados,
-                    COUNT(CASE 
-                        WHEN ef.puntuacion >= 90 THEN ia.id 
-                    END) as premiados_oro,
-                    COUNT(CASE 
-                        WHEN ef.puntuacion >= 80 AND ef.puntuacion < 90 THEN ia.id 
-                    END) as premiados_plata,
-                    COUNT(CASE 
-                        WHEN ef.puntuacion >= 70 AND ef.puntuacion < 80 THEN ia.id 
-                    END) as premiados_bronce,
-                    COUNT(CASE 
-                        WHEN ef.puntuacion < 70 THEN ia.id 
-                    END) as no_premiados,
-                    COUNT(CASE 
-                        WHEN ef.id IS NULL AND ia.estado = 'clasificado' THEN ia.id 
-                    END) as pendientes,
-                    AVG(CASE WHEN ef.id IS NOT NULL THEN ef.puntuacion END) as promedio_puntuacion,
-                    CASE 
-                        WHEN COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') > 0 
-                        THEN ROUND((COUNT(ef.id) * 100.0) / COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado'), 2)
-                        ELSE 0 
-                    END as porcentaje_evaluados
-                FROM inscripciones_areas ia
-                JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
-                LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
-                WHERE ia.area_competencia_id = ?
-                AND ia.estado = 'clasificado'
-                GROUP BY nc.id, nc.nombre, nc.orden_display
-                ORDER BY nc.orden_display
-            ";
+            // Si la fase final está cerrada, usar medalla_asignada. Si no, usar rangos de puntuación como aproximación
+            if ($faseFinalCerrada) {
+                $sqlNiveles = "
+                    SELECT 
+                        nc.nombre as nivel_nombre,
+                        COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') as total_clasificados,
+                        COUNT(ef.id) as evaluados,
+                        COUNT(CASE 
+                            WHEN ia.medalla_asignada = 'oro' THEN ia.id 
+                        END) as premiados_oro,
+                        COUNT(CASE 
+                            WHEN ia.medalla_asignada = 'plata' THEN ia.id 
+                        END) as premiados_plata,
+                        COUNT(CASE 
+                            WHEN ia.medalla_asignada = 'bronce' THEN ia.id 
+                        END) as premiados_bronce,
+                        COUNT(CASE 
+                            WHEN ia.medalla_asignada IS NULL OR (ia.medalla_asignada != 'oro' AND ia.medalla_asignada != 'plata' AND ia.medalla_asignada != 'bronce' AND ia.medalla_asignada != 'mencion_honor') THEN ia.id 
+                        END) as no_premiados,
+                        COUNT(CASE 
+                            WHEN ef.id IS NULL AND ia.estado = 'clasificado' THEN ia.id 
+                        END) as pendientes,
+                        AVG(CASE WHEN ef.id IS NOT NULL THEN ef.puntuacion END) as promedio_puntuacion,
+                        CASE 
+                            WHEN COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') > 0 
+                            THEN ROUND((COUNT(ef.id) * 100.0) / COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado'), 2)
+                            ELSE 0 
+                        END as porcentaje_evaluados
+                    FROM inscripciones_areas ia
+                    JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                    LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado = 'clasificado'
+                    GROUP BY nc.id, nc.nombre, nc.orden_display
+                    ORDER BY nc.orden_display
+                ";
+            } else {
+                $sqlNiveles = "
+                    SELECT 
+                        nc.nombre as nivel_nombre,
+                        COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') as total_clasificados,
+                        COUNT(ef.id) as evaluados,
+                        COUNT(CASE 
+                            WHEN ef.puntuacion >= 90 THEN ia.id 
+                        END) as premiados_oro,
+                        COUNT(CASE 
+                            WHEN ef.puntuacion >= 80 AND ef.puntuacion < 90 THEN ia.id 
+                        END) as premiados_plata,
+                        COUNT(CASE 
+                            WHEN ef.puntuacion >= 70 AND ef.puntuacion < 80 THEN ia.id 
+                        END) as premiados_bronce,
+                        COUNT(CASE 
+                            WHEN ef.puntuacion < 70 THEN ia.id 
+                        END) as no_premiados,
+                        COUNT(CASE 
+                            WHEN ef.id IS NULL AND ia.estado = 'clasificado' THEN ia.id 
+                        END) as pendientes,
+                        AVG(CASE WHEN ef.id IS NOT NULL THEN ef.puntuacion END) as promedio_puntuacion,
+                        CASE 
+                            WHEN COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado') > 0 
+                            THEN ROUND((COUNT(ef.id) * 100.0) / COUNT(ia.id) FILTER (WHERE ia.estado = 'clasificado'), 2)
+                            ELSE 0 
+                        END as porcentaje_evaluados
+                    FROM inscripciones_areas ia
+                    JOIN niveles_competencia nc ON nc.id = ia.nivel_competencia_id
+                    LEFT JOIN evaluaciones_finales ef ON ef.inscripcion_area_id = ia.id
+                    WHERE ia.area_competencia_id = ?
+                    AND ia.estado = 'clasificado'
+                    GROUP BY nc.id, nc.nombre, nc.orden_display
+                    ORDER BY nc.orden_display
+                ";
+            }
             
             $stmtNiveles = $this->pdo->prepare($sqlNiveles);
             $stmtNiveles->execute([$areaId]);
@@ -2153,14 +2191,8 @@ class CoordinadorController
             
             $totalClasificados = (int)array_sum(array_map(function($n) { return (int)($n['total_clasificados'] ?? 0); }, $niveles));
             $totalEvaluados = (int)array_sum(array_map(function($n) { return (int)($n['evaluados'] ?? 0); }, $niveles));
-            $totalPremiadosOro = (int)array_sum(array_map(function($n) { return (int)($n['premiados_oro'] ?? 0); }, $niveles));
-            $totalPremiadosPlata = (int)array_sum(array_map(function($n) { return (int)($n['premiados_plata'] ?? 0); }, $niveles));
-            $totalPremiadosBronce = (int)array_sum(array_map(function($n) { return (int)($n['premiados_bronce'] ?? 0); }, $niveles));
-            $totalNoPremiados = (int)array_sum(array_map(function($n) { return (int)($n['no_premiados'] ?? 0); }, $niveles));
-            $totalPendientes = (int)array_sum(array_map(function($n) { return (int)($n['pendientes'] ?? 0); }, $niveles));
-            $promedioGeneral = $totalClasificados > 0 ? round(($totalEvaluados * 100) / $totalClasificados, 2) : 0;
-
-           
+            
+            // Calcular medallas asignadas primero para usarlas en estadísticas generales si la fase está cerrada
             $medallasAsignadas = [
                 'oro' => 0,
                 'plata' => 0,
@@ -2197,7 +2229,24 @@ class CoordinadorController
                         'sin_medalla' => (int)($medallasData['sin_medalla'] ?? 0)
                     ];
                 }
+                
+                // Usar medallas asignadas para estadísticas generales cuando la fase está cerrada
+                $totalPremiadosOro = $medallasAsignadas['oro'];
+                $totalPremiadosPlata = $medallasAsignadas['plata'];
+                $totalPremiadosBronce = $medallasAsignadas['bronce'];
+                $totalNoPremiados = $medallasAsignadas['sin_medalla'];
+            } else {
+                // Usar valores calculados de niveles cuando la fase no está cerrada
+                $totalPremiadosOro = (int)array_sum(array_map(function($n) { return (int)($n['premiados_oro'] ?? 0); }, $niveles));
+                $totalPremiadosPlata = (int)array_sum(array_map(function($n) { return (int)($n['premiados_plata'] ?? 0); }, $niveles));
+                $totalPremiadosBronce = (int)array_sum(array_map(function($n) { return (int)($n['premiados_bronce'] ?? 0); }, $niveles));
+                $totalNoPremiados = (int)array_sum(array_map(function($n) { return (int)($n['no_premiados'] ?? 0); }, $niveles));
+            }
+            
+            $totalPendientes = (int)array_sum(array_map(function($n) { return (int)($n['pendientes'] ?? 0); }, $niveles));
+            $promedioGeneral = $totalClasificados > 0 ? round(($totalEvaluados * 100) / $totalClasificados, 2) : 0;
 
+            if ($faseFinalCerrada) {
                
                 $sqlTop = "
                     SELECT 
