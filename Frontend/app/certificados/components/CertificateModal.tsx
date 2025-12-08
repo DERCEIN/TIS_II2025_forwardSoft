@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import { Area, Competitor } from "../utils/certificateGenerator";
 import { AlignCenter } from "lucide-react";
+import { CertificadosService } from "@/lib/api";
 
 
 
@@ -26,6 +27,7 @@ export default function CertificateModal({
  
   const [showHonor, setShowHonor] = useState(true);
   const [showParticipation, setShowParticipation] = useState(true);
+  const [certConfig, setCertConfig] = useState<any>(null);
 
   
   useEffect(() => {
@@ -39,7 +41,26 @@ export default function CertificateModal({
       });
     });
     setSelectedMap(initial);
-  }, [approvedAreas, open]); 
+  }, [approvedAreas, open]);
+
+  // Cargar configuración de certificados
+  useEffect(() => {
+    const cargarConfig = async () => {
+      try {
+        const response = await CertificadosService.getConfiguracion();
+        if (response.success) {
+          setCertConfig(response.data);
+        }
+      } catch (error) {
+        console.warn('Error cargando configuración de certificados, usando valores por defecto:', error);
+        // Usar valores por defecto si no se puede cargar la configuración
+        setCertConfig(null);
+      }
+    };
+    if (open) {
+      cargarConfig();
+    }
+  }, [open]); 
 
   
   function computeHonorIds(area: Area) {
@@ -154,20 +175,93 @@ export default function CertificateModal({
   }
 
   
+  // Función auxiliar para convertir color hex a RGB
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? [
+          parseInt(result[1], 16),
+          parseInt(result[2], 16),
+          parseInt(result[3], 16),
+        ]
+      : [0, 0, 0];
+  };
+
+  // Función para reemplazar variables en texto
+  const replaceTextVariables = (
+    text: string,
+    puesto: string | null,
+    medalla: string | null,
+    area: string,
+    gestion: string
+  ): string => {
+    return text
+      .replace(/{puesto}/g, puesto ? `el ${puesto} puesto` : "un destacado desempeño")
+      .replace(/{medalla}/g, medalla ? ` y la medalla de ${medalla}` : "")
+      .replace(/{area}/g, area || "-")
+      .replace(/{gestion}/g, gestion);
+  };
+
   async function generatePdf() {
     if (totalToPrint === 0) {
       alert("No hay certificados seleccionados/visibles para imprimir.");
       return;
     }
 
-   
-    const logoSrc = "/sansi-logo.png";
+    // Usar configuración guardada o valores por defecto
+    const config = certConfig || {
+      fondo_color: '#FDFDFF',
+      borde_color: '#173A78',
+      borde_secundario_color: '#C8D2EB',
+      texto_principal_color: '#2F3F76',
+      texto_secundario_color: '#282828',
+      titulo_fuente: 'times',
+      titulo_estilo: 'bold',
+      titulo_tamano: 36,
+      nombre_fuente: 'times',
+      nombre_estilo: 'bold',
+      nombre_tamano: 54,
+      cuerpo_fuente: 'times',
+      cuerpo_estilo: 'normal',
+      cuerpo_tamano: 14,
+      logo_url: '/sansi-logo.png',
+      logo_tamano: 130,
+      logo_posicion_x: 45,
+      logo_posicion_y: 'center',
+      texto_honor: 'Por haber obtenido {puesto} {medalla} en el área de {area}, durante la gestión {gestion}.',
+      texto_participacion: 'Por su valiosa participación en el área de {area} durante la gestión {gestion}, demostrando compromiso con la ciencia y la tecnología.',
+      texto_firma_izquierda: 'Coordinador de Área',
+      texto_firma_derecha: 'Director / Autoridad',
+      texto_pie_pagina: 'SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial',
+      margen: 15,
+      radio_borde: 6,
+    };
+
+    // Construir URL completa del logo
+    let logoSrc = config.logo_url || "/sansi-logo.png";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://forwardsoft.tis.cs.umss.edu.bo';
+    
+    if (logoSrc.startsWith('/uploads/certificados/logos/')) {
+      // Si es un logo subido, usar la ruta de API
+      const filename = logoSrc.split('/').pop();
+      logoSrc = `${apiUrl}/api/certificados/logo/${filename}`;
+    } else if (logoSrc.startsWith('/uploads/')) {
+      // Si es otra ruta de uploads, construir URL completa
+      logoSrc = `${apiUrl}${logoSrc}`;
+    } else if (logoSrc.startsWith('/') && !logoSrc.startsWith('//')) {
+      // Si es una ruta relativa que no es uploads, usar la URL base
+      logoSrc = `${apiUrl}${logoSrc}`;
+    }
+    
     const loadImage = (src: string): Promise<HTMLImageElement> =>
       new Promise((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error("Error cargando imagen"));
+        img.onerror = (err) => {
+          console.error('Error cargando logo:', src, err);
+          reject(new Error("Error cargando imagen"));
+        };
         img.src = src;
       });
 
@@ -175,7 +269,7 @@ export default function CertificateModal({
     try {
       logoImg = await loadImage(logoSrc);
     } catch (e) {
-      console.warn("No se pudo cargar logo en /Logo.png. El PDF seguirá sin logo.");
+      console.warn(`No se pudo cargar logo en ${logoSrc}. El PDF seguirá sin logo.`);
     }
 
     const pdf = new jsPDF({
@@ -186,7 +280,7 @@ export default function CertificateModal({
     });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 15;
+    const margin = config.margen || 15;
 
     const yearLabel = gestion || new Date().getFullYear().toString();
 
@@ -213,23 +307,38 @@ export default function CertificateModal({
       const isHonor = typeTitle === "CERTIFICADO DE HONOR";
       const puestoText = formatPuesto(c.puesto);
       const medalText = formatMedal((c as any).estado);
-      const honorText = `Por haber obtenido ${puestoText ? `el ${puestoText} puesto` : "un destacado desempeño"}${medalText ? ` y la medalla de ${medalText}` : ""} en el área de ${c.area ?? "-"}, durante la gestión ${yearLabel}.`;
-      const participationText = `Por su valiosa participación en el área de ${c.area ?? "-"} durante la gestión ${yearLabel}, demostrando compromiso con la ciencia y la tecnología.`;
+      
+      // Usar textos personalizados de la configuración
+      const honorTextTemplate = config.texto_honor || 'Por haber obtenido {puesto} {medalla} en el área de {area}, durante la gestión {gestion}.';
+      const participationTextTemplate = config.texto_participacion || 'Por su valiosa participación en el área de {area} durante la gestión {gestion}, demostrando compromiso con la ciencia y la tecnología.';
+      
+      const honorText = replaceTextVariables(honorTextTemplate, puestoText, medalText, c.area ?? "-", yearLabel);
+      const participationText = replaceTextVariables(participationTextTemplate, puestoText, medalText, c.area ?? "-", yearLabel);
       const bodyText = isHonor ? honorText : participationText;
       const code = `SS-${String(c.id ?? 0).padStart(5, "0")}`;
 
       const innerWidth = pageWidth - margin * 2;
       const innerHeight = pageHeight - margin * 2;
 
-      
-      pdf.setFillColor(253, 253, 255);
+      // Colores de fondo
+      const fondoRgb = hexToRgb(config.fondo_color);
+      pdf.setFillColor(fondoRgb[0], fondoRgb[1], fondoRgb[2]);
       pdf.rect(0, 0, pageWidth, pageHeight, "F");
-      pdf.setFillColor(245, 248, 255);
-      pdf.roundedRect(margin, margin, innerWidth, innerHeight, 6, 6, "F");
-      pdf.setDrawColor(23, 58, 120);
+      
+      const fondoInternoRgb = hexToRgb('#F5F8FF'); // Color interno fijo
+      pdf.setFillColor(fondoInternoRgb[0], fondoInternoRgb[1], fondoInternoRgb[2]);
+      const radioBorde = config.radio_borde || 6;
+      pdf.roundedRect(margin, margin, innerWidth, innerHeight, radioBorde, radioBorde, "F");
+      
+      // Borde principal
+      const bordeRgb = hexToRgb(config.borde_color);
+      pdf.setDrawColor(bordeRgb[0], bordeRgb[1], bordeRgb[2]);
       pdf.setLineWidth(1.5);
-      pdf.roundedRect(margin, margin, innerWidth, innerHeight, 6, 6);
-      pdf.setDrawColor(200, 210, 235);
+      pdf.roundedRect(margin, margin, innerWidth, innerHeight, radioBorde, radioBorde);
+      
+      // Borde secundario
+      const bordeSecRgb = hexToRgb(config.borde_secundario_color);
+      pdf.setDrawColor(bordeSecRgb[0], bordeSecRgb[1], bordeSecRgb[2]);
       pdf.setLineWidth(0.4);
       pdf.roundedRect(margin + 5, margin + 5, innerWidth - 10, innerHeight - 10, 4, 4);
 
@@ -242,46 +351,53 @@ export default function CertificateModal({
       }
 
       
-      const ringX = margin + 45;
-      const ringY = pageHeight / 2;
+      const logoPosX = margin + (config.logo_posicion_x || 45);
+      let logoPosY = pageHeight / 2;
+      if (config.logo_posicion_y === 'top') {
+        logoPosY = margin + 50;
+      } else if (config.logo_posicion_y === 'bottom') {
+        logoPosY = pageHeight - margin - 50;
+      }
 
       if (logoImg) {
-        const logoSize = 130; // Logo más grande para que se vea mejor
-        pdf.addImage(logoImg, "PNG", ringX - logoSize / 2, ringY - logoSize / 2, logoSize, logoSize);
+        const logoSize = config.logo_tamano || 130;
+        pdf.addImage(logoImg, "PNG", logoPosX - logoSize / 2, logoPosY - logoSize / 2, logoSize, logoSize);
       }
 
      
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(13);
-      pdf.setTextColor(33, 63, 118);
+      const textoPrincipalRgb = hexToRgb(config.texto_principal_color);
+      pdf.setTextColor(textoPrincipalRgb[0], textoPrincipalRgb[1], textoPrincipalRgb[2]);
       pdf.text(["Olimpiada de", "Ciencia y Tecnología"], pageWidth - margin - 18, margin + 15, { align: "right" });
       pdf.setFontSize(24);
       pdf.text(yearLabel, pageWidth - margin - 18, margin + 33, { align: "right" });
 
       
       const contentX = pageWidth / 2 + 35;
-      pdf.setTextColor(23, 45, 95);
-      pdf.setFont("times", "bold");
-      pdf.setFontSize(36);
+      pdf.setTextColor(textoPrincipalRgb[0], textoPrincipalRgb[1], textoPrincipalRgb[2]);
+      pdf.setFont(config.titulo_fuente || "times", config.titulo_estilo || "bold");
+      pdf.setFontSize(config.titulo_tamano || 36);
       pdf.text("CERTIFICADO", contentX, margin + 42, { align: "center" });
       pdf.setFont("times", "italic");
       pdf.setFontSize(16);
       pdf.text("ENTREGADO A", contentX, margin + 57, { align: "center" });
 
       // nombre
-      pdf.setFont("times", "bold");
-      pdf.setFontSize(54);
-      pdf.setTextColor(0, 0, 0);
+      pdf.setFont(config.nombre_fuente || "times", config.nombre_estilo || "bold");
+      pdf.setFontSize(config.nombre_tamano || 54);
+      const textoSecundarioRgb = hexToRgb(config.texto_secundario_color);
+      pdf.setTextColor(textoSecundarioRgb[0], textoSecundarioRgb[1], textoSecundarioRgb[2]);
       pdf.text(String(c.nombre || ""), contentX, margin + 78, { align: "center" });
 
       // unidad y cuerpo
       pdf.setFont("times", "italic");
       pdf.setFontSize(15);
-      pdf.setTextColor(40, 40, 40);
+      pdf.setTextColor(textoSecundarioRgb[0], textoSecundarioRgb[1], textoSecundarioRgb[2]);
       pdf.text(`De la Unidad Educativa ${c.unidad ?? "-"}`, contentX, margin + 94, { align: "center" });
 
-      pdf.setFont("times", "normal");
-      pdf.setFontSize(14);
+      pdf.setFont(config.cuerpo_fuente || "times", config.cuerpo_estilo || "normal");
+      pdf.setFontSize(config.cuerpo_tamano || 14);
       pdf.text(bodyText, contentX, margin + 100, {
         align: "center",
         maxWidth: innerWidth - 120
@@ -313,12 +429,12 @@ export default function CertificateModal({
       pdf.setFont("times", "italic");
       pdf.setFontSize(12);
       pdf.setTextColor(24, 74, 131);
-      pdf.text("Olimpiada de", ringX, ringY + 50, { align: "center" });
-      pdf.text("Ciencia y Tecnología", ringX, ringY + 60, { align: "center" });
+      pdf.text("Olimpiada de", logoPosX, logoPosY + 50, { align: "center" });
+      pdf.text("Ciencia y Tecnología", logoPosX, logoPosY + 60, { align: "center" });
 
       // zona de firmas
       const signatureY = pageHeight - 35;
-      const leftSigX = ringX + 60;
+      const leftSigX = logoPosX + 60;
       const rightSigX = pageWidth - margin - 60;
       pdf.setDrawColor(60, 60, 60);
       pdf.setLineWidth(0.5);
@@ -327,14 +443,14 @@ export default function CertificateModal({
       pdf.setFont("times", "italic");
       pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
-      pdf.text("Coordinador de Área", leftSigX, signatureY + 10, { align: "center" });
-      pdf.text("Director / Autoridad", rightSigX, signatureY + 10, { align: "center" });
+      pdf.text(config.texto_firma_izquierda || "Coordinador de Área", leftSigX, signatureY + 10, { align: "center" });
+      pdf.text(config.texto_firma_derecha || "Director / Autoridad", rightSigX, signatureY + 10, { align: "center" });
 
       // pie de página
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(8);
       pdf.setTextColor(115, 120, 140);
-      pdf.text("SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial", pageWidth / 2, pageHeight - 6, { align: "center" });
+      pdf.text(config.texto_pie_pagina || "SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial", pageWidth / 2, pageHeight - 6, { align: "center" });
     }
 
     

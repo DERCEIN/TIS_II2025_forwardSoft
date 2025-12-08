@@ -24,6 +24,10 @@ export class ApiService {
   private static token: string | null = null
   private static baseURL: string = API_BASE_URL
 
+  static getBaseURL(): string {
+    return this.baseURL
+  }
+
   
   static setToken(token: string | null) {
     this.token = token
@@ -336,6 +340,44 @@ export class CertificadosService {
   // Admin: Obtener participantes premiados por área
   static async getParticipantesPremiadosPorArea(areaId: number) {
     return ApiService.get(`/api/admin/certificados/participantes-premiados/${areaId}`)
+  }
+
+  // Admin: Obtener configuración de diseño de certificados
+  static async getConfiguracion() {
+    return ApiService.get('/api/admin/certificados/configuracion')
+  }
+
+  // Admin: Guardar configuración de diseño de certificados
+  static async guardarConfiguracion(config: any) {
+    return ApiService.post('/api/admin/certificados/configuracion', config)
+  }
+
+  
+  static async subirLogo(file: File) {
+    const formData = new FormData()
+    formData.append('logo_file', file)
+    
+    const url = `${ApiService.getBaseURL()}/api/admin/certificados/logo`
+    const token = ApiService.getToken()
+
+    const headers: HeadersInit = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Error al subir el logo')
+    }
+
+    return data
   }
 }
 

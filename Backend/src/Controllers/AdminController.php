@@ -1976,4 +1976,267 @@ class AdminController
             Response::serverError('Error al obtener participantes premiados');
         }
     }
+
+    /**
+     * Obtener configuración de diseño de certificados
+     */
+    public function getConfiguracionCertificados()
+    {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM configuracion_certificados 
+                ORDER BY id DESC 
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $config = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$config) {
+                // Retornar configuración por defecto
+                $defaultConfig = [
+                    'id' => null,
+                    'fondo_color' => '#FDFDFF',
+                    'borde_color' => '#173A78',
+                    'borde_secundario_color' => '#C8D2EB',
+                    'texto_principal_color' => '#2F3F76',
+                    'texto_secundario_color' => '#282828',
+                    'titulo_fuente' => 'times',
+                    'titulo_estilo' => 'bold',
+                    'titulo_tamano' => 36,
+                    'nombre_fuente' => 'times',
+                    'nombre_estilo' => 'bold',
+                    'nombre_tamano' => 54,
+                    'cuerpo_fuente' => 'times',
+                    'cuerpo_estilo' => 'normal',
+                    'cuerpo_tamano' => 14,
+                    'logo_url' => '/sansi-logo.png',
+                    'logo_tamano' => 130,
+                    'logo_posicion_x' => 45,
+                    'logo_posicion_y' => 'center',
+                    'texto_honor' => 'Por haber obtenido {puesto} {medalla} en el área de {area}, durante la gestión {gestion}.',
+                    'texto_participacion' => 'Por su valiosa participación en el área de {area} durante la gestión {gestion}, demostrando compromiso con la ciencia y la tecnología.',
+                    'texto_firma_izquierda' => 'Coordinador de Área',
+                    'texto_firma_derecha' => 'Director / Autoridad',
+                    'texto_pie_pagina' => 'SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial',
+                    'margen' => 15,
+                    'radio_borde' => 6,
+                    'created_at' => null,
+                    'updated_at' => null
+                ];
+                Response::success($defaultConfig, 'Configuración por defecto de certificados');
+                return;
+            }
+
+            Response::success($config, 'Configuración de certificados obtenida correctamente');
+        } catch (\Exception $e) {
+            error_log('Error obteniendo configuración de certificados: ' . $e->getMessage());
+            Response::serverError('Error al obtener configuración de certificados');
+        }
+    }
+
+    /**
+     * Guardar configuración de diseño de certificados
+     */
+    public function guardarConfiguracionCertificados()
+    {
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!$input) {
+                Response::validationError(['general' => 'Datos de entrada inválidos']);
+                return;
+            }
+
+            // Verificar si ya existe una configuración
+            $stmt = $this->pdo->prepare("SELECT id FROM configuracion_certificados ORDER BY id DESC LIMIT 1");
+            $stmt->execute();
+            $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                // Actualizar configuración existente
+                $sql = "
+                    UPDATE configuracion_certificados SET
+                        fondo_color = ?,
+                        borde_color = ?,
+                        borde_secundario_color = ?,
+                        texto_principal_color = ?,
+                        texto_secundario_color = ?,
+                        titulo_fuente = ?,
+                        titulo_estilo = ?,
+                        titulo_tamano = ?,
+                        nombre_fuente = ?,
+                        nombre_estilo = ?,
+                        nombre_tamano = ?,
+                        cuerpo_fuente = ?,
+                        cuerpo_estilo = ?,
+                        cuerpo_tamano = ?,
+                        logo_url = ?,
+                        logo_tamano = ?,
+                        logo_posicion_x = ?,
+                        logo_posicion_y = ?,
+                        texto_honor = ?,
+                        texto_participacion = ?,
+                        texto_firma_izquierda = ?,
+                        texto_firma_derecha = ?,
+                        texto_pie_pagina = ?,
+                        margen = ?,
+                        radio_borde = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ";
+
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute([
+                    $input['fondo_color'] ?? '#FDFDFF',
+                    $input['borde_color'] ?? '#173A78',
+                    $input['borde_secundario_color'] ?? '#C8D2EB',
+                    $input['texto_principal_color'] ?? '#2F3F76',
+                    $input['texto_secundario_color'] ?? '#282828',
+                    $input['titulo_fuente'] ?? 'times',
+                    $input['titulo_estilo'] ?? 'bold',
+                    $input['titulo_tamano'] ?? 36,
+                    $input['nombre_fuente'] ?? 'times',
+                    $input['nombre_estilo'] ?? 'bold',
+                    $input['nombre_tamano'] ?? 54,
+                    $input['cuerpo_fuente'] ?? 'times',
+                    $input['cuerpo_estilo'] ?? 'normal',
+                    $input['cuerpo_tamano'] ?? 14,
+                    $input['logo_url'] ?? '/sansi-logo.png',
+                    $input['logo_tamano'] ?? 130,
+                    $input['logo_posicion_x'] ?? 45,
+                    $input['logo_posicion_y'] ?? 'center',
+                    $input['texto_honor'] ?? 'Por haber obtenido {puesto} {medalla} en el área de {area}, durante la gestión {gestion}.',
+                    $input['texto_participacion'] ?? 'Por su valiosa participación en el área de {area} durante la gestión {gestion}, demostrando compromiso con la ciencia y la tecnología.',
+                    $input['texto_firma_izquierda'] ?? 'Coordinador de Área',
+                    $input['texto_firma_derecha'] ?? 'Director / Autoridad',
+                    $input['texto_pie_pagina'] ?? 'SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial',
+                    $input['margen'] ?? 15,
+                    $input['radio_borde'] ?? 6,
+                    $existing['id']
+                ]);
+            } else {
+                // Crear nueva configuración
+                $sql = "
+                    INSERT INTO configuracion_certificados (
+                        fondo_color, borde_color, borde_secundario_color,
+                        texto_principal_color, texto_secundario_color,
+                        titulo_fuente, titulo_estilo, titulo_tamano,
+                        nombre_fuente, nombre_estilo, nombre_tamano,
+                        cuerpo_fuente, cuerpo_estilo, cuerpo_tamano,
+                        logo_url, logo_tamano, logo_posicion_x, logo_posicion_y,
+                        texto_honor, texto_participacion,
+                        texto_firma_izquierda, texto_firma_derecha, texto_pie_pagina,
+                        margen, radio_borde,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ";
+
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute([
+                    $input['fondo_color'] ?? '#FDFDFF',
+                    $input['borde_color'] ?? '#173A78',
+                    $input['borde_secundario_color'] ?? '#C8D2EB',
+                    $input['texto_principal_color'] ?? '#2F3F76',
+                    $input['texto_secundario_color'] ?? '#282828',
+                    $input['titulo_fuente'] ?? 'times',
+                    $input['titulo_estilo'] ?? 'bold',
+                    $input['titulo_tamano'] ?? 36,
+                    $input['nombre_fuente'] ?? 'times',
+                    $input['nombre_estilo'] ?? 'bold',
+                    $input['nombre_tamano'] ?? 54,
+                    $input['cuerpo_fuente'] ?? 'times',
+                    $input['cuerpo_estilo'] ?? 'normal',
+                    $input['cuerpo_tamano'] ?? 14,
+                    $input['logo_url'] ?? '/sansi-logo.png',
+                    $input['logo_tamano'] ?? 130,
+                    $input['logo_posicion_x'] ?? 45,
+                    $input['logo_posicion_y'] ?? 'center',
+                    $input['texto_honor'] ?? 'Por haber obtenido {puesto} {medalla} en el área de {area}, durante la gestión {gestion}.',
+                    $input['texto_participacion'] ?? 'Por su valiosa participación en el área de {area} durante la gestión {gestion}, demostrando compromiso con la ciencia y la tecnología.',
+                    $input['texto_firma_izquierda'] ?? 'Coordinador de Área',
+                    $input['texto_firma_derecha'] ?? 'Director / Autoridad',
+                    $input['texto_pie_pagina'] ?? 'SanSi · Olimpiada de Ciencia y Tecnología · Certificado Oficial',
+                    $input['margen'] ?? 15,
+                    $input['radio_borde'] ?? 6
+                ]);
+            }
+
+            Response::success([], 'Configuración de certificados guardada correctamente');
+        } catch (\Exception $e) {
+            error_log('Error guardando configuración de certificados: ' . $e->getMessage());
+            Response::serverError('Error al guardar configuración de certificados');
+        }
+    }
+
+    /**
+     * Subir logo para certificados
+     */
+    public function subirLogoCertificados()
+    {
+        try {
+            if (!isset($_FILES['logo_file']) || $_FILES['logo_file']['error'] !== UPLOAD_ERR_OK) {
+                Response::validationError(['logo_file' => 'Debe seleccionar un archivo de imagen válido']);
+                return;
+            }
+
+            $file = $_FILES['logo_file'];
+            
+            // Validar tipo de archivo
+            $allowed = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/webp' => 'webp'];
+            $mime = mime_content_type($file['tmp_name']);
+            if (!isset($allowed[$mime])) {
+                Response::validationError(['logo_file' => 'Formato no permitido. Use PNG, JPG o WEBP']);
+                return;
+            }
+
+            // Validar tamaño (máximo 5MB)
+            if ($file['size'] > 5 * 1024 * 1024) {
+                Response::validationError(['logo_file' => 'El archivo excede 5MB']);
+                return;
+            }
+
+            $ext = $allowed[$mime];
+            $uploadsDir = __DIR__ . '/../../public/uploads/certificados/logos';
+            if (!is_dir($uploadsDir)) {
+                @mkdir($uploadsDir, 0775, true);
+            }
+
+            // Generar nombre único
+            $filename = 'logo_certificado_' . time() . '_' . uniqid() . '.' . $ext;
+            $destPath = $uploadsDir . '/' . $filename;
+            
+            if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+                Response::serverError('No se pudo guardar el archivo');
+                return;
+            }
+
+            // Ruta pública del logo
+            $publicPath = '/uploads/certificados/logos/' . $filename;
+
+            // Eliminar logo anterior si existe
+            try {
+                $stmt = $this->pdo->prepare("SELECT logo_url FROM configuracion_certificados ORDER BY id DESC LIMIT 1");
+                $stmt->execute();
+                $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($existing && !empty($existing['logo_url']) && strpos($existing['logo_url'], '/uploads/certificados/logos/') !== false) {
+                    $oldPath = __DIR__ . '/../../public' . $existing['logo_url'];
+                    if (is_file($oldPath)) {
+                        @unlink($oldPath);
+                    }
+                }
+            } catch (\Exception $e) {
+                error_log('Error eliminando logo anterior: ' . $e->getMessage());
+            }
+
+            Response::success([
+                'logo_url' => $publicPath,
+                'filename' => $filename
+            ], 'Logo subido correctamente');
+            
+        } catch (\Exception $e) {
+            error_log('Error subiendo logo de certificados: ' . $e->getMessage());
+            Response::serverError('Error al subir el logo');
+        }
+    }
 }

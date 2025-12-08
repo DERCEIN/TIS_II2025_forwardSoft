@@ -76,6 +76,9 @@ class Router
         // Rutas de certificados y premiación (administrador)
         $this->addRoute('GET', '/api/admin/certificados/areas', [AdminController::class, 'getAreasAprobadas'], ['auth', 'admin']);
         $this->addRoute('GET', '/api/admin/certificados/participantes-premiados/{areaId}', [AdminController::class, 'getParticipantesPremiadosPorArea'], ['auth', 'admin']);
+        $this->addRoute('GET', '/api/admin/certificados/configuracion', [AdminController::class, 'getConfiguracionCertificados'], ['auth', 'admin']);
+        $this->addRoute('POST', '/api/admin/certificados/configuracion', [AdminController::class, 'guardarConfiguracionCertificados'], ['auth', 'admin']);
+        $this->addRoute('POST', '/api/admin/certificados/logo', [AdminController::class, 'subirLogoCertificados'], ['auth', 'admin']);
         
         // Rutas de configuración general
         $this->addRoute('GET', '/api/configuracion', [ConfiguracionOlimpiadaController::class, 'getConfiguracion'], ['auth']);
@@ -245,6 +248,79 @@ class Router
             }
         });
 
+        // Ruta para servir logos de certificados (a través de API)
+        $this->addRoute('GET', '/api/certificados/logo/{filename}', function($filename) {
+            // Validar que el nombre del archivo sea seguro
+            if (!preg_match('/^logo_certificado_[0-9]+_[a-zA-Z0-9]+\.(png|jpg|jpeg|webp)$/i', $filename)) {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Archivo no válido']);
+                exit();
+            }
+            
+            $filePath = __DIR__ . '/../../public/uploads/certificados/logos/' . $filename;
+            
+            if (file_exists($filePath) && is_file($filePath)) {
+                $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+                $mimeTypes = [
+                    'png' => 'image/png',
+                    'jpg' => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'webp' => 'image/webp'
+                ];
+                
+                $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
+                
+                header('Content-Type: ' . $mimeType);
+                header('Content-Length: ' . filesize($filePath));
+                header('Cache-Control: public, max-age=31536000');
+                header('Last-Modified: ' . gmdate('D, d M Y H:i:s', filemtime($filePath)) . ' GMT');
+                header('Access-Control-Allow-Origin: *');
+                
+                readfile($filePath);
+                exit();
+            } else {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Logo no encontrado']);
+                exit();
+            }
+        });
+        
+        // Ruta alternativa para servir logos directamente (si el .htaccess no lo maneja)
+        $this->addRoute('GET', '/uploads/certificados/logos/{filename}', function($filename) {
+            // Validar que el nombre del archivo sea seguro
+            if (!preg_match('/^logo_certificado_[0-9]+_[a-zA-Z0-9]+\.(png|jpg|jpeg|webp)$/i', $filename)) {
+                http_response_code(404);
+                exit('Archivo no válido');
+            }
+            
+            $filePath = __DIR__ . '/../../public/uploads/certificados/logos/' . $filename;
+            
+            if (file_exists($filePath) && is_file($filePath)) {
+                $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+                $mimeTypes = [
+                    'png' => 'image/png',
+                    'jpg' => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'webp' => 'image/webp'
+                ];
+                
+                $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
+                
+                header('Content-Type: ' . $mimeType);
+                header('Content-Length: ' . filesize($filePath));
+                header('Cache-Control: public, max-age=31536000');
+                header('Last-Modified: ' . gmdate('D, d M Y H:i:s', filemtime($filePath)) . ' GMT');
+                header('Access-Control-Allow-Origin: *');
+                
+                readfile($filePath);
+                exit();
+            } else {
+                http_response_code(404);
+                exit('Logo no encontrado');
+            }
+        });
         
         $this->addRoute('GET', '/api/areas-competencia', [CatalogoController::class, 'areasCompetencia']);
 

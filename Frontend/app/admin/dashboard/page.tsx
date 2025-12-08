@@ -830,6 +830,15 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                 variant="outline" 
                 size="sm"
                 className="hidden md:flex"
+                onClick={() => router.push('/admin/disenar-certificados')}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                <span className="hidden lg:inline">Diseñar Certificados</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="hidden md:flex"
                 onClick={() => router.push('/admin/configuracion')}
               >
                 <Settings className="h-4 w-4 mr-2" />
