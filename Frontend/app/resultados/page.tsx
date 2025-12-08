@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { LogIn } from "lucide-react";
+import { LogIn, Trophy } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { PublicacionResultadosService } from "@/lib/api";
@@ -175,12 +175,6 @@ export default function ResultadosPage() {
                 Inicio
               </Link>
               <Link
-                href="/#areas"
-                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-              >
-                Áreas de Competencia
-              </Link>
-              <Link
                 href="/resultados"
                 className="text-sm font-medium text-foreground hover:text-primary transition-colors"
               >
@@ -191,12 +185,6 @@ export default function ResultadosPage() {
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
               >
                 Medallero
-              </Link>
-              <Link
-                href="/#noticias"
-                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-              >
-                Noticias
               </Link>
               <Link
                 href="/#contacto"
@@ -449,6 +437,66 @@ export default function ResultadosPage() {
           )}
         </>
       )}
+
+      {/* Footer */}
+      <footer className="py-8 sm:py-12 bg-slate-50 border-t mt-12">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
+            <div>
+              <div className="flex items-center space-x-2 mb-3 sm:mb-4">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                </div>
+                <span className="text-lg sm:text-xl font-heading font-bold text-slate-800">Olimpiada Oh! SanSi</span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-700 max-w-md">
+                Olimpiada en Ciencias y Tecnología de la Universidad Mayor de San Simón, promoviendo la excelencia
+                académica en Bolivia desde 2010.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Enlaces</h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
+                <li>
+                  <a href="/#inicio" className="hover:text-blue-600 transition-colors">
+                    Inicio
+                  </a>
+                </li>
+                <li>
+                  <Link href="/cronograma" className="hover:text-blue-600 transition-colors">
+                    Cronograma
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/resultados" className="hover:text-blue-600 transition-colors">
+                    Resultados
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/medallero" className="hover:text-blue-600 transition-colors">
+                    Medallero
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Contacto</h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
+                <li>Universidad Mayor de San Simón</li>
+                <li>Cochabamba, Bolivia</li>
+                <li className="break-all">info@olimpiadaohsansi.edu.bo</li>
+                <li>+591 4 123-4567</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 mt-6 sm:mt-8 pt-6 sm:pt-8 text-center text-xs sm:text-sm text-slate-600">
+            <p>&copy; 2025 Olimpiada Oh! SanSi - Universidad Mayor de San Simón. Todos los derechos reservados.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -866,6 +866,14 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => router.push('/admin/configuracion')}
+                className="p-2"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={async () => {
                   try {
                     await logout()
@@ -874,6 +882,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                     router.push('/login')
                   }
                 }}
+                className="p-2"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -972,10 +981,10 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                   return (
                     <Card key={area.id} className="hover:shadow-md transition-shadow border-slate-200">
                       <CardContent className="p-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-4">
-                              <h3 className="text-xl font-semibold text-slate-800">{area.nombre}</h3>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex-1 w-full">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4">
+                              <h3 className="text-lg sm:text-xl font-semibold text-slate-800">{area.nombre}</h3>
                               <Badge 
                                 variant="outline" 
                                 className={estaLlena 
@@ -993,7 +1002,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                               )}
                             </div>
                             
-                            <div className="grid grid-cols-3 gap-6 mb-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4">
                               <div>
                                 <p className="text-sm text-slate-500 mb-1">Participantes</p>
                                 <p className="text-lg font-semibold text-slate-800">{participantes}</p>
@@ -1026,8 +1035,8 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                             </div>
                           </div>
                           
-                          <div className="ml-4 flex flex-col gap-2">
-                            <div className="flex gap-2">
+                          <div className="w-full sm:w-auto sm:ml-4 flex flex-row sm:flex-col gap-2">
+                            <div className="flex gap-2 flex-1 sm:flex-initial">
                               {!estadosPublicacion[area.id]?.publicado ? (
                                 <Button
                                   onClick={() => handlePublicar(area.id)}
@@ -1087,7 +1096,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
 
             {/* Modal de Configuración */}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
                 <DialogHeader className="pb-3">
                   <DialogTitle className="flex items-center gap-2 text-lg">
                     <BookOpen className="h-4 w-4" />
@@ -1561,12 +1570,12 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                   <div>
                     <CardTitle></CardTitle>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
                       <Search className="h-4 w-4 mr-2" />
                       Buscar
                     </Button>
-                    <Button size="sm">
+                    <Button size="sm" className="w-full sm:w-auto">
                       <Plus className="h-4 w-4 mr-2" />
                       Nuevo Usuario
                     </Button>
@@ -1711,14 +1720,14 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-3 mt-6">
+                    <div className="flex flex-col sm:flex-row gap-3 mt-6">
                       <Button className="flex-1" onClick={handleRegisterUser} disabled={isSubmittingUser}>
                         <Plus className="h-4 w-4 mr-2" />
                         {isSubmittingUser ? "Registrando..." : "Registrar Usuario"}
                       </Button>
                       <Button
                         variant="outline"
-                        className="bg-transparent"
+                        className="bg-transparent flex-1 sm:flex-initial"
                         onClick={() => {
                           setUserFirstName("")
                           setUserLastName("")
@@ -1903,7 +1912,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                   {/* Import Results Modal */}
                   {importResult && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
-                      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
+                      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-[95vw] sm:w-full mx-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
                         <div className="p-6">
                           <div className="flex items-center justify-between mb-4">
                             <h3 className="text-xl font-bold text-gray-900">Resultados de la importación</h3>

@@ -1779,7 +1779,7 @@ function CompetidoresPorAreaNivel() {
       return
     }
     
-    console.log('⏳ Iniciando carga de datos...')
+   
     setLoading(true)
     setError("")
     
@@ -1811,7 +1811,7 @@ function CompetidoresPorAreaNivel() {
       })
       
       const response = await CoordinadorService.getParticipantesConEvaluaciones({
-        area_id: 1, // Por ahora usar área 1, después se puede obtener del perfil del coordinador
+        area_id: 1, 
         nivel_id: nivelParam,
         fase: 'clasificacion'
       })
@@ -1819,8 +1819,7 @@ function CompetidoresPorAreaNivel() {
       console.log('📡 Respuesta de la API:', response)
       
       if (response.success && response.data) {
-        // Mapear y deduplicar por documento_identidad para evitar mostrar al mismo
-        // estudiante varias veces (p. ej., distintos grados dentro del mismo nivel)
+        
         const mapeados = response.data.participantes.map((p: any) => ({
           id: p.inscripcion_area_id,
           nombre_completo: p.nombre_completo,
@@ -1844,7 +1843,7 @@ function CompetidoresPorAreaNivel() {
           }, {})
         ) as any[]
         
-        // Filtrar por departamento si está seleccionado
+      
         const filteredData = competidoresMapeados.filter((c: any) => {
           const departamentoLabel = getDepartamentoName(departamentoId)
           return c.departamento_nombre === departamentoLabel
@@ -1882,7 +1881,7 @@ function CompetidoresPorAreaNivel() {
     
     if (SIMULATE) {
       console.log('Modo simulación activado')
-      setDepartamentoId('1') // Cochabamba por defecto
+      setDepartamentoId('1') 
       setCompetidores(demoCompetidores)
       return
     }
@@ -1932,19 +1931,35 @@ function CompetidoresPorAreaNivel() {
   return (
     <div className="space-y-4">
       {/* Toolbar superior */}
-      <div className="flex flex-wrap items-center gap-2 justify-between">
-        <div className="font-semibold text-foreground">Competidores</div>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2 sm:justify-between">
+        <div className="font-semibold text-foreground text-sm sm:text-base">Competidores</div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => exportCSV(applyClientFilters(competidores, { search, sortBy }))} disabled={loading || competidores.length === 0}>
-            Exportar CSV
+          <Button variant="outline" size="sm" onClick={() => exportCSV(applyClientFilters(competidores, { search, sortBy }))} disabled={loading || competidores.length === 0} className="text-xs sm:text-sm">
+            <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Exportar CSV</span>
+            <span className="sm:hidden">CSV</span>
           </Button>
-          <Button variant="outline" onClick={handleExportPDF}>
-            Exportar PDF
+          <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-xs sm:text-sm">
+            <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Exportar PDF</span>
+            <span className="sm:hidden">PDF</span>
           </Button>
-          <Button className="bg-green-600 hover:bg-green-700" onClick={handleExportClasificados}>Lista Clasificados</Button>
-          <Button className="bg-amber-600 hover:bg-amber-700" onClick={handleExportPremiados}>Lista Premiados</Button>
-          <Button className="bg-red-600 hover:bg-red-700" onClick={handleExportNoClasificados}>Lista No Clasificados</Button>
-          <Button className="bg-gray-600 hover:bg-gray-700" onClick={handleExportDesclasificados}>Lista Descalificados</Button>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm" onClick={handleExportClasificados}>
+            <span className="hidden sm:inline">Lista Clasificados</span>
+            <span className="sm:hidden">Clasificados</span>
+          </Button>
+          <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-xs sm:text-sm" onClick={handleExportPremiados}>
+            <span className="hidden sm:inline">Lista Premiados</span>
+            <span className="sm:hidden">Premiados</span>
+          </Button>
+          <Button size="sm" className="bg-red-600 hover:bg-red-700 text-xs sm:text-sm" onClick={handleExportNoClasificados}>
+            <span className="hidden sm:inline">Lista No Clasificados</span>
+            <span className="sm:hidden">No Clasificados</span>
+          </Button>
+          <Button size="sm" className="bg-gray-600 hover:bg-gray-700 text-xs sm:text-sm" onClick={handleExportDesclasificados}>
+            <span className="hidden sm:inline">Lista Descalificados</span>
+            <span className="sm:hidden">Descalificados</span>
+          </Button>
         </div>
       </div>
 
@@ -2606,21 +2621,21 @@ function CierreFaseArea() {
               <Progress value={porcentajeCompletitud} className="h-3" />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{estadisticas?.total_participantes || 0}</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+              <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-blue-600">{estadisticas?.total_participantes || 0}</div>
                 <div className="text-xs text-muted-foreground">Total Participantes</div>
               </div>
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">{estadisticas?.total_evaluados || 0}</div>
+              <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-green-600">{estadisticas?.total_evaluados || 0}</div>
                 <div className="text-xs text-muted-foreground">Evaluados</div>
               </div>
-              <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">{estadisticas?.clasificados_real || 0}</div>
+              <div className="text-center p-2 sm:p-3 bg-purple-50 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-purple-600">{estadisticas?.clasificados_real || 0}</div>
                 <div className="text-xs text-muted-foreground">Clasificados</div>
               </div>
-              <div className="text-center p-3 bg-orange-50 rounded-lg">
-                <div className="text-2xl font-bold text-orange-600">
+              <div className="text-center p-2 sm:p-3 bg-orange-50 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-orange-600">
                   {(estadisticas?.total_participantes || 0) - (estadisticas?.total_evaluados || 0)}
                 </div>
                 <div className="text-xs text-muted-foreground">Pendientes</div>
@@ -2629,12 +2644,12 @@ function CierreFaseArea() {
           </div>
 
           {/* Estado del Cierre */}
-          <div className="border rounded-lg p-4">
-            <div className="flex items-center justify-between">
+          <div className="border rounded-lg p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
               <div>
-                <div className="text-sm font-medium mb-1">Estado de la Fase</div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={estado_cierre === 'cerrada' ? 'default' : estado_cierre === 'activa' ? 'secondary' : 'outline'}>
+                <div className="text-xs sm:text-sm font-medium mb-1">Estado de la Fase</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={estado_cierre === 'cerrada' ? 'default' : estado_cierre === 'activa' ? 'secondary' : 'outline'} className="text-xs sm:text-sm">
                     {estado_cierre === 'cerrada' ? 'Cerrada' : estado_cierre === 'activa' ? 'Activa' : 'Pendiente'}
                   </Badge>
                   {fecha_cierre && (
@@ -2645,24 +2660,26 @@ function CierreFaseArea() {
                 </div>
               </div>
               {puedeCerrar && (
-                <Button onClick={handleCerrarFase} className="bg-blue-600 hover:bg-blue-700">
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Cerrar Fase de {area?.nombre}
+                <Button onClick={handleCerrarFase} size="sm" className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm w-full sm:w-auto">
+                  <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Cerrar Fase de {area?.nombre}</span>
+                  <span className="sm:hidden">Cerrar Fase</span>
                 </Button>
               )}
               {!puedeCerrar && porcentajeCompletitud >= 99.9 && estado_cierre !== 'cerrada' && (
-                <div className="text-sm text-orange-600 font-medium">
-                  <AlertCircle className="h-4 w-4 inline mr-1" />
-                  Listo para cerrar (verifica los datos arriba)
+                <div className="text-xs sm:text-sm text-orange-600 font-medium">
+                  <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 inline mr-1" />
+                  <span className="hidden sm:inline">Listo para cerrar (verifica los datos arriba)</span>
+                  <span className="sm:hidden">Listo para cerrar</span>
                 </div>
               )}
               {estado_cierre === 'cerrada' && (
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="text-sm text-green-600 font-medium">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-wrap">
+                  <div className="text-xs sm:text-sm text-green-600 font-medium">
                     ✓ Fase cerrada
                   </div>
                   {estadoPublicacion?.publicado && (
-                    <Badge variant="default" className="bg-green-600">
+                    <Badge variant="default" className="bg-green-600 text-xs sm:text-sm">
                       <Globe className="h-3 w-3 mr-1" />
                       Publicado
                     </Badge>
@@ -2671,36 +2688,41 @@ function CierreFaseArea() {
                     onClick={handleDescargarPDF} 
                     disabled={descargandoPDF}
                     variant="outline"
-                    className="border-red-600 text-red-600 hover:bg-red-50"
+                    size="sm"
+                    className="border-red-600 text-red-600 hover:bg-red-50 text-xs sm:text-sm w-full sm:w-auto"
                   >
-                    <FileText className="h-4 w-4 mr-2" />
+                    <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     {descargandoPDF ? 'Descargando...' : 'PDF'}
                   </Button>
                   <Button 
                     onClick={handleDescargarExcel} 
                     disabled={descargandoExcel}
                     variant="outline"
-                    className="border-green-600 text-green-600 hover:bg-green-50"
+                    size="sm"
+                    className="border-green-600 text-green-600 hover:bg-green-50 text-xs sm:text-sm w-full sm:w-auto"
                   >
-                    <Download className="h-4 w-4 mr-2" />
-                    {descargandoExcel ? 'Descargando...' : 'Excel Clasificados'}
+                    <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">{descargandoExcel ? 'Descargando...' : 'Excel Clasificados'}</span>
+                    <span className="sm:hidden">{descargandoExcel ? 'Descargando...' : 'Excel'}</span>
                   </Button>
                   <Button 
                     onClick={handleDescargarEstadisticas} 
                     disabled={descargandoEstadisticas}
                     variant="outline"
-                    className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                    size="sm"
+                    className="border-blue-600 text-blue-600 hover:bg-blue-50 text-xs sm:text-sm w-full sm:w-auto"
                   >
-                    <FileText className="h-4 w-4 mr-2" />
+                    <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     {descargandoEstadisticas ? 'Descargando...' : 'Estadísticas'}
                   </Button>
                   {!estadoPublicacion?.publicado ? (
                     <Button 
                       onClick={handlePublicar} 
                       disabled={publicando}
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm w-full sm:w-auto"
                     >
-                      <Globe className="h-4 w-4 mr-2" />
+                      <Globe className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       {publicando ? 'Publicando...' : 'Publicar Resultados'}
                     </Button>
                   ) : (
@@ -2708,9 +2730,10 @@ function CierreFaseArea() {
                       onClick={handleDespublicar} 
                       disabled={despublicando}
                       variant="outline"
-                      className="border-purple-600 text-purple-600 hover:bg-purple-50"
+                      size="sm"
+                      className="border-purple-600 text-purple-600 hover:bg-purple-50 text-xs sm:text-sm w-full sm:w-auto"
                     >
-                      <EyeOff className="h-4 w-4 mr-2" />
+                      <EyeOff className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       {despublicando ? 'Despublicando...' : 'Despublicar'}
                     </Button>
                   )}
@@ -3207,25 +3230,25 @@ function CierreFaseFinal() {
           {/* Resumen General */}
           <Card>
             <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-3xl font-bold text-blue-600">{totalEvaluados}</div>
-                  <div className="text-sm text-muted-foreground">Total Evaluados</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+                <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl sm:text-3xl font-bold text-blue-600">{totalEvaluados}</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">Total Evaluados</div>
                   <div className="text-xs text-muted-foreground mt-1">de {totalClasificados} participantes</div>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-3xl font-bold text-green-600">{totalPremiados}</div>
-                  <div className="text-sm text-muted-foreground">Participantes Premiados</div>
+                <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl sm:text-3xl font-bold text-green-600">{totalPremiados}</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">Participantes Premiados</div>
                   <div className="text-xs text-muted-foreground mt-1">{porcentajePremiados}% del total</div>
                 </div>
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-3xl font-bold text-gray-600">{totalSinMedalla}</div>
-                  <div className="text-sm text-muted-foreground">Sin Medalla</div>
+                <div className="text-center p-3 sm:p-4 bg-gray-50 rounded-lg">
+                  <div className="text-2xl sm:text-3xl font-bold text-gray-600">{totalSinMedalla}</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">Sin Medalla</div>
                   <div className="text-xs text-muted-foreground mt-1">{porcentajeSinMedalla}% del total</div>
                   <div className="text-xs text-muted-foreground mt-1">(Mención de Honor)</div>
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-sm font-semibold text-purple-700 mb-2">Distribución Rápida</div>
+                <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
+                  <div className="text-xs sm:text-sm font-semibold text-purple-700 mb-2">Distribución Rápida</div>
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
                       <span>Oro:</span>
@@ -3250,7 +3273,7 @@ function CierreFaseFinal() {
               </div>
 
               {/* Tarjetas de Medallas */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {['oro', 'plata', 'bronce', 'mencion_honor'].map((tipo) => {
                   let cantidad = medallas[tipo as keyof typeof medallas] || 0
                   
@@ -3308,17 +3331,18 @@ function CierreFaseFinal() {
               </CardHeader>
               <CardContent>
                 <div className="rounded-lg border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="text-center font-semibold">Posición</TableHead>
-                        <TableHead className="font-semibold">Nombre</TableHead>
-                        <TableHead className="font-semibold">Institución</TableHead>
-                        <TableHead className="font-semibold">Nivel</TableHead>
-                        <TableHead className="text-center font-semibold">Nota</TableHead>
-                        <TableHead className="text-center font-semibold">Medalla</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="text-center font-semibold text-xs sm:text-sm whitespace-nowrap">Posición</TableHead>
+                          <TableHead className="font-semibold text-xs sm:text-sm">Nombre</TableHead>
+                          <TableHead className="font-semibold text-xs sm:text-sm hidden sm:table-cell">Institución</TableHead>
+                          <TableHead className="font-semibold text-xs sm:text-sm hidden md:table-cell">Nivel</TableHead>
+                          <TableHead className="text-center font-semibold text-xs sm:text-sm whitespace-nowrap">Nota</TableHead>
+                          <TableHead className="text-center font-semibold text-xs sm:text-sm whitespace-nowrap">Medalla</TableHead>
+                        </TableRow>
+                      </TableHeader>
                     <TableBody>
                       {topParticipantes.map((participante: any, index: number) => {
                         const nota = parseFloat(participante.nota_promedio || 0)
@@ -3334,23 +3358,25 @@ function CierreFaseFinal() {
                             key={index}
                             className={index < 3 ? "bg-muted/20" : ""}
                           >
-                            <TableCell className="text-center font-bold text-lg">
+                            <TableCell className="text-center font-bold text-sm sm:text-lg">
                               <div className="flex items-center justify-center">
-                                {index === 0 && <Trophy className="h-4 w-4 text-yellow-500 mr-1" />}
-                                {index === 1 && <Trophy className="h-4 w-4 text-gray-400 mr-1" />}
-                                {index === 2 && <Trophy className="h-4 w-4 text-orange-500 mr-1" />}
+                                {index === 0 && <Trophy className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-500 mr-1" />}
+                                {index === 1 && <Trophy className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 mr-1" />}
+                                {index === 2 && <Trophy className="h-3 w-3 sm:h-4 sm:w-4 text-orange-500 mr-1" />}
                                 {index + 1}
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium">{participante.nombre_completo}</TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {participante.unidad_educativa || 'N/A'}
+                            <TableCell className="font-medium text-xs sm:text-sm">
+                              <div className="truncate max-w-[150px] sm:max-w-none">{participante.nombre_completo}</div>
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="text-muted-foreground text-xs sm:text-sm hidden sm:table-cell">
+                              <div className="truncate max-w-[150px]">{participante.unidad_educativa || 'N/A'}</div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs sm:text-sm hidden md:table-cell">
                               {participante.nivel_nombre || participante.grado_escolaridad || 'N/A'}
                             </TableCell>
                             <TableCell className="text-center">
-                              <span className="font-bold text-lg text-primary">
+                              <span className="font-bold text-sm sm:text-lg text-primary">
                                 {nota.toFixed(1)}
                               </span>
                             </TableCell>
@@ -3380,6 +3406,7 @@ function CierreFaseFinal() {
                       })}
                     </TableBody>
                   </Table>
+                  </div>
                 </div>
                 <div className="mt-4 pt-4 border-t">
                   <p className="text-sm text-muted-foreground text-center">
@@ -3396,7 +3423,7 @@ function CierreFaseFinal() {
               <CardTitle>Reportes</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <Button
                   onClick={handleDescargarPDF}
                   disabled={descargandoPDF}

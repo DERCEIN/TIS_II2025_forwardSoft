@@ -388,28 +388,28 @@ export default function LogAuditoriaPage() {
       <div className="container mx-auto px-4 py-8">
         {/* Header estilo limpio */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
                 <Link href="/coordinador/dashboard">
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                     <ArrowLeft className="h-4 w-4" />
                   </Button>
                 </Link>
-                <h1 className="text-2xl font-semibold text-gray-900">Log de Cambios</h1>
+                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Log de Cambios</h1>
                 {cambiosPendientes > 0 && (
-                  <Badge className="bg-orange-500 text-white px-3 py-1">
+                  <Badge className="bg-orange-500 text-white px-2 sm:px-3 py-1 text-xs sm:text-sm">
                     <Clock className="h-3 w-3 mr-1" />
                     {cambiosPendientes} {cambiosPendientes === 1 ? 'pendiente' : 'pendientes'}
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-gray-600 ml-11">
+              <p className="text-xs sm:text-sm text-gray-600 ml-0 sm:ml-11">
                 Sistema de trazabilidad completa para rastrear cambios de notas en caso de reclamos o actualizaciones
               </p>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -418,6 +418,7 @@ export default function LogAuditoriaPage() {
                   fetchLogs().finally(() => setRefreshing(false))
                 }}
                 disabled={refreshing}
+                className="w-full sm:w-auto"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                 Actualizar
@@ -426,53 +427,42 @@ export default function LogAuditoriaPage() {
               <Button 
                 onClick={exportarLogs}
                 disabled={exportando || logs.length === 0}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
               >
                 <Download className="h-4 w-4 mr-2" />
-                {exportando ? 'Exportando...' : 'Exportar para Reclamos'}
-                <ChevronDown className="h-4 w-4 ml-1" />
+                <span className="hidden sm:inline">{exportando ? 'Exportando...' : 'Exportar para Reclamos'}</span>
+                <span className="sm:hidden">{exportando ? 'Exportando...' : 'Exportar'}</span>
+                <ChevronDown className="h-4 w-4 ml-1 hidden sm:inline" />
               </Button>
             </div>
           </div>
           
           {/* Barra de selección de fechas */}
           <div className="bg-gray-100 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-3">
-              <Calendar className="h-4 w-4 text-gray-500" />
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              <Calendar className="h-4 w-4 text-gray-500 flex-shrink-0" />
               {rangoFechas ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">{rangoFechas}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 break-words">{rangoFechas}</span>
                   <Button 
                     variant="ghost" 
                     size="sm"
                     onClick={limpiarFiltrosFecha}
-                    className="h-6 w-6 p-0 hover:bg-gray-200"
+                    className="h-6 w-6 p-0 hover:bg-gray-200 flex-shrink-0"
                   >
                     <XCircle className="h-3 w-3" />
                   </Button>
                 </div>
               ) : (
-                <span className="text-sm text-gray-500">Selecciona un rango de fechas</span>
+                <span className="text-xs sm:text-sm text-gray-500">Selecciona un rango de fechas</span>
               )}
             </div>
           </div>
 
           {/* Sección de filtros */}
           <Card className="mb-4">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-gray-700"></h3>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
-                >
-                  <Settings className="h-4 w-4 mr-1" />
-                 <span className="hidden lg:inline">Filtros</span>
-                </Button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <CardContent className="p-3 sm:p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700 mb-2 block">Fecha Desde</Label>
                   <Input
@@ -526,8 +516,8 @@ export default function LogAuditoriaPage() {
           {/* Filtros Avanzados */}
           {mostrarFiltrosAvanzados && (
             <Card className="mb-4">
-              <CardContent className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <CardContent className="p-3 sm:p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   <div>
                     <Label htmlFor="fecha-desde">Fecha Desde</Label>
                     <Input
@@ -586,55 +576,55 @@ export default function LogAuditoriaPage() {
         <div>
             {/* Estadísticas */}
             {estadisticas && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Cambios</p>
-                    <p className="text-2xl font-bold">{estadisticas.total_cambios}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Total Cambios</p>
+                    <p className="text-xl sm:text-2xl font-bold">{estadisticas.total_cambios}</p>
                   </div>
-                  <BarChart3 className="h-8 w-8 text-blue-600" />
+                  <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 flex-shrink-0" />
                 </div>
               </CardContent>
             </Card>
             
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Evaluadores con Cambios</p>
-                    <p className="text-2xl font-bold text-yellow-600">{estadisticas.evaluadores_con_cambios}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Evaluadores con Cambios</p>
+                    <p className="text-xl sm:text-2xl font-bold text-yellow-600">{estadisticas.evaluadores_con_cambios}</p>
                   </div>
-                  <Users className="h-8 w-8 text-yellow-600" />
+                  <Users className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-600 flex-shrink-0" />
                 </div>
               </CardContent>
             </Card>
             
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Olimpistas Afectados</p>
-                    <p className="text-2xl font-bold text-green-600">{estadisticas.olimpistas_afectados}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Olimpistas Afectados</p>
+                    <p className="text-xl sm:text-2xl font-bold text-green-600">{estadisticas.olimpistas_afectados}</p>
                   </div>
-                  <CheckCircle className="h-8 w-8 text-green-600" />
+                  <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-600 flex-shrink-0" />
                 </div>
               </CardContent>
             </Card>
             
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Promedio Diferencia</p>
-                    <p className="text-2xl font-bold text-purple-600">
+                    <p className="text-xs sm:text-sm text-muted-foreground">Promedio Diferencia</p>
+                    <p className="text-xl sm:text-2xl font-bold text-purple-600">
                       {estadisticas?.promedio_diferencia && typeof estadisticas.promedio_diferencia === 'number' 
                         ? estadisticas.promedio_diferencia.toFixed(2) 
                         : '0.00'}
                     </p>
                   </div>
-                  <TrendingUp className="h-8 w-8 text-purple-600" />
+                  <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600 flex-shrink-0" />
                 </div>
               </CardContent>
             </Card>
@@ -644,28 +634,28 @@ export default function LogAuditoriaPage() {
         {/* Sección de Reclamos */}
         <Card className="mb-6 border-l-4 border-l-red-500">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-600" />
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
               Gestión de Reclamos
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Herramientas específicas para manejar reclamos sobre cambios de notas
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              <div className="p-3 sm:p-4 bg-red-50 rounded-lg border border-red-200">
                 <div className="flex items-center gap-2 mb-2">
-                  <FileText className="h-4 w-4 text-red-600" />
-                  <span className="font-medium text-red-800">Reporte de Reclamo</span>
+                  <FileText className="h-4 w-4 text-red-600 flex-shrink-0" />
+                  <span className="font-medium text-red-800 text-sm sm:text-base">Reporte de Reclamo</span>
                 </div>
-                <p className="text-sm text-red-700 mb-3">
+                <p className="text-xs sm:text-sm text-red-700 mb-3">
                   Genera un reporte detallado de cambios para casos específicos
                 </p>
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  className="border-red-300 text-red-700 hover:bg-red-100"
+                  className="border-red-300 text-red-700 hover:bg-red-100 w-full sm:w-auto text-xs sm:text-sm"
                   onClick={() => {
                     const logsFiltrados = getLogsFiltrados()
                     const workbook = generarXLSXReclamos(logsFiltrados)
@@ -678,28 +668,28 @@ export default function LogAuditoriaPage() {
                 </Button>
               </div>
               
-              <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+              <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                 <div className="flex items-center gap-2 mb-2">
-                  <Clock className="h-4 w-4 text-yellow-600" />
-                  <span className="font-medium text-yellow-800">Cambios Pendientes</span>
+                  <Clock className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                  <span className="font-medium text-yellow-800 text-sm sm:text-base">Cambios Pendientes</span>
                 </div>
-                <p className="text-sm text-yellow-700 mb-3">
+                <p className="text-xs sm:text-sm text-yellow-700 mb-3">
                   Revisa cambios que requieren aprobación del coordinador
                 </p>
-                <div className="text-2xl font-bold text-yellow-800">
+                <div className="text-xl sm:text-2xl font-bold text-yellow-800">
                   {estadisticas?.cambios_pendientes || cambiosPendientes || 0}
                 </div>
               </div>
               
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center gap-2 mb-2">
-                  <Activity className="h-4 w-4 text-blue-600" />
-                  <span className="font-medium text-blue-800">Trazabilidad</span>
+                  <Activity className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                  <span className="font-medium text-blue-800 text-sm sm:text-base">Trazabilidad</span>
                 </div>
-                <p className="text-sm text-blue-700 mb-3">
+                <p className="text-xs sm:text-sm text-blue-700 mb-3">
                   Historial completo de modificaciones con timestamps
                 </p>
-                <div className="text-2xl font-bold text-blue-800">
+                <div className="text-xl sm:text-2xl font-bold text-blue-800">
                   {estadisticas?.total_cambios || 0}
                 </div>
               </div>
@@ -729,82 +719,83 @@ export default function LogAuditoriaPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-gray-50">
-                    <TableRow>
-                      <TableHead className="font-semibold text-gray-700">Estado</TableHead>
-                      <TableHead className="font-semibold text-gray-700">Evaluador</TableHead>
-                      <TableHead className="font-semibold text-gray-700">Fecha/Hora</TableHead>
-                      <TableHead className="font-semibold text-gray-700">Participante</TableHead>
-                      <TableHead className="font-semibold text-gray-700">Área/Nivel</TableHead>
-                      <TableHead className="font-semibold text-gray-700">Cambio de Nota</TableHead>
-                      <TableHead className="font-semibold text-gray-700">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {logsFiltrados.map((log) => (
-                      <TableRow key={log.id} className="hover:bg-gray-50">
-                        <TableCell>
-                          {getEstadoBadge(log.estado_aprobacion)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                              <User className="h-3 w-3 text-blue-600" />
-                            </div>
-                            <div>
-                              <div className="font-medium text-gray-900">{log.evaluador_nombre}</div>
-                              <div className="text-xs text-gray-500">ID: {log.evaluador_id}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm text-gray-600">
-                          <div>
-                            <div>{new Date(log.fecha_cambio).toLocaleDateString('es-ES')}</div>
-                            <div className="text-xs text-gray-500">{new Date(log.fecha_cambio).toLocaleTimeString('es-ES')}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium text-gray-900">{log.olimpista_nombre}</div>
-                            <div className="text-xs text-gray-500">ID: {log.olimpista_id}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <Badge variant="outline" className="text-xs">
-                              {log.area_nombre}
-                            </Badge>
-                            <div className="text-xs text-gray-500">{log.nivel_nombre}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="max-w-xs">
-                            <div className="flex items-center gap-2 text-sm font-mono">
-                              {log.nota_anterior && (
-                                <span className="text-red-600 bg-red-50 px-2 py-1 rounded">
-                                  {log.nota_anterior}
-                                </span>
-                              )}
-                              {log.nota_anterior && log.nota_nueva && (
-                                <span className="text-gray-400">→</span>
-                              )}
-                              {log.nota_nueva && (
-                                <span className="text-green-600 bg-green-50 px-2 py-1 rounded">
-                                  {log.nota_nueva}
-                                </span>
-                              )}
-                            </div>
-                            {log.motivo_cambio && (
-                              <div className="text-xs text-gray-500 mt-1 italic max-w-xs truncate">
-                                "{log.motivo_cambio}"
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Estado</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Evaluador</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Fecha/Hora</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Participante</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Área/Nivel</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Cambio de Nota</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {logsFiltrados.map((log) => (
+                        <TableRow key={log.id} className="hover:bg-gray-50">
+                          <TableCell className="text-xs sm:text-sm">
+                            {getEstadoBadge(log.estado_aprobacion)}
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            <div className="flex items-center gap-1 sm:gap-2">
+                              <div className="w-5 h-5 sm:w-6 sm:h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <User className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-blue-600" />
                               </div>
-                            )}
-                          </div>
-                        </TableCell>
+                              <div className="min-w-0">
+                                <div className="font-medium text-gray-900 truncate">{log.evaluador_nombre}</div>
+                                <div className="text-xs text-gray-500">ID: {log.evaluador_id}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs sm:text-sm text-gray-600 whitespace-nowrap">
+                            <div>
+                              <div>{new Date(log.fecha_cambio).toLocaleDateString('es-ES')}</div>
+                              <div className="text-xs text-gray-500">{new Date(log.fecha_cambio).toLocaleTimeString('es-ES')}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            <div className="min-w-0">
+                              <div className="font-medium text-gray-900 truncate">{log.olimpista_nombre}</div>
+                              <div className="text-xs text-gray-500">ID: {log.olimpista_id}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            <div className="space-y-1">
+                              <Badge variant="outline" className="text-xs">
+                                {log.area_nombre}
+                              </Badge>
+                              <div className="text-xs text-gray-500">{log.nivel_nombre}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            <div className="max-w-xs">
+                              <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm font-mono flex-wrap">
+                                {log.nota_anterior && (
+                                  <span className="text-red-600 bg-red-50 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
+                                    {log.nota_anterior}
+                                  </span>
+                                )}
+                                {log.nota_anterior && log.nota_nueva && (
+                                  <span className="text-gray-400">→</span>
+                                )}
+                                {log.nota_nueva && (
+                                  <span className="text-green-600 bg-green-50 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
+                                    {log.nota_nueva}
+                                  </span>
+                                )}
+                              </div>
+                              {log.motivo_cambio && (
+                                <div className="text-xs text-gray-500 mt-1 italic max-w-xs truncate">
+                                  "{log.motivo_cambio}"
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                             {log.estado_aprobacion === 'pendiente' && (
                               <Button
                                 variant="default"
@@ -815,10 +806,10 @@ export default function LogAuditoriaPage() {
                                   setObservacionesCoordinador('')
                                   setIsModalRevisionOpen(true)
                                 }}
-                                className="h-8 bg-orange-500 hover:bg-orange-600 text-white"
+                                className="h-7 sm:h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs sm:text-sm"
                               >
                                 <Eye className="h-3 w-3 mr-1" />
-                                Revisar
+                                <span className="hidden sm:inline">Revisar</span>
                               </Button>
                             )}
                             <Button
@@ -828,9 +819,10 @@ export default function LogAuditoriaPage() {
                                 setSelectedLog(log)
                                 setIsModalOpen(true)
                               }}
-                              className="h-8 w-8 p-0"
+                              className="h-7 sm:h-8 w-7 sm:w-8 p-0"
+                              title="Ver detalles"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -840,9 +832,10 @@ export default function LogAuditoriaPage() {
                                 XLSX.writeFile(workbook, `reclamo-${log.id}-${new Date().toISOString().split('T')[0]}.xlsx`)
                                 success('Reporte generado', `Reporte individual del cambio ${log.id} exportado`)
                               }}
-                              className="h-8 w-8 p-0"
+                              className="h-7 sm:h-8 w-7 sm:w-8 p-0"
+                              title="Exportar"
                             >
-                              <Download className="h-4 w-4" />
+                              <Download className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -850,6 +843,7 @@ export default function LogAuditoriaPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )}
           </CardContent>
@@ -857,7 +851,7 @@ export default function LogAuditoriaPage() {
 
         {/* Modal de Detalles */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
@@ -908,19 +902,19 @@ export default function LogAuditoriaPage() {
                 {/* Cambios de Nota */}
                 <div className="border-t pt-4">
                   <Label className="text-sm font-medium text-gray-500 mb-3 block">Cambios en la Evaluación</Label>
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-center gap-6">
+                  <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
                       {selectedLog.nota_anterior && (
                         <div className="text-center">
                           <p className="text-xs text-gray-500 mb-1">Nota Anterior</p>
-                          <div className="text-2xl font-mono text-red-600 bg-red-100 px-4 py-2 rounded-lg">
+                          <div className="text-xl sm:text-2xl font-mono text-red-600 bg-red-100 px-3 sm:px-4 py-2 rounded-lg">
                             {selectedLog.nota_anterior}
                           </div>
                         </div>
                       )}
                       {selectedLog.nota_anterior && selectedLog.nota_nueva && (
                         <div className="text-center">
-                          <div className="text-gray-400 text-2xl">→</div>
+                          <div className="text-gray-400 text-xl sm:text-2xl">→</div>
                           <div className="text-xs text-gray-500 mt-1">
                             Diferencia: {typeof selectedLog.nota_nueva === 'number' && typeof selectedLog.nota_anterior === 'number' 
                               ? (selectedLog.nota_nueva - selectedLog.nota_anterior).toFixed(2) 
@@ -931,7 +925,7 @@ export default function LogAuditoriaPage() {
                       {selectedLog.nota_nueva && (
                         <div className="text-center">
                           <p className="text-xs text-gray-500 mb-1">Nota Nueva</p>
-                          <div className="text-2xl font-mono text-green-600 bg-green-100 px-4 py-2 rounded-lg">
+                          <div className="text-xl sm:text-2xl font-mono text-green-600 bg-green-100 px-3 sm:px-4 py-2 rounded-lg">
                             {selectedLog.nota_nueva}
                           </div>
                         </div>
@@ -996,7 +990,7 @@ export default function LogAuditoriaPage() {
                 </div>
                 
                 {/* Botones de Acción */}
-                <div className="border-t pt-4 flex justify-end gap-2">
+                <div className="border-t pt-4 flex flex-col sm:flex-row justify-end gap-2">
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -1004,11 +998,12 @@ export default function LogAuditoriaPage() {
                       XLSX.writeFile(workbook, `reclamo-detallado-${selectedLog.id}-${new Date().toISOString().split('T')[0]}.xlsx`)
                       success('Reporte generado', 'Reporte detallado exportado para reclamos')
                     }}
+                    className="w-full sm:w-auto"
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Exportar para Reclamo
                   </Button>
-                  <Button onClick={() => setIsModalOpen(false)}>
+                  <Button onClick={() => setIsModalOpen(false)} className="w-full sm:w-auto">
                     Cerrar
                   </Button>
                 </div>
@@ -1019,7 +1014,7 @@ export default function LogAuditoriaPage() {
 
         {/* Modal de Revisión */}
         <Dialog open={isModalRevisionOpen} onOpenChange={setIsModalRevisionOpen}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
@@ -1062,19 +1057,19 @@ export default function LogAuditoriaPage() {
                 {/* Cambios de Nota */}
                 <div className="border-t pt-4">
                   <Label className="text-sm font-medium text-gray-500 mb-3 block">Cambios en la Evaluación</Label>
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-center gap-6">
+                  <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
                       {selectedCambioRevision.nota_anterior && (
                         <div className="text-center">
                           <p className="text-xs text-gray-500 mb-1">Nota Anterior</p>
-                          <div className="text-2xl font-mono text-red-600 bg-red-100 px-4 py-2 rounded-lg">
+                          <div className="text-xl sm:text-2xl font-mono text-red-600 bg-red-100 px-3 sm:px-4 py-2 rounded-lg">
                             {selectedCambioRevision.nota_anterior}
                           </div>
                         </div>
                       )}
                       {selectedCambioRevision.nota_anterior && selectedCambioRevision.nota_nueva && (
                         <div className="text-center">
-                          <div className="text-gray-400 text-2xl">→</div>
+                          <div className="text-gray-400 text-xl sm:text-2xl">→</div>
                           <div className="text-xs text-gray-500 mt-1">
                             Diferencia: {typeof selectedCambioRevision.nota_nueva === 'number' && typeof selectedCambioRevision.nota_anterior === 'number' 
                               ? (selectedCambioRevision.nota_nueva - selectedCambioRevision.nota_anterior).toFixed(2) 
@@ -1085,7 +1080,7 @@ export default function LogAuditoriaPage() {
                       {selectedCambioRevision.nota_nueva && (
                         <div className="text-center">
                           <p className="text-xs text-gray-500 mb-1">Nota Nueva</p>
-                          <div className="text-2xl font-mono text-green-600 bg-green-100 px-4 py-2 rounded-lg">
+                          <div className="text-xl sm:text-2xl font-mono text-green-600 bg-green-100 px-3 sm:px-4 py-2 rounded-lg">
                             {selectedCambioRevision.nota_nueva}
                           </div>
                         </div>
@@ -1117,11 +1112,11 @@ export default function LogAuditoriaPage() {
                 {/* Acción a realizar */}
                 <div className="border-t pt-4">
                   <Label className="text-sm font-medium text-gray-500 mb-3 block">Acción a Realizar</Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       variant={accionRevision === 'aprobar' ? 'default' : 'outline'}
                       onClick={() => setAccionRevision('aprobar')}
-                      className={accionRevision === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : ''}
+                      className={`w-full sm:w-auto ${accionRevision === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : ''}`}
                     >
                       <CheckCircle className="h-4 w-4 mr-2" />
                       Aprobar
@@ -1129,7 +1124,7 @@ export default function LogAuditoriaPage() {
                     <Button
                       variant={accionRevision === 'rechazar' ? 'default' : 'outline'}
                       onClick={() => setAccionRevision('rechazar')}
-                      className={accionRevision === 'rechazar' ? 'bg-red-600 hover:bg-red-700' : ''}
+                      className={`w-full sm:w-auto ${accionRevision === 'rechazar' ? 'bg-red-600 hover:bg-red-700' : ''}`}
                     >
                       <XCircle className="h-4 w-4 mr-2" />
                       Rechazar
@@ -1137,7 +1132,7 @@ export default function LogAuditoriaPage() {
                     <Button
                       variant={accionRevision === 'solicitar_info' ? 'default' : 'outline'}
                       onClick={() => setAccionRevision('solicitar_info')}
-                      className={accionRevision === 'solicitar_info' ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                      className={`w-full sm:w-auto ${accionRevision === 'solicitar_info' ? 'bg-orange-600 hover:bg-orange-700' : ''}`}
                     >
                       <Info className="h-4 w-4 mr-2" />
                       Solicitar Info
@@ -1174,7 +1169,7 @@ export default function LogAuditoriaPage() {
                 )}
                 
                 {/* Botones de Acción */}
-                <div className="border-t pt-4 flex justify-end gap-2">
+                <div className="border-t pt-4 flex flex-col sm:flex-row justify-end gap-2">
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -1183,17 +1178,18 @@ export default function LogAuditoriaPage() {
                       setObservacionesCoordinador('')
                     }}
                     disabled={submitting}
+                    className="w-full sm:w-auto"
                   >
                     Cancelar
                   </Button>
                   <Button
                     onClick={handleProcesarCambio}
                     disabled={submitting || (accionRevision === 'solicitar_info' && !observacionesCoordinador.trim())}
-                    className={
+                    className={`w-full sm:w-auto ${
                       accionRevision === 'aprobar' ? 'bg-green-600 hover:bg-green-700' :
                       accionRevision === 'rechazar' ? 'bg-red-600 hover:bg-red-700' :
                       'bg-orange-600 hover:bg-orange-700'
-                    }
+                    }`}
                   >
                     {submitting ? (
                       <>

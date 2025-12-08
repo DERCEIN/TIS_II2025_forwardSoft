@@ -1980,7 +1980,7 @@ class CoordinadorController
                                $estadoCierreFaseFinal['estado'] === 'cerrada' && 
                                $estadoCierreFaseFinal['fecha_cierre'] !== null;
             
-            // Si la fase final está cerrada, usar medalla_asignada. Si no, usar rangos de puntuación como aproximación
+           
             if ($faseFinalCerrada) {
                 $sqlNiveles = "
                     SELECT 

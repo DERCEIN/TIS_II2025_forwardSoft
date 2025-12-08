@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Trophy, ChevronRight, LogIn, ChevronLeft, Download, Microscope, Atom, Globe, Calculator, FlaskConical, FileText } from "lucide-react";
+import { Trophy, ChevronRight, LogIn, ChevronLeft, Download, Microscope, Atom, Globe, Calculator, FlaskConical, FileText, Menu, X } from "lucide-react";
 import Link from "next/link";
 import jsPDF from "jspdf";
 import { ConfiguracionService, CatalogoService } from "@/lib/api";
@@ -47,6 +47,7 @@ export default function LandingPage() {
   const [areas, setAreas] = useState<AreaConvocatoria[]>([]);
   const [loadingAreas, setLoadingAreas] = useState(true);
   const [contactos, setContactos] = useState<any[]>([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -532,14 +533,15 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center space-x-3">
-              <img src="/sansi-logo.png" alt="SanSi Logo" className="h-10 w-auto" />
-              <span className="text-xl font-heading font-bold text-foreground">Olimpiada Oh! SanSi</span>
+            <Link href="/" className="flex items-center space-x-2 sm:space-x-3">
+              <img src="/sansi-logo.png" alt="SanSi Logo" className="h-8 sm:h-10 w-auto" />
+              <span className="text-lg sm:text-xl font-heading font-bold text-foreground">Olimpiada Oh! SanSi</span>
             </Link>
 
-            <nav className="hidden md:flex items-center space-x-8">
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
               <a href="#inicio" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Inicio
               </a>
@@ -569,65 +571,126 @@ export default function LandingPage() {
               </Link>
             </nav>
 
-            <Link href="/login">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                <LogIn className="h-4 w-4 mr-2" />
-                Acceso
+            {/* Desktop Login Button */}
+            <div className="hidden md:flex items-center gap-3">
+              <Link href="/login">
+                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Acceso
+                </Button>
+              </Link>
+            </div>
+
+            {/* Mobile Menu Button */}
+            <div className="flex md:hidden items-center gap-2">
+              <Link href="/login">
+                <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <LogIn className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2"
+              >
+                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </Button>
-            </Link>
+            </div>
           </div>
+
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <nav className="md:hidden mt-4 pb-4 border-t pt-4 space-y-3 animate-in slide-in-from-top">
+              <a 
+                href="#inicio" 
+                className="block text-sm font-medium text-foreground hover:text-primary transition-colors py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Inicio
+              </a>
+              <Link
+                href="/cronograma"
+                className="block text-sm font-medium text-muted-foreground hover:text-primary transition-colors py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Etapas
+              </Link>
+              <Link
+                href="/resultados"
+                className="block text-sm font-medium text-muted-foreground hover:text-primary transition-colors py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Resultados
+              </Link>
+              <Link
+                href="/medallero"
+                className="block text-sm font-medium text-muted-foreground hover:text-primary transition-colors py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Medallero
+              </Link>
+              <Link
+                href="/contactos"
+                className="block text-sm font-medium text-muted-foreground hover:text-primary transition-colors py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Contacto
+              </Link>
+            </nav>
+          )}
         </div>
       </header>
 
       {/* Banner Section */}
-      <section id="inicio" className="relative py-16 bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 overflow-hidden">
+      <section id="inicio" className="relative py-12 sm:py-16 bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }} />
         </div>
-        <div className="relative container mx-auto px-6 text-center">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-heading font-bold text-blue-900 mb-4">
+        <div className="relative container mx-auto px-4 sm:px-6 text-center">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-heading font-bold text-blue-900 mb-3 sm:mb-4">
             Olimpiada Oh! SanSi
           </h1>
-          <p className="text-xl md:text-2xl text-blue-800 font-medium">
+          <p className="text-lg sm:text-xl md:text-2xl text-blue-800 font-medium px-4">
             Olimpiada en Ciencias y Tecnología
           </p>
         </div>
       </section>
 
       {/* Stats Section */}
-      <section className="py-16 bg-gradient-to-b from-white to-blue-50">
-        <div className="container mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+      <section className="py-12 sm:py-16 bg-gradient-to-b from-white to-blue-50">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-heading font-bold text-primary mb-2">1,247</div>
-              <div className="text-sm text-muted-foreground">Estudiantes Inscritos</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary mb-1 sm:mb-2">1,247</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Estudiantes Inscritos</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-heading font-bold text-primary mb-2">6</div>
-              <div className="text-sm text-muted-foreground">Áreas de Competencia</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary mb-1 sm:mb-2">6</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Áreas de Competencia</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-heading font-bold text-primary mb-2">89</div>
-              <div className="text-sm text-muted-foreground">Instituciones</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary mb-1 sm:mb-2">89</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Instituciones</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-heading font-bold text-primary mb-2">15</div>
-              <div className="text-sm text-muted-foreground">Años de Historia</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary mb-1 sm:mb-2">15</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Años de Historia</div>
             </div>
           </div>
         </div>
       </section>
 
       {/* Convocatorias Específicas Section */}
-      <section className="py-20 bg-gradient-to-b from-blue-50 to-white">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-heading font-bold text-blue-900 mb-2">
+      <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-b from-blue-50 to-white">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-blue-900 mb-2">
               CONVOCATORIAS ESPECÍFICAS
             </h2>
-            <div className="w-24 h-1 bg-blue-600 mx-auto"></div>
+            <div className="w-16 sm:w-24 h-1 bg-blue-600 mx-auto"></div>
           </div>
 
           {loadingAreas ? (
@@ -640,15 +703,16 @@ export default function LandingPage() {
             <div className="relative">
               <button
                 onClick={() => scrollCarousel("left")}
-                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors"
+                className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors"
                 aria-label="Anterior"
               >
-                <ChevronLeft className="h-6 w-6 text-gray-700" />
+                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6 text-gray-700" />
               </button>
 
               <div
                 ref={carouselRef}
-                className="flex gap-6 overflow-x-auto scroll-smooth px-12 hide-scrollbar"
+                className="flex gap-4 sm:gap-6 overflow-x-auto scroll-smooth px-2 sm:px-12 hide-scrollbar snap-x snap-mandatory"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
               >
                 {areas.map((area) => {
                   const areaNameKey = area.nombre.replace(/[áéíóúÁÉÍÓÚ]/g, (char) => {
@@ -659,24 +723,24 @@ export default function LandingPage() {
                   const IconComponent = iconConfig.icon;
 
                   return (
-                    <div key={area.id} className="flex-shrink-0 w-64">
-                      <Card className="border-2 border-blue-200 hover:border-blue-400 transition-all hover:shadow-lg">
-                        <CardContent className="p-6 text-center">
-                          <div className="relative w-28 h-28 mx-auto mb-4">
+                    <div key={area.id} className="flex-shrink-0 w-[calc(100vw-2rem)] sm:w-[280px] md:w-64 snap-center snap-always">
+                      <Card className="border-2 border-blue-200 hover:border-blue-400 transition-all hover:shadow-lg h-full">
+                        <CardContent className="p-4 sm:p-6 text-center">
+                          <div className="relative w-20 h-20 sm:w-28 sm:h-28 mx-auto mb-3 sm:mb-4">
                             <div className={`w-full h-full rounded-full ${iconConfig.color} flex items-center justify-center shadow-lg border-4 border-white`}>
-                              <IconComponent className="h-14 w-14 text-white" />
+                              <IconComponent className="h-10 w-10 sm:h-14 sm:w-14 text-white" />
                             </div>
-                            <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 w-full px-2 py-1 rounded-full ${iconConfig.color} border-2 border-white shadow-md`}>
-                              <span className="text-xs font-bold text-white">{area.nombre.toUpperCase()}</span>
+                            <div className={`absolute -bottom-1 sm:-bottom-2 left-1/2 -translate-x-1/2 w-full px-1 sm:px-2 py-0.5 sm:py-1 rounded-full ${iconConfig.color} border-2 border-white shadow-md`}>
+                              <span className="text-[10px] sm:text-xs font-bold text-white leading-tight">{area.nombre.toUpperCase()}</span>
                             </div>
                           </div>
                           <Button
                             onClick={() => generarPDFConvocatoria(area)}
                             variant="outline"
-                            className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 mt-8"
+                            className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 mt-4 sm:mt-8 text-xs sm:text-sm"
                           >
-                            <Download className="h-4 w-4 mr-2" />
-                            {area.nombre}
+                            <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="truncate">{area.nombre}</span>
                           </Button>
                         </CardContent>
                       </Card>
@@ -687,10 +751,10 @@ export default function LandingPage() {
 
               <button
                 onClick={() => scrollCarousel("right")}
-                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors"
+                className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors"
                 aria-label="Siguiente"
               >
-                <ChevronRight className="h-6 w-6 text-gray-700" />
+                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6 text-gray-700" />
               </button>
             </div>
           )}
@@ -698,25 +762,25 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 bg-slate-50 border-t">
-        <div className="container mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <footer className="py-8 sm:py-12 bg-slate-50 border-t">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
             <div>
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Trophy className="h-5 w-5 text-white" />
+              <div className="flex items-center space-x-2 mb-3 sm:mb-4">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
-                <span className="text-xl font-heading font-bold text-slate-800">Olimpiada Oh! SanSi</span>
+                <span className="text-lg sm:text-xl font-heading font-bold text-slate-800">Olimpiada Oh! SanSi</span>
               </div>
-              <p className="text-sm text-slate-700 max-w-md">
+              <p className="text-xs sm:text-sm text-slate-700 max-w-md">
                 Olimpiada en Ciencias y Tecnología de la Universidad Mayor de San Simón, promoviendo la excelencia
                 académica en Bolivia desde 2010.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-800 mb-4">Enlaces</h3>
-              <ul className="space-y-2 text-sm text-slate-700">
+              <h3 className="font-semibold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Enlaces</h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
                 <li>
                   <a href="#inicio" className="hover:text-blue-600 transition-colors">
                     Inicio
@@ -732,21 +796,26 @@ export default function LandingPage() {
                     Resultados
                   </Link>
                 </li>
+                <li>
+                  <Link href="/medallero" className="hover:text-blue-600 transition-colors">
+                    Medallero
+                  </Link>
+                </li>
               </ul>
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-800 mb-4">Contacto</h3>
-              <ul className="space-y-2 text-sm text-slate-700">
+              <h3 className="font-semibold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Contacto</h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
                 <li>Universidad Mayor de San Simón</li>
                 <li>Cochabamba, Bolivia</li>
-                <li>info@olimpiadaohsansi.edu.bo</li>
+                <li className="break-all">info@olimpiadaohsansi.edu.bo</li>
                 <li>+591 4 123-4567</li>
               </ul>
             </div>
           </div>
 
-          <div className="border-t border-slate-200 mt-8 pt-8 text-center text-sm text-slate-600">
+          <div className="border-t border-slate-200 mt-6 sm:mt-8 pt-6 sm:pt-8 text-center text-xs sm:text-sm text-slate-600">
             <p>&copy; 2025 Olimpiada Oh! SanSi - Universidad Mayor de San Simón. Todos los derechos reservados.</p>
           </div>
         </div>
