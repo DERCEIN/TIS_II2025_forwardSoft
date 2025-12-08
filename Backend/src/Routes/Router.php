@@ -196,6 +196,8 @@ class Router
         $this->addRoute('GET', '/api/catalogo/niveles', [CatalogoController::class, 'niveles'], ['auth']);
         $this->addRoute('GET', '/api/catalogo/areas-competencia', [CatalogoController::class, 'areasCompetencia'], ['auth']);
         $this->addRoute('GET', '/api/catalogo/areas-competencia-estadisticas', [CatalogoController::class, 'areasCompetenciaConEstadisticas'], ['auth']);
+        $this->addRoute('PUT', '/api/catalogo/areas-competencia/toggle-status', [CatalogoController::class, 'toggleAreaStatus'], ['auth', 'admin']);
+        $this->addRoute('PUT', '/api/catalogo/areas-competencia/toggle-grupos', [CatalogoController::class, 'togglePermiteGrupos'], ['auth', 'admin']);
 
         // Rutas de publicación de resultados
         $this->addRoute('POST', '/api/publicacion-resultados/publicar', [PublicacionResultadosController::class, 'publicarResultados'], ['auth']);

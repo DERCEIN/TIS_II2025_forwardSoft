@@ -1416,6 +1416,14 @@ export class CatalogoService {
   static async areasCompetenciaConEstadisticas() {
     return ApiService.get('/api/catalogo/areas-competencia-estadisticas')
   }
+
+  static async toggleAreaStatus(id: number, isActive: boolean) {
+    return ApiService.put('/api/catalogo/areas-competencia/toggle-status', { id, is_active: isActive })
+  }
+
+  static async togglePermiteGrupos(id: number, permiteGrupos: boolean) {
+    return ApiService.put('/api/catalogo/areas-competencia/toggle-grupos', { id, permite_grupos: permiteGrupos })
+  }
 }
 
 export class EvaluadorService {

@@ -76,6 +76,14 @@ interface Participante {
 
   fecha_evaluacion?: string
 
+  es_grupo?: boolean
+
+  nombre_grupo?: string
+
+  integrantes_grupo?: string
+
+  permite_grupos?: boolean
+
 }
 
 
@@ -248,6 +256,11 @@ export default function RegistroNotas() {
         inscripcion_estado: row.inscripcion_estado || row.estado || 'inscrito',
 
         fecha_evaluacion: row.fecha_asignacion || row.fecha_evaluacion || row.updated_at || row.created_at || undefined,
+
+        es_grupo: row.es_grupo === true || row.es_grupo === 't' || row.es_grupo === 1,
+        nombre_grupo: row.nombre_grupo || null,
+        integrantes_grupo: row.integrantes_grupo || null,
+        permite_grupos: row.permite_grupos === true || row.permite_grupos === 't' || row.permite_grupos === 1,
 
         }
       })
@@ -1186,21 +1199,42 @@ export default function RegistroNotas() {
   const nivelesUnicos = [...new Set(participantes.map(p => p.nivel))]
 
  
+  // Agrupar participantes: primero por grupos (si el área permite grupos), luego por nivel y grado
   const participantesAgrupados = participantesFiltrados.reduce((acc, participante) => {
     const nivel = participante.nivel || 'Sin nivel'
     const grado = participante.grado_escolaridad || participante.nivel || 'Sin grado'
+    
+    // Si el área permite grupos y el participante es parte de un grupo, agrupar por nombre_grupo
+    let grupoKey = grado
+    if (participante.permite_grupos && participante.es_grupo && participante.nombre_grupo) {
+      grupoKey = `GRUPO: ${participante.nombre_grupo}`
+    }
     
     if (!acc[nivel]) {
       acc[nivel] = {}
     }
     
-    if (!acc[nivel][grado]) {
-      acc[nivel][grado] = []
+    if (!acc[nivel][grupoKey]) {
+      acc[nivel][grupoKey] = []
     }
     
-    acc[nivel][grado].push(participante)
+    acc[nivel][grupoKey].push(participante)
     return acc
   }, {} as Record<string, Record<string, Participante[]>>)
+  
+  // Ordenar grupos para que aparezcan primero los grupos, luego los individuales
+  Object.keys(participantesAgrupados).forEach(nivel => {
+    const grados = participantesAgrupados[nivel]
+    const sortedGrados: Record<string, Participante[]> = {}
+    const grupos = Object.keys(grados).filter(k => k.startsWith('GRUPO:'))
+    const individuales = Object.keys(grados).filter(k => !k.startsWith('GRUPO:'))
+    
+    // Primero los grupos, luego los individuales
+    grupos.forEach(k => sortedGrados[k] = grados[k])
+    individuales.forEach(k => sortedGrados[k] = grados[k])
+    
+    participantesAgrupados[nivel] = sortedGrados
+  })
 
 
 
@@ -1655,16 +1689,31 @@ export default function RegistroNotas() {
                                 </TableCell>
                               </TableRow>
                             )}
-                            {/* Encabezado de grado */}
-                            <TableRow className="bg-gray-50 hover:bg-gray-50">
-                              <TableCell colSpan={8} className="py-1 px-4 pl-8">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {grado}
-                                  </Badge>
-                                  <span className="text-xs text-gray-500">
-                                    ({participantesGrado.length} participante{participantesGrado.length !== 1 ? 's' : ''})
-                                  </span>
+                            {/* Encabezado de grado/grupo */}
+                            <TableRow className={grado.startsWith('GRUPO:') ? "bg-purple-50 hover:bg-purple-50" : "bg-gray-50 hover:bg-gray-50"}>
+                              <TableCell colSpan={8} className="py-2 px-4 pl-8">
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-2">
+                                    {grado.startsWith('GRUPO:') ? (
+                                      <>
+                                        <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-300 font-semibold">
+                                          🎯 {grado.replace('GRUPO: ', '')}
+                                        </Badge>
+                                        <span className="text-xs text-purple-700 font-medium">
+                                          ({participantesGrado.length} integrante{participantesGrado.length !== 1 ? 's' : ''} del grupo)
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Badge variant="outline" className="text-xs">
+                                          {grado}
+                                        </Badge>
+                                        <span className="text-xs text-gray-500">
+                                          ({participantesGrado.length} participante{participantesGrado.length !== 1 ? 's' : ''})
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1684,12 +1733,27 @@ export default function RegistroNotas() {
 
                               </div>
 
-                              <div>
+                              <div className="flex-1">
 
-                                <p className="font-medium text-sm">{participante.nombre}</p>
-
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-sm">{participante.nombre}</p>
+                                  {participante.es_grupo && (
+                                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                      Grupo
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-500">{participante.documento}</p>
-
+                                {participante.es_grupo && participante.nombre_grupo && !grado.startsWith('GRUPO:') && (
+                                  <p className="text-xs text-blue-600 font-medium mt-1">
+                                    Grupo: {participante.nombre_grupo}
+                                  </p>
+                                )}
+                                {participante.es_grupo && participante.integrantes_grupo && (
+                                  <p className="text-xs text-gray-600 mt-0.5">
+                                    Integrantes: {participante.integrantes_grupo}
+                                  </p>
+                                )}
                               </div>
 
                             </div>

@@ -94,10 +94,14 @@ class EvaluadorController
                         ia.area_competencia_id,
                         ia.nivel_competencia_id,
                         ia.estado as inscripcion_estado,
+                        ia.es_grupo,
+                        ia.nombre_grupo,
+                        ia.integrantes_grupo,
                         o.nombre_completo as competidor,
                         o.documento_identidad,
                         o.grado_escolaridad,
                         ac.nombre as area_nombre,
+                        ac.permite_grupos,
                         nc.nombre as nivel_nombre,
                         COALESCE(ue.nombre, 'Sin institución') as institucion_nombre,
                         ae.fase,
@@ -167,7 +171,11 @@ class EvaluadorController
                     'observaciones' => $eval['observaciones'],
                     'evaluacion_id' => $eval['evaluacion_id'],
                     'fecha_evaluacion' => $eval['fecha_evaluacion'],
-                    'is_final' => $fase === 'final' ? true : ($eval['is_final'] === 't' || $eval['is_final'] === true)
+                    'is_final' => $fase === 'final' ? true : ($eval['is_final'] === 't' || $eval['is_final'] === true),
+                    'es_grupo' => $eval['es_grupo'] ?? false,
+                    'nombre_grupo' => $eval['nombre_grupo'] ?? null,
+                    'integrantes_grupo' => $eval['integrantes_grupo'] ?? null,
+                    'permite_grupos' => $eval['permite_grupos'] ?? false
                 ];
             }, $evaluaciones);
 

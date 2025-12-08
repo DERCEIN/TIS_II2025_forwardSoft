@@ -573,13 +573,13 @@ export default function LandingPage() {
 
             {/* Desktop Login Button */}
             <div className="hidden md:flex items-center gap-3">
-              <Link href="/login">
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Acceso
-                </Button>
-              </Link>
-            </div>
+            <Link href="/login">
+              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <LogIn className="h-4 w-4 mr-2" />
+                Acceso
+              </Button>
+            </Link>
+          </div>
 
             {/* Mobile Menu Button */}
             <div className="flex md:hidden items-center gap-2">

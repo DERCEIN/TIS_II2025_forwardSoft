@@ -40,6 +40,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import Link from "next/link"
 import { AdminService, ApiService, OlimpistaService, ConfiguracionService, CatalogoService, PublicacionResultadosService } from "@/lib/api"
 
@@ -949,7 +950,7 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
           <TabsContent value="areas" className="space-y-4 sm:space-y-6">
             <div className="mb-6">
               <h2 className="text-2xl font-bold mb-1">Áreas de Competencia</h2>
-              <p className="text-muted-foreground">Gestiona las áreas y su capacidad</p>
+              <p className="text-muted-foreground">Gestiona las áreas: activar/desactivar y configurar si permiten grupos</p>
             </div>
             
             {loadingAreas ? (
@@ -987,19 +988,94 @@ María,García,maria.garcia@gmail.com,coordinador,${areas.length > 1 ? areas[1].
                               <h3 className="text-lg sm:text-xl font-semibold text-slate-800">{area.nombre}</h3>
                               <Badge 
                                 variant="outline" 
-                                className={estaLlena 
-                                  ? "bg-slate-100 text-slate-600 border-slate-300" 
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                                className={area.is_active 
+                                  ? "bg-green-50 text-green-700 border-green-200" 
+                                  : "bg-red-50 text-red-700 border-red-200"
                                 }
                               >
-                                {estaLlena ? "Lleno" : "Activo"}
+                                {area.is_active ? "Activa" : "Inactiva"}
                               </Badge>
+                              {area.permite_grupos && (
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                  Permite Grupos
+                                </Badge>
+                              )}
                               {estadosPublicacion[area.id]?.publicado && (
                                 <Badge variant="default" className="bg-green-600">
                                   <Globe className="h-3 w-3 mr-1" />
                                   Publicado
                                 </Badge>
                               )}
+                            </div>
+                            
+                            {/* Controles simples */}
+                            <div className="flex flex-col sm:flex-row gap-4 mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <div className="flex items-center justify-between sm:justify-start gap-3">
+                                <Label htmlFor={`active-${area.id}`} className="text-sm font-medium text-slate-700">
+                                  Área Activa
+                                </Label>
+                                <Switch
+                                  id={`active-${area.id}`}
+                                  checked={area.is_active}
+                                  onCheckedChange={async (checked) => {
+                                    try {
+                                      const response = await CatalogoService.toggleAreaStatus(area.id, checked)
+                                      if (response.success) {
+                                        toast({
+                                          title: "Éxito",
+                                          description: checked ? "Área activada" : "Área desactivada",
+                                        })
+                                        await fetchAreas()
+                                      } else {
+                                        toast({
+                                          title: "Error",
+                                          description: response.message || "Error al cambiar estado",
+                                          variant: "destructive"
+                                        })
+                                      }
+                                    } catch (error: any) {
+                                      toast({
+                                        title: "Error",
+                                        description: error.message || "Error al cambiar estado",
+                                        variant: "destructive"
+                                      })
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between sm:justify-start gap-3">
+                                <Label htmlFor={`grupos-${area.id}`} className="text-sm font-medium text-slate-700">
+                                  Permite Grupos
+                                </Label>
+                                <Switch
+                                  id={`grupos-${area.id}`}
+                                  checked={area.permite_grupos || false}
+                                  onCheckedChange={async (checked) => {
+                                    try {
+                                      const response = await CatalogoService.togglePermiteGrupos(area.id, checked)
+                                      if (response.success) {
+                                        toast({
+                                          title: "Éxito",
+                                          description: checked ? "Permiso de grupos activado" : "Permiso de grupos desactivado",
+                                        })
+                                        await fetchAreas()
+                                      } else {
+                                        toast({
+                                          title: "Error",
+                                          description: response.message || "Error al cambiar permiso",
+                                          variant: "destructive"
+                                        })
+                                      }
+                                    } catch (error: any) {
+                                      toast({
+                                        title: "Error",
+                                        description: error.message || "Error al cambiar permiso",
+                                        variant: "destructive"
+                                      })
+                                    }
+                                  }}
+                                />
+                              </div>
                             </div>
                             
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4">

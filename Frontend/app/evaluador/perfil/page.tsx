@@ -93,8 +93,8 @@ export default function PerfilEvaluador() {
     }
   }
 
-  const passwordsMatch = newPassword && confirmPassword && newPassword === confirmPassword
-  const passwordsDontMatch = newPassword && confirmPassword && newPassword !== confirmPassword
+  const passwordsMatch = !!(newPassword && confirmPassword && newPassword === confirmPassword)
+  const passwordsDontMatch = !!(newPassword && confirmPassword && newPassword !== confirmPassword)
 
   const handleUploadAvatar = async (fileParam?: File) => {
     const fileToUpload = fileParam || avatarFile

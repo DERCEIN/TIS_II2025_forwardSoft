@@ -15,8 +15,6 @@ import {
   Upload, 
   Users, 
   Eye,
-  Edit,
-  Trash2,
   Plus,
   User,
   Mail,
@@ -382,12 +380,6 @@ export default function OlimpistasPage() {
                         onClick={() => handleViewDetails(olimpista)}
                       >
                         <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>

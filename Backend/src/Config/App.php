@@ -49,7 +49,7 @@ class App
 
     private static function setCorsHeaders()
     {
-        $allowedOrigins = explode(',', $_ENV['CORS_ALLOWED_ORIGINS'] ?? 'http://localhost:3000');
+        $allowedOrigins = explode(',', $_ENV['CORS_ALLOWED_ORIGINS'] ?? 'http://forwardsoft.tis.cs.umss.edu.bo/');
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
         if (in_array($origin, $allowedOrigins)) {
@@ -80,6 +80,6 @@ class App
 
     public static function getBaseUrl()
     {
-        return self::getEnv('APP_URL', 'http://localhost:8000');
+        return self::getEnv('APP_URL', 'http://forwardsoft.tis.cs.umss.edu.bo/');
     }
 }

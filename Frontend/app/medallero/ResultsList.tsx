@@ -33,41 +33,41 @@ export default function ResultsList({ medallistas, mencion }: ResultsListProps) 
   }
 
   return (
-  <div className="space-y-12 max-w-6xl mx-auto px-4">
+  <div className="space-y-12 max-w-6xl mx-auto">
     {/* Medallistas */}
     {medallistas.length > 0 && (
       <div>
-        <h2 className="text-3xl font-bold mb-6 text-primary text-center md:text-left">
+        <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-blue-900 text-center md:text-left">
           🏆 Medallistas
         </h2>
-        <div className="bg-card rounded-xl shadow-lg overflow-x-auto border border-border">
+        <div className="bg-white rounded-xl shadow-sm overflow-x-auto border border-gray-200">
           <table className="w-full min-w-[600px]">
             <thead>
-              <tr className="bg-primary text-primary-foreground">
-                <th className="px-4 py-3 text-left font-semibold">Posición</th>
-                <th className="px-4 py-3 text-left font-semibold">Nombre</th>
-                <th className="px-4 py-3 text-left font-semibold">Área</th>
-                <th className="px-4 py-3 text-left font-semibold">Nivel</th>
-                <th className="px-4 py-3 text-left font-semibold">Calificación</th>
-                <th className="px-4 py-3 text-left font-semibold">Medalla</th>
+              <tr className="bg-blue-600 text-white">
+                <th className="px-4 py-3 text-left text-sm font-semibold">Posición</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Nombre</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Área</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Nivel</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Calificación</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Medalla</th>
               </tr>
             </thead>
             <tbody>
               {medallistas.map((olimpista, idx) => (
                 <tr
                   key={olimpista.id}
-                  className={idx % 2 === 0 ? "bg-background" : "bg-muted"}
+                  className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
                 >
-                  <td className="px-4 py-3 font-semibold text-primary">
+                  <td className="px-4 py-3 font-semibold text-blue-600 text-sm">
                     #{olimpista.posicion}
                   </td>
-                  <td className="px-4 py-3">{olimpista.nombre}</td>
-                  <td className="px-4 py-3">{olimpista.area}</td>
-                  <td className="px-4 py-3">{olimpista.nivel}</td>
-                  <td className="px-4 py-3 font-semibold">{olimpista.calificacion}</td>
+                  <td className="px-4 py-3 text-gray-900 text-sm">{olimpista.nombre}</td>
+                  <td className="px-4 py-3 text-gray-700 text-sm">{olimpista.area}</td>
+                  <td className="px-4 py-3 text-gray-700 text-sm">{olimpista.nivel}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900 text-sm">{olimpista.calificacion}</td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getMedalColor(
+                      className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium ${getMedalColor(
                         olimpista.medalla || ""
                       )}`}
                     >
@@ -85,32 +85,32 @@ export default function ResultsList({ medallistas, mencion }: ResultsListProps) 
     {/* Mención de Honor */}
     {mencion.length > 0 && (
       <div>
-        <h2 className="text-3xl font-bold mb-6 text-accent text-center md:text-left">
+        <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-blue-900 text-center md:text-left">
           🎖️ Mención de Honor
         </h2>
-        <div className="bg-card rounded-xl shadow-lg overflow-x-auto border border-border">
+        <div className="bg-white rounded-xl shadow-sm overflow-x-auto border border-gray-200">
           <table className="w-full min-w-[600px]">
             <thead>
-              <tr className="bg-accent text-accent-foreground">
-                <th className="px-4 py-3 text-left font-semibold">Nombre</th>
-                <th className="px-4 py-3 text-left font-semibold">Área</th>
-                <th className="px-4 py-3 text-left font-semibold">Nivel</th>
-                <th className="px-4 py-3 text-left font-semibold">Calificación</th>
-                <th className="px-4 py-3 text-left font-semibold">Estado</th>
+              <tr className="bg-blue-600 text-white">
+                <th className="px-4 py-3 text-left text-sm font-semibold">Nombre</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Área</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Nivel</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Calificación</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Estado</th>
               </tr>
             </thead>
             <tbody>
               {mencion.map((olimpista, idx) => (
                 <tr
                   key={olimpista.id}
-                  className={idx % 2 === 0 ? "bg-background" : "bg-muted"}
+                  className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
                 >
-                  <td className="px-4 py-3">{olimpista.nombre}</td>
-                  <td className="px-4 py-3">{olimpista.area}</td>
-                  <td className="px-4 py-3">{olimpista.nivel}</td>
-                  <td className="px-4 py-3 font-semibold">{olimpista.calificacion}</td>
+                  <td className="px-4 py-3 text-gray-900 text-sm">{olimpista.nombre}</td>
+                  <td className="px-4 py-3 text-gray-700 text-sm">{olimpista.area}</td>
+                  <td className="px-4 py-3 text-gray-700 text-sm">{olimpista.nivel}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900 text-sm">{olimpista.calificacion}</td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-blue-100 text-blue-800 border-blue-300">
+                    <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       ✓ Mención de Honor
                     </span>
                   </td>
@@ -124,7 +124,7 @@ export default function ResultsList({ medallistas, mencion }: ResultsListProps) 
 
     {/* Mensaje si no hay resultados */}
     {medallistas.length === 0 && mencion.length === 0 && (
-      <div className="text-center py-16 text-muted-foreground">
+      <div className="text-center py-16 text-gray-600">
         <p className="text-lg">No se encontraron resultados con los filtros seleccionados.</p>
       </div>
     )}

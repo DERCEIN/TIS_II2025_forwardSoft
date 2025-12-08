@@ -3332,17 +3332,17 @@ function CierreFaseFinal() {
               <CardContent>
                 <div className="rounded-lg border overflow-hidden">
                   <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
                           <TableHead className="text-center font-semibold text-xs sm:text-sm whitespace-nowrap">Posición</TableHead>
                           <TableHead className="font-semibold text-xs sm:text-sm">Nombre</TableHead>
                           <TableHead className="font-semibold text-xs sm:text-sm hidden sm:table-cell">Institución</TableHead>
                           <TableHead className="font-semibold text-xs sm:text-sm hidden md:table-cell">Nivel</TableHead>
                           <TableHead className="text-center font-semibold text-xs sm:text-sm whitespace-nowrap">Nota</TableHead>
                           <TableHead className="text-center font-semibold text-xs sm:text-sm whitespace-nowrap">Medalla</TableHead>
-                        </TableRow>
-                      </TableHeader>
+                      </TableRow>
+                    </TableHeader>
                     <TableBody>
                       {topParticipantes.map((participante: any, index: number) => {
                         const nota = parseFloat(participante.nota_promedio || 0)
@@ -4184,9 +4184,6 @@ export default function CoordinatorDashboard() {
 
             {/* Mobile Navigation */}
             <div className="flex sm:hidden items-center space-x-1 sm:space-x-2">
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0" style={{backgroundColor: 'white', color: '#2563eb', borderColor: '#93c5fd'}}>
-                <Bell className="h-4 w-4" />
-              </Button>
               <Link href="/coordinador/perfil" className="inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-full overflow-hidden border-2 border-white shadow-sm hover:shadow-md transition-shadow">
                 {avatarSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element

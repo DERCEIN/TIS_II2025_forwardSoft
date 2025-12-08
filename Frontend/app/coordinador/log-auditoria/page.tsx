@@ -721,9 +721,9 @@ export default function LogAuditoriaPage() {
             ) : (
               <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <div className="inline-block min-w-full align-middle px-4 sm:px-0">
-                  <Table>
-                    <TableHeader className="bg-gray-50">
-                      <TableRow>
+                <Table>
+                  <TableHeader className="bg-gray-50">
+                    <TableRow>
                         <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Estado</TableHead>
                         <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Evaluador</TableHead>
                         <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Fecha/Hora</TableHead>
@@ -731,69 +731,69 @@ export default function LogAuditoriaPage() {
                         <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Área/Nivel</TableHead>
                         <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Cambio de Nota</TableHead>
                         <TableHead className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {logsFiltrados.map((log) => (
-                        <TableRow key={log.id} className="hover:bg-gray-50">
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logsFiltrados.map((log) => (
+                      <TableRow key={log.id} className="hover:bg-gray-50">
                           <TableCell className="text-xs sm:text-sm">
-                            {getEstadoBadge(log.estado_aprobacion)}
-                          </TableCell>
+                          {getEstadoBadge(log.estado_aprobacion)}
+                        </TableCell>
                           <TableCell className="text-xs sm:text-sm">
                             <div className="flex items-center gap-1 sm:gap-2">
                               <div className="w-5 h-5 sm:w-6 sm:h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
                                 <User className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-blue-600" />
-                              </div>
+                            </div>
                               <div className="min-w-0">
                                 <div className="font-medium text-gray-900 truncate">{log.evaluador_nombre}</div>
-                                <div className="text-xs text-gray-500">ID: {log.evaluador_id}</div>
-                              </div>
+                              <div className="text-xs text-gray-500">ID: {log.evaluador_id}</div>
                             </div>
-                          </TableCell>
+                          </div>
+                        </TableCell>
                           <TableCell className="font-mono text-xs sm:text-sm text-gray-600 whitespace-nowrap">
-                            <div>
-                              <div>{new Date(log.fecha_cambio).toLocaleDateString('es-ES')}</div>
-                              <div className="text-xs text-gray-500">{new Date(log.fecha_cambio).toLocaleTimeString('es-ES')}</div>
-                            </div>
-                          </TableCell>
+                          <div>
+                            <div>{new Date(log.fecha_cambio).toLocaleDateString('es-ES')}</div>
+                            <div className="text-xs text-gray-500">{new Date(log.fecha_cambio).toLocaleTimeString('es-ES')}</div>
+                          </div>
+                        </TableCell>
                           <TableCell className="text-xs sm:text-sm">
                             <div className="min-w-0">
                               <div className="font-medium text-gray-900 truncate">{log.olimpista_nombre}</div>
-                              <div className="text-xs text-gray-500">ID: {log.olimpista_id}</div>
-                            </div>
-                          </TableCell>
+                            <div className="text-xs text-gray-500">ID: {log.olimpista_id}</div>
+                          </div>
+                        </TableCell>
                           <TableCell className="text-xs sm:text-sm">
-                            <div className="space-y-1">
-                              <Badge variant="outline" className="text-xs">
-                                {log.area_nombre}
-                              </Badge>
-                              <div className="text-xs text-gray-500">{log.nivel_nombre}</div>
-                            </div>
-                          </TableCell>
+                          <div className="space-y-1">
+                            <Badge variant="outline" className="text-xs">
+                              {log.area_nombre}
+                            </Badge>
+                            <div className="text-xs text-gray-500">{log.nivel_nombre}</div>
+                          </div>
+                        </TableCell>
                           <TableCell className="text-xs sm:text-sm">
-                            <div className="max-w-xs">
+                          <div className="max-w-xs">
                               <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm font-mono flex-wrap">
-                                {log.nota_anterior && (
+                              {log.nota_anterior && (
                                   <span className="text-red-600 bg-red-50 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
-                                    {log.nota_anterior}
-                                  </span>
-                                )}
-                                {log.nota_anterior && log.nota_nueva && (
-                                  <span className="text-gray-400">→</span>
-                                )}
-                                {log.nota_nueva && (
+                                  {log.nota_anterior}
+                                </span>
+                              )}
+                              {log.nota_anterior && log.nota_nueva && (
+                                <span className="text-gray-400">→</span>
+                              )}
+                              {log.nota_nueva && (
                                   <span className="text-green-600 bg-green-50 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
-                                    {log.nota_nueva}
-                                  </span>
-                                )}
-                              </div>
-                              {log.motivo_cambio && (
-                                <div className="text-xs text-gray-500 mt-1 italic max-w-xs truncate">
-                                  "{log.motivo_cambio}"
-                                </div>
+                                  {log.nota_nueva}
+                                </span>
                               )}
                             </div>
-                          </TableCell>
+                            {log.motivo_cambio && (
+                              <div className="text-xs text-gray-500 mt-1 italic max-w-xs truncate">
+                                "{log.motivo_cambio}"
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                             {log.estado_aprobacion === 'pendiente' && (
